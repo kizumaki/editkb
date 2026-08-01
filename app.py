@@ -379,8 +379,8 @@ def build_speaker_regex(custom_speakers):
 
 def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
     """
-    TỰ ĐỘNG BẮT CẶP VÀ GỘP DÒNG TÊN VAI MỒ CỜ VỚI DÒNG THOẠI NGAY PHÍA SAU
-    Khắc phục triệt để lỗi Enter xuống dòng của các file phụ đề gốc
+    TỰ ĐỘNG BẮC CẶP VÀ GỘP DÒNG TÊN VAI MỒ CỜ VỚI DÒNG THOẠI NGAY PHÍA SAU
+    Bóc tách sạch sẽ các thẻ HTML <i>, <b>, <u> trước khi kiểm tra
     """
     cleaned_paras = []
     i = 0
@@ -396,8 +396,11 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
         if spk_matches:
             last_match = spk_matches[-1]
             content_after = text[last_match.end():].strip()
-            # Nếu dòng chỉ có tên vai mà không có thoại phía sau
-            if not content_after:
+            # Bóc tách sạch thẻ HTML để kiểm tra xem có thoại thật không
+            real_content = re.sub(r'</?[ibuIBU]>', '', content_after).strip()
+            
+            # Nếu dòng chỉ có tên vai (hoặc kèm thẻ HTML mở như <i>) mà chưa có thoại thật
+            if not real_content:
                 next_i = i + 1
                 while next_i < total:
                     next_text = re.sub(r'\t+', ' ', raw_paragraphs[next_i].text).strip()
@@ -414,7 +417,7 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
                     
                     if not (is_timecode or is_number or is_srt or is_next_speaker):
                         # GỘP HAI DÒNG LÀM MỘT!
-                        text = f"{text} {next_text}"
+                        text = f"{text}{next_text}" if text.endswith('>') else f"{text} {next_text}"
                         i = next_i # Bỏ qua dòng kế tiếp vì đã gộp
         
         cleaned_paras.append(text)
