@@ -721,7 +721,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.paragraph_format.space_before = Pt(0)
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
-            # Nếu là Re-sync, khôi phục cụm phiên âm về từ gốc trước khi tô highlight mới
             cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
             format_and_split_dialogue(document, cleaned_text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
             
@@ -847,7 +846,7 @@ with tab_script:
 
     with col1:
         with st.container(border=True):
-            st.markdown("### 📁 1. Tải lên kịch bản Word gốc (.docx)")
+            st.markdown("### 📁 Tải lên file Kịch bản Word gốc (.docx)")
             uploaded_file = st.file_uploader(
                 "Kéo thả file .docx gốc của bạn vào đây", 
                 type=['docx'], 
@@ -1081,7 +1080,7 @@ with tab_resync:
     
     with col_r1:
         with st.container(border=True):
-            st.markdown("### 🔄 1. Tải lên file Kịch bản ĐÃ BIÊN TẬP THỦ CÔNG (.docx)")
+            st.markdown("### 🔄 Tải lên file Kịch bản ĐÃ BIÊN TẬP THỦ CÔNG (.docx)")
             st.caption("Dành riêng cho file kịch bản đã được team biên tập chỉnh sửa lời thoại. Hệ thống sẽ giữ nguyên 100% câu thoại mới và khôi phục lại màu chữ nhân vật, phân vai và tô highlight vàng phiên âm.")
             
             resync_file = st.file_uploader(
