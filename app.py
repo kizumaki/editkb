@@ -609,7 +609,8 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if enable_colors:
             run_speaker.font.color.rgb = spk_color
             
-        # 2. KIỂM TRA: Nếu BẬT PHÂN VAI & LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN"
+        # 2. KIỂM TRA & TÍNH ĐỘ DÀI TIỀN TỐ (PREFIX LENGTH)
+        prefix_len = len(speaker_full)
         if enable_cast:
             if speaker_name not in seen_speakers_first_time:
                 seen_speakers_first_time.add(speaker_name)
@@ -617,9 +618,13 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                     run_actor = new_paragraph.add_run(f" {actor_name}")
                     run_actor.font.bold = True
                     run_actor.font.color.rgb = RED_COLOR
+                    prefix_len += len(actor_name) + 1
         
-        # CHỈ THÊM ĐÚNG 1 TAB DUY NHẤT ĐỂ KHÔNG BAO GIỜ BỊ "NHẢY TAB" KHỎI CỘT 1.0 INCH
-        new_paragraph.add_run('\t')
+        # NẾU TỔNG ĐỘ DÀI VAI DÀI (>= 10 KÝ TỰ) -> THAY TAB BẰNG 1 DẤU CÁCH SPACEBAR ' '
+        if prefix_len >= 10:
+            new_paragraph.add_run(' ')
+        else:
+            new_paragraph.add_run('\t')
 
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
         new_paragraph.paragraph_format.space_before = Pt(0)
