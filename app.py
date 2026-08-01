@@ -37,8 +37,8 @@ def save_json_db(filepath, data_set):
         st.error(f"Không thể lưu vào Database: {e}")
 
 # Khởi tạo Session State
-if 'reset_key' not in st.session_state:
-    st.session_state['reset_key'] = 0
+if 'uploader_key' not in st.session_state:
+    st.session_state['uploader_key'] = 0
 
 if 'custom_non_speakers' not in st.session_state:
     st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE)
@@ -356,11 +356,12 @@ def clean_file_name_for_output(original_filename):
 # --- SIDEBAR (THANH ĐIỀU HƯỚNG) ---
 st.sidebar.title("⚙️ Tùy chỉnh (Settings)")
 
+# Chỉ nút làm mới này mới xoá file uploader
 if st.sidebar.button("🔄 Làm mới phiên làm việc", use_container_width=True, type="primary"):
     for key in ['processed_file', 'new_filename', 'stats']:
         if key in st.session_state:
             del st.session_state[key]
-    st.session_state['reset_key'] += 1
+    st.session_state['uploader_key'] += 1
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -369,7 +370,7 @@ enable_colors = st.sidebar.toggle("🌈 Bật tô màu nhân vật", value=True)
 # 1. Quản lý Người Nói Ưu Tiên (WHITELIST)
 with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=False):
     manual_spk_input = st.text_area("Nhập thủ công (cách nhau bằng dấu phẩy hoặc xuống dòng):", height=80, key="spk_manual")
-    upload_spk_file = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['reset_key']}")
+    upload_spk_file = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key="spk_uploader")
     
     if st.button("Lưu vào Database Người Nói", use_container_width=True):
         new_spks = set()
@@ -381,24 +382,19 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             
         if new_spks:
             st.session_state['custom_speakers'].update(new_spks)
-            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers']) # Cập nhật Database
-            
-            # Xóa ngay lập tức khung nhập liệu và file uploader
+            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
             st.session_state['spk_manual'] = ""
-            st.session_state['reset_key'] += 1
-            
             st.success(f"✅ Đã lưu {len(new_spks)} người nói vào Database!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_speakers']) > 0:
         st.info(f"Database đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
-        # ĐÃ XÓA NÚT XÓA DATABASE ĐỂ TRÁNH BẤM NHẦM
 
 # 2. Quản lý Từ Nhiễu (BLACKLIST)
 with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
     manual_input = st.text_area("Nhập thủ công:", height=80, key="ns_manual")
-    upload_non_speaker = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['reset_key']}")
+    upload_non_speaker = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key="ns_uploader")
     
     if st.button("Lưu vào Database Từ Nhiễu", use_container_width=True):
         new_phrases = set()
@@ -410,19 +406,14 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
             
         if new_phrases:
             st.session_state['custom_non_speakers'].update(new_phrases)
-            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers']) # Cập nhật Database
-            
-            # Xóa ngay lập tức khung nhập liệu và file uploader
+            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
             st.session_state['ns_manual'] = ""
-            st.session_state['reset_key'] += 1
-            
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu vào Database!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_non_speakers']) > 0:
         st.info(f"Database đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
-        # ĐÃ XÓA NÚT XÓA DATABASE ĐỂ TRÁNH BẤM NHẦM
 
 # --- GIAO DIỆN CHÍNH (UI) ---
 st.title("🎬 Kịch Bản Pro - Word Script Editor")
@@ -436,7 +427,7 @@ with col1:
     uploaded_file = st.file_uploader(
         "Kéo thả file Word (.docx) của bạn vào đây", 
         type=['docx'], 
-        key=f"main_uploader_{st.session_state['reset_key']}"
+        key=f"main_uploader_{st.session_state['uploader_key']}"
     )
 
     if uploaded_file is not None:
@@ -476,7 +467,7 @@ with col1:
                             st.session_state['custom_non_speakers'].update(new_items)
                             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
                             st.success(f"✅ Đã lưu thành công {len(new_items)} từ vào Database Từ Nhiễu!")
-                            time.sleep(1.2)
+                            time.sleep(1)
                             st.rerun()
                 else:
                     st.info("Chưa tìm thấy cụm từ người nói nào.")
@@ -500,7 +491,7 @@ with col1:
                             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
                             
                             st.success(f"✅ Đã lưu thành công {len(to_move_to_spk)} tên vào Database Người Nói!")
-                            time.sleep(1.2)
+                            time.sleep(1)
                             st.rerun()
                 else:
                     st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
