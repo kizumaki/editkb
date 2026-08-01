@@ -304,6 +304,8 @@ def save_json_db(filepath, data_container):
 # Khởi tạo Session State
 if 'uploader_key' not in st.session_state:
     st.session_state['uploader_key'] = 0
+if 'resync_uploader_key' not in st.session_state:
+    st.session_state['resync_uploader_key'] = 0
 if 'spk_input_key' not in st.session_state:
     st.session_state['spk_input_key'] = 0
 if 'ns_input_key' not in st.session_state:
@@ -450,7 +452,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, q, v
+            elif i % 6 == 2: r, g, b = p, v, t
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -469,6 +471,15 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
             color_object = RGBColor(r, g, b)
         speaker_color_map[speaker_name] = color_object
     return speaker_color_map[speaker_name]
+
+def normalize_phonetics_in_text(text):
+    """Khôi phục cụm 'Phiên_âm (ENGLISH)' về từ 'ENGLISH' nguyên bản để chuẩn hóa lại highlight"""
+    def replace_match(m):
+        eng_word = m.group(1)
+        return eng_word
+    pattern = r'\b[\w\s-]+\s*\(([A-Za-z0-9\'-]+)\)'
+    cleaned_text = re.sub(pattern, replace_match, text)
+    return cleaned_text
 
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
     if not current_text.strip(): return
@@ -575,6 +586,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
             next_match_start = len(text)
             
         content = text[end:next_match_start].strip()
+        
+        # Lọc bỏ tên diễn viên lồng tiếng cũ nếu vô tình bị dính trong văn bản biên tập
+        actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+        if actor_name and content.startswith(actor_name):
+            content = content[len(actor_name):].strip()
+
         new_paragraph = document.add_paragraph()
         new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
@@ -590,14 +607,11 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
         # 2. KIỂM TRA: Nếu là LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN" (Bold + MÀU ĐỎ + IN HOA)
         if speaker_name not in seen_speakers_first_time:
             seen_speakers_first_time.add(speaker_name)
-            actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
             if actor_name:
                 run_actor = new_paragraph.add_run(f" {actor_name}")
                 run_actor.font.bold = True
-                run_actor.font.color.rgb = RED_COLOR # Màu đỏ chuẩn
+                run_actor.font.color.rgb = RED_COLOR
         
-        # Cấu hình Tab thẳng hàng
-        full_heading_len = len(speaker_full)
         if len(speaker_full) > 10:
              new_paragraph.add_run('\t\t')
         else:
@@ -619,13 +633,13 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
         continuation_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_and_phonetic_to_paragraph(continuation_paragraph, remaining_content, enable_phonetic)
 
-# --- MAIN PROCESSING ---
-def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic):
+# --- MAIN PROCESSING & RE-SYNC ---
+def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, is_resync=False):
     speaker_color_map = {}
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors)
     stats_counter = Counter()
-    seen_speakers_first_time = set() # Theo dõi các nhân vật xuất hiện lần đầu tiên
+    seen_speakers_first_time = set()
     
     speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
     
@@ -633,20 +647,20 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     raw_paragraphs = [p for p in original_document.paragraphs]
     document = Document()
     
-    # 1. Tiêu đề Kịch bản
+    # Tiêu đề Kịch bản
     title_text_raw = file_name_without_ext.upper()
-    title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace(" (GỐC)", "").strip()
+    title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace(" (GỐC)", "").strip()
     title_paragraph = document.add_paragraph(title_text)
     title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_paragraph.runs[0].font.name = 'Times New Roman'
     title_paragraph.runs[0].font.size = Pt(20)
     title_paragraph.runs[0].bold = True
     
-    # 2. Quét Danh sách Vai & Phân vai xếp theo HÀNG DỌC ở đầu kịch bản
+    # Quét Danh sách Vai & Phân vai xếp theo HÀNG DỌC ở đầu kịch bản
     unique_speakers = []
     for paragraph in raw_paragraphs:
-        text = paragraph.text
-        if text.lower().startswith("srt conversion"): continue 
+        text = paragraph.text.strip()
+        if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
             if speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
@@ -666,7 +680,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             p_spk.paragraph_format.space_before = Pt(0)
             p_spk.paragraph_format.space_after = Pt(0)
             
-            # Tên nhân vật Tiếng Anh (Màu trùng với màu tô trong kịch bản)
             spk_color = get_speaker_color(spk, speaker_color_map, used_colors)
             r_spk_name = p_spk.add_run(f"{spk}: ")
             r_spk_name.font.name = 'Times New Roman'
@@ -675,7 +688,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             if enable_colors:
                 r_spk_name.font.color.rgb = spk_color
                 
-            # Tên Diễn viên Lồng tiếng (MÀU ĐỎ, IN HOA)
             actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
             if actor:
                 r_actor = p_spk.add_run(actor)
@@ -695,11 +707,11 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if idx % max(1, total_paras // 10) == 0:
             progress = int((idx / total_paras) * 100)
             progress_bar.progress(progress)
-            status_text.text(f"Đang phân tích dòng {idx}/{total_paras}...")
+            status_text.text(f"Đang phân tích & Re-sync {idx}/{total_paras}...")
 
         text = paragraph.text.strip()
         if not text or text.upper() == title_text.upper(): continue
-        if text.lower().startswith("srt conversion") or re.fullmatch(r"^\s*\d+\s*$", text): continue
+        if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
         if TIMECODE_REGEX.match(text):
             new_paragraph = document.add_paragraph(text)
@@ -709,10 +721,12 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.paragraph_format.space_before = Pt(0)
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
-            format_and_split_dialogue(document, text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
+            # Nếu là Re-sync, khôi phục cụm phiên âm về từ gốc trước khi tô highlight mới
+            cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
+            format_and_split_dialogue(document, cleaned_text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
             
     progress_bar.progress(100)
-    status_text.text("Định dạng hoàn tất!")
+    status_text.text("Xử lý hoàn tất!")
     time.sleep(0.5)
     progress_bar.empty()
     status_text.empty()
@@ -738,19 +752,20 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     return modified_file, stats
 
-def clean_file_name_for_output(original_filename):
+def clean_file_name_for_output(original_filename, tag="_edit"):
     name_without_ext = os.path.splitext(original_filename)[0]
-    cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$)', '', name_without_ext, flags=re.IGNORECASE).strip()
-    return f"{cleaned}_edit.docx"
+    cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$)', '', name_without_ext, flags=re.IGNORECASE).strip()
+    return f"{cleaned}{tag}.docx"
 
 # --- SIDEBAR (THANH ĐIỀU HƯỚNG SAAS) ---
 st.sidebar.markdown("### ⚡ Control Panel")
 
 if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
-    for key in ['processed_file', 'new_filename', 'stats']:
+    for key in ['processed_file', 'new_filename', 'stats', 'resync_processed_file', 'resync_new_filename', 'resync_stats']:
         if key in st.session_state:
             del st.session_state[key]
     st.session_state['uploader_key'] += 1
+    st.session_state['resync_uploader_key'] += 1
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -816,24 +831,25 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- MÀN HÌNH CHÍNH TÁCH 3 TABS ---
-tab_script, tab_cast_db, tab_phonetic_db = st.tabs([
-    "🎬 Xử lý & Biên tập Kịch bản", 
+# --- MÀN HÌNH CHÍNH TÁCH 4 TABS ---
+tab_script, tab_resync, tab_cast_db, tab_phonetic_db = st.tabs([
+    "🎬 Xử lý Kịch bản Gốc", 
+    "🔄 Re-Sync Kịch Bản Biên Tập",
     "🎭 Bảng Phân Vai Lồng Tiếng", 
     "📚 Kho Database Phiên Âm Giọng Nam"
 ])
 
 # ==========================================
-# TAB 1: XỬ LÝ KỊCH BẢN
+# TAB 1: XỬ LÝ KỊCH BẢN GỐC
 # ==========================================
 with tab_script:
     col1, col2 = st.columns([1.6, 1])
 
     with col1:
         with st.container(border=True):
-            st.markdown("### 📁 1. Tải lên kịch bản Word (.docx)")
+            st.markdown("### 📁 1. Tải lên kịch bản Word gốc (.docx)")
             uploaded_file = st.file_uploader(
-                "Kéo thả file .docx của bạn vào đây", 
+                "Kéo thả file .docx gốc của bạn vào đây", 
                 type=['docx'], 
                 key=f"main_uploader_{st.session_state['uploader_key']}"
             )
@@ -1014,8 +1030,8 @@ with tab_script:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
                 try:
-                    modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic)
-                    new_filename = clean_file_name_for_output(original_filename)
+                    modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, is_resync=False)
+                    new_filename = clean_file_name_for_output(original_filename, tag="_edit")
                     
                     st.session_state['processed_file'] = modified_file_io
                     st.session_state['new_filename'] = new_filename
@@ -1058,14 +1074,84 @@ with tab_script:
             st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
 
 # ==========================================
-# TAB 2: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
+# TAB 2: RE-SYNC KỊCH BẢN ĐÃ BIÊN TẬP
+# ==========================================
+with tab_resync:
+    col_r1, col_r2 = st.columns([1.6, 1])
+    
+    with col_r1:
+        with st.container(border=True):
+            st.markdown("### 🔄 1. Tải lên file Kịch bản ĐÃ BIÊN TẬP THỦ CÔNG (.docx)")
+            st.caption("Dành riêng cho file kịch bản đã được team biên tập chỉnh sửa lời thoại. Hệ thống sẽ giữ nguyên 100% câu thoại mới và khôi phục lại màu chữ nhân vật, phân vai và tô highlight vàng phiên âm.")
+            
+            resync_file = st.file_uploader(
+                "Kéo thả file .docx đã biên tập vào đây", 
+                type=['docx'], 
+                key=f"resync_uploader_{st.session_state['resync_uploader_key']}"
+            )
+            
+        if resync_file is not None:
+            r_filename = resync_file.name
+            r_name_no_ext = os.path.splitext(r_filename)[0]
+            st.success(f"📄 Đã nhận file kịch bản biên tập: **{r_filename}**")
+            
+            st.markdown("---")
+            if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG", use_container_width=True, type="primary", key="btn_resync_start"):
+                try:
+                    r_file_io, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, is_resync=True)
+                    r_new_filename = clean_file_name_for_output(r_filename, tag="_resync")
+                    
+                    st.session_state['resync_processed_file'] = r_file_io
+                    st.session_state['resync_new_filename'] = r_new_filename
+                    st.session_state['resync_stats'] = r_stats
+                    
+                except Exception as e:
+                    st.error(f"Lỗi xảy ra khi Re-Sync: {e}")
+                    
+            if 'resync_processed_file' in st.session_state:
+                st.markdown("---")
+                st.download_button(
+                    label="⬇️ 3. TẢI FILE KỊCH BẢN ĐÃ CHUẨN HÓA HOÀN HẢO (.DOCX)",
+                    data=st.session_state['resync_processed_file'],
+                    file_name=st.session_state['resync_new_filename'],
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_resync_download"
+                )
+                st.balloons()
+        else:
+            st.info("📌 **Hãy tải file kịch bản đã qua chỉnh sửa thủ công để hệ thống phục hồi lại định dạng chuẩn.**")
+
+    with col_r2:
+        st.markdown("### 📊 Re-Sync Analytics")
+        if 'resync_stats' in st.session_state:
+            r_stats = st.session_state['resync_stats']
+            
+            st.markdown(f"""
+            <div class="metric-card" style="margin-bottom: 12px;">
+                <div class="metric-label">🎭 Tổng số Nhân vật</div>
+                <div class="metric-value">{r_stats["total_speakers"]}</div>
+            </div>
+            <div class="metric-card" style="margin-bottom: 12px;">
+                <div class="metric-label">💬 Tổng số Câu thoại</div>
+                <div class="metric-value">{r_stats["total_lines"]}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            top_name, top_count = r_stats["top_speaker"]
+            st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
+        else:
+            st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
+
+# ==========================================
+# TAB 3: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
 # ==========================================
 with tab_cast_db:
     with st.container(border=True):
         st.subheader("🎭 BẢNG PHÂN VAI LỒNG TIẾNG (GLOBAL DATABASE)")
         st.markdown("Nơi thiết lập mặc định nhân vật Tiếng Anh nào sẽ do diễn viên lồng tiếng Việt nào đảm nhận cho Mai Han Team.")
 
-        # 1. Thêm phân vai mới
         st.markdown("#### ➕ Thêm / Cập nhật Phân vai mới")
         c_c1, c_c2, c_c3 = st.columns([2, 2, 1.2])
         with c_c1:
@@ -1157,7 +1243,7 @@ with tab_cast_db:
             st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
-# TAB 3: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
+# TAB 4: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
 # ==========================================
 with tab_phonetic_db:
     with st.container(border=True):
