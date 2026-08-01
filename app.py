@@ -42,6 +42,104 @@ DEFAULT_SOUTH_VIETNAM_PHONETICS = {
     "FBI": "Ép-bi-ai"
 }
 
+# DANH SÁCH ÂM TIẾT TIẾNG VIỆT KHÔNG DẤU PHỔ BIẾN ĐỂ BỘ LỌC KHÔNG BỊ NHẦM LẪN
+VN_SYLLABLES = {
+    "a", "ai", "an", "ang", "anh", "ao", "ap", "at", "au", "ay", "ba", "bac", "bai", "ban", "bang", "bao", 
+    "bat", "bay", "be", "ben", "beng", "beo", "bi", "bic", "bien", "biet", "binh", "bo", "boc", "boi", "bon", 
+    "bong", "bot", "bu", "bua", "bui", "bun", "buoc", "buon", "ca", "cac", "cai", "cam", "can", "cang", "cao", 
+    "cap", "cat", "cau", "cay", "cha", "chai", "cham", "chan", "chang", "chao", "chap", "chat", "chau", "chay", 
+    "che", "chen", "cheo", "chi", "chia", "chiem", "chieu", "chin", "chinh", "cho", "choc", "choi", "chon", 
+    "chong", "chu", "chua", "chuan", "chuc", "chui", "chum", "chun", "chuoc", "chuon", "chura", "chuong", "co", 
+    "coc", "coi", "con", "cong", "cot", "cu", "cua", "cuc", "cui", "cum", "cung", "cuoc", "cuoi", "cuon", 
+    "cuong", "cuot", "da", "dac", "dai", "dam", "dan", "dang", "dao", "dap", "dat", "dau", "day", "de", "den", 
+    "deo", "di", "dia", "diem", "dien", "diet", "dieu", "dinh", "do", "doc", "doi", "don", "dong", "dot", "du", 
+    "dua", "duc", "dui", "dum", "dung", "duoc", "duoi", "duon", "duong", "em", "ga", "gac", "gai", "gam", "gan", 
+    "gang", "gao", "gap", "gat", "gau", "gay", "ge", "gen", "gi", "gia", "giac", "giai", "giam", "gian", "giang", 
+    "giao", "giap", "giat", "giau", "giay", "gio", "gioc", "gioi", "gion", "giong", "giu", "giua", "go", "goc", 
+    "goi", "gon", "gong", "gu", "gua", "guc", "gui", "gum", "gung", "ha", "hac", "hai", "ham", "han", "hang", 
+    "hao", "hap", "hat", "hau", "hay", "he", "hen", "heo", "hi", "hien", "hiet", "hieu", "hinh", "ho", "hoc", 
+    "hoi", "hon", "hong", "hot", "hu", "hua", "huc", "hui", "hum", "hung", "huoc", "huong", "huot", "i", "ic", 
+    "it", "khac", "khai", "kham", "khan", "khang", "khao", "khap", "khat", "khau", "khay", "khe", "khen", "kheo", 
+    "khi", "khia", "khien", "khieu", "kho", "khoc", "khoi", "khon", "khong", "khot", "khu", "khua", "khuc", 
+    "khui", "khum", "khung", "khuon", "khura", "khuong", "la", "lac", "lai", "lam", "lan", "lang", "lao", "lap", 
+    "lat", "lau", "lay", "le", "len", "leo", "li", "lia", "liem", "lien", "liet", "lieu", "linh", "lo", "loc", 
+    "loi", "lon", "long", "lot", "lu", "lua", "luc", "lui", "lum", "lung", "luoc", "luoi", "luon", "luong", 
+    "luot", "ma", "mac", "mai", "mam", "man", "mang", "mao", "map", "mat", "mau", "may", "me", "men", "meo", 
+    "mi", "mia", "mien", "mieu", "minh", "mo", "moc", "moi", "mon", "mong", "mot", "mu", "mua", "muc", "mui", 
+    "mum", "mung", "muoc", "muoi", "muon", "muong", "na", "nac", "nai", "nam", "nan", "nang", "nao", "nap", 
+    "nat", "nau", "nay", "ne", "nen", "neo", "ni", "nia", "niem", "nien", "niet", "nieu", "ninh", "no", "noc", 
+    "noi", "non", "nong", "not", "nu", "nua", "nuc", "nui", "num", "nung", "nuoc", "nuoi", "nuon", "nuong", 
+    "nga", "ngac", "ngai", "ngam", "ngan", "ngang", "ngao", "ngap", "ngat", "ngau", "ngay", "nge", "ngen", 
+    "nghe", "nghen", "ngheo", "nghi", "nghia", "nghiem", "nghien", "nghiet", "nghieu", "nghinh", "ngo", "ngoc", 
+    "ngoi", "ngon", "ngong", "ngot", "ngu", "ngua", "nguc", "ngui", "ngum", "ngung", "nguoc", "nguoi", "nguon", 
+    "nguong", "nha", "nhac", "nhai", "nham", "nhan", "nhang", "nhao", "nhap", "nhat", "nhau", "nhay", "nhe", 
+    "nhen", "nheo", "nhi", "nhia", "nhiem", "nhien", "nhiet", "nhieu", "nhinh", "nho", "nhoc", "nhoi", "nhon", 
+    "nhong", "nhot", "nhu", "nhua", "nhuc", "nhui", "nhum", "nhung", "nhuoc", "nhuoi", "nhuon", "nhuong", "oa", 
+    "oai", "oam", "oan", "oang", "oat", "oay", "oe", "oen", "oi", "om", "on", "ong", "ot", "pa", "pha", "phac", 
+    "phai", "pham", "phan", "phang", "phao", "phap", "phat", "phau", "phay", "phe", "phen", "pheo", "phi", 
+    "phia", "phiem", "phien", "phiet", "phieu", "phinh", "pho", "phoc", "phoi", "phon", "phong", "phot", "phu", 
+    "phua", "phuc", "phui", "phum", "phung", "phuoc", "phuong", "phuot", "qua", "quac", "quai", "quam", "quan", 
+    "quang", "quao", "quap", "quat", "quay", "que", "quen", "queo", "qui", "quie", "quien", "quieu", "quinh", 
+    "quo", "quoc", "quoi", "quon", "quong", "ra", "rac", "rai", "ram", "ran", "rang", "rao", "rap", "rat", 
+    "rau", "ray", "re", "ren", "reo", "ri", "ria", "rim", "rin", "rinh", "ro", "roc", "roi", "ron", "rong", 
+    "rot", "ru", "rua", "ruc", "rui", "rum", "rung", "ruoc", "ruoi", "ruon", "ruong", "sa", "sac", "sai", 
+    "sam", "san", "sang", "sao", "sap", "sat", "sau", "say", "se", "sen", "seo", "si", "sia", "siem", "sien", 
+    "siet", "sieu", "sinh", "so", "soc", "soi", "son", "song", "sot", "su", "sua", "suc", "sui", "sum", 
+    "sung", "suoc", "suoi", "suon", "suong", "ta", "tac", "tai", "tam", "tan", "tang", "tao", "tap", "tat", 
+    "tau", "tay", "te", "ten", "teo", "tha", "thac", "thai", "tham", "than", "thang", "thao", "thap", "that", 
+    "thau", "thay", "the", "then", "theo", "thi", "thia", "thiem", "thien", "thiet", "thieu", "thinh", "tho", 
+    "thoc", "thoi", "thon", "thong", "thot", "thu", "thua", "thuc", "thui", "thum", "thung", "thuoc", "thuoi", 
+    "thuon", "thuong", "thuot", "to", "toc", "toi", "ton", "tong", "tot", "tra", "trac", "trai", "tram", "tran", 
+    "trang", "trao", "trap", "trat", "trau", "tray", "tre", "tren", "treo", "tri", "tria", "triem", "trien", 
+    "triet", "trieu", "trinh", "tro", "troc", "troi", "tron", "trong", "trot", "tru", "trua", "truc", "trui", 
+    "trum", "trung", "truoc", "truoi", "truon", "truong", "tu", "tua", "tuc", "tui", "tum", "tung", "tuoc", 
+    "tuoi", "tuon", "tuong", "tuot", "va", "vac", "vai", "vam", "van", "vang", "vao", "vap", "vat", "vau", 
+    "vay", "ve", "ven", "veo", "vi", "via", "viem", "vien", "viet", "vieu", "vinh", "vo", "voc", "voi", "von", 
+    "vong", "vot", "vu", "vua", "vuc", "vui", "vum", "vung", "vuoc", "vuoi", "vuon", "vuong", "xa", "xac", 
+    "xai", "xam", "xan", "xang", "xao", "xap", "xat", "xau", "xay", "xe", "xen", "xeo", "xi", "xia", "xiem", 
+    "xien", "xiet", "xieu", "xinh", "xo", "xoc", "xoi", "xon", "xong", "xot", "xu", "xua", "xuc", "xui", 
+    "xum", "xung", "xuoc", "xuoi", "xuon", "xuong", "y", "eu", "yeu"
+}
+
+def is_candidate_english_word(word):
+    """
+    Hàm kiểm tra thông minh lọc chính xác từ Tiếng Anh / Tên riêng nước ngoài
+    """
+    clean_w = word.strip(".,!?:;\"'()[]{}")
+    if not clean_w or len(clean_w) <= 1 or clean_w.isdigit():
+        return False
+        
+    lower_w = clean_w.lower()
+    
+    # 1. Đã có trong Database phiên âm -> CHẮC CHẮN GIỮ LẠI
+    if clean_w.upper() in st.session_state['custom_phonetics']:
+        return True
+        
+    # 2. Nếu nằm trong danh sách âm tiết Tiếng Việt -> LOẠI BỎ NGAY LẬP TỨC
+    if lower_w in VN_SYLLABLES:
+        return False
+        
+    # 3. Chứa ký tự ngoại ngữ đặc trưng (f, j, w, z)
+    if any(char in lower_w for char in ['f', 'j', 'w', 'z']):
+        return True
+        
+    # 4. Chứa cụm phụ âm đôi hoặc hậu tố Tiếng Anh
+    eng_patterns = [
+        r"(bb|cc|dd|ff|gg|ll|mm|nn|pp|rr|ss|tt|zz)",
+        r"(sh|ck|th|wh|ph|gh)",
+        r"(tion|ment|ness|less|ing|ed|able|ible|ally|ce|ge|ck)$",
+        r"^([A-Z]{2,})$" # Viết tắt in hoa (KFC, TNT, FBI)
+    ]
+    for pattern in eng_patterns:
+        if re.search(pattern, clean_w):
+            return True
+            
+    # 5. Viết hoa chữ cái đầu và không phải âm tiết tiếng Việt (VD: Allison, Arsement)
+    if clean_w[0].isupper() and lower_w not in VN_SYLLABLES:
+        return True
+        
+    return False
+
 def load_json_db(filepath, default_data=None):
     if os.path.exists(filepath):
         try:
@@ -141,6 +239,7 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
     return candidates
 
 def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
+    """Quét và áp dụng thuật toán lọc thông minh"""
     doc = Document(io.BytesIO(uploaded_file.getvalue()))
     eng_found = set()
     
@@ -165,7 +264,8 @@ def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
 
         for match in ENGLISH_WORD_REGEX.finditer(dialogue_content):
             word = match.group(0).strip()
-            if len(word) > 1 and not word.isdigit():
+            # Gọi hàm lọc thông minh is_candidate_english_word
+            if is_candidate_english_word(word):
                 eng_found.add(word)
                 
     return sorted(list(eng_found), key=lambda x: x.upper())
@@ -620,7 +720,7 @@ with tab_script:
             # --- QUẢN LÝ PHIÊN ÂM TRONG KỊCH BẢN HIỆN TẠI ---
             st.markdown("---")
             st.markdown("### 🗣️ TỪ TIẾNG ANH XUẤT HIỆN TRONG KỊCH BẢN HIỆN TẠI")
-            st.caption("Quét và điều chỉnh phiên âm riêng cho kịch bản này:")
+            st.caption("Quét và điều chỉnh phiên âm riêng cho kịch bản này (Đã qua bộ lọc thông minh):")
 
             detected_eng_words = scan_english_words_in_dialogue(uploaded_file, speaker_regex)
 
@@ -666,7 +766,7 @@ with tab_script:
                     time.sleep(1)
                     st.rerun()
             else:
-                st.info("Chưa phát hiện từ Tiếng Anh nào trong phần lời thoại của kịch bản này.")
+                st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")
 
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
@@ -739,12 +839,10 @@ with tab_phonetic_db:
     st.markdown("---")
     st.markdown("### 📑 Danh sách toàn bộ Từ phiên âm đã lưu")
 
-    # Tìm kiếm
     search_query = st.text_input("🔍 Tìm kiếm từ Tiếng Anh hoặc Từ phiên âm:", placeholder="Gõ từ cần tìm ở đây...").strip().upper()
 
     all_phonetics_dict = st.session_state['custom_phonetics']
     
-    # Lọc danh sách theo từ khóa tìm kiếm
     if search_query:
         filtered_dict = {
             k: v for k, v in all_phonetics_dict.items() 
@@ -785,7 +883,6 @@ with tab_phonetic_db:
                 new_db = {}
                 deleted_count = 0
                 
-                # Giữ lại những từ không bị tìm kiếm nếu đang lọc
                 if search_query:
                     for k, v in all_phonetics_dict.items():
                         if k not in filtered_dict:
