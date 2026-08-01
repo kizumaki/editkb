@@ -378,11 +378,56 @@ def build_speaker_regex(custom_speakers):
         pattern_str = rf"({base_pattern}):\s*"
     return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
 
+def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
+    """
+    TỰ ĐỘNG BẮT CẶP VÀ GỘP DÒNG TÊN VAI MỒ CỜ VỚI DÒNG THOẠI NGAY PHÍA SAU
+    Khắc phục triệt để lỗi Enter xuống dòng của các file phụ đề gốc
+    """
+    cleaned_paras = []
+    i = 0
+    total = len(raw_paragraphs)
+    
+    while i < total:
+        text = re.sub(r'\t+', ' ', raw_paragraphs[i].text).strip()
+        if not text:
+            i += 1
+            continue
+            
+        spk_matches = list(speaker_regex.finditer(text))
+        if spk_matches:
+            last_match = spk_matches[-1]
+            content_after = text[last_match.end():].strip()
+            # Nếu dòng chỉ có tên vai mà không có thoại phía sau
+            if not content_after:
+                next_i = i + 1
+                while next_i < total:
+                    next_text = re.sub(r'\t+', ' ', raw_paragraphs[next_i].text).strip()
+                    if next_text:
+                        break
+                    next_i += 1
+                
+                if next_i < total:
+                    next_text = re.sub(r'\t+', ' ', raw_paragraphs[next_i].text).strip()
+                    is_timecode = TIMECODE_REGEX.match(next_text)
+                    is_number = re.fullmatch(r"^\s*\d+\s*$", next_text)
+                    is_srt = next_text.lower().startswith("srt conversion") or next_text.lower().startswith("vai:")
+                    is_next_speaker = bool(speaker_regex.match(next_text))
+                    
+                    if not (is_timecode or is_number or is_srt or is_next_speaker):
+                        # GỘP HAI DÒNG LÀM MỘT!
+                        text = f"{text} {next_text}"
+                        i = next_i # Bỏ qua dòng kế tiếp vì đã gộp
+        
+        cleaned_paras.append(text)
+        i += 1
+        
+    return cleaned_paras
+
 def scan_candidate_speakers(uploaded_file, speaker_regex):
     doc = Document(io.BytesIO(uploaded_file.getvalue()))
+    processed_strings = preprocess_raw_paragraphs(doc.paragraphs, speaker_regex)
     candidates = Counter()
-    for p in doc.paragraphs:
-        text = re.sub(r'\t+', ' ', p.text).strip()
+    for text in processed_strings:
         if not text or text.lower().startswith("srt conversion"): 
             continue
         for match in speaker_regex.finditer(text):
@@ -392,10 +437,10 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
 
 def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
     doc = Document(io.BytesIO(uploaded_file.getvalue()))
+    processed_strings = preprocess_raw_paragraphs(doc.paragraphs, speaker_regex)
     eng_found = set()
     
-    for p in doc.paragraphs:
-        text = re.sub(r'\t+', ' ', p.text).strip()
+    for text in processed_strings:
         if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text):
             continue
         
@@ -453,7 +498,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, q, v
+            elif i % 6 == 2: r, g, b = p, v, t
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -536,7 +581,6 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
         paragraph.add_run(current_text)
 
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
-    # LÀM SẠCH VÀ BỎ TOÀN BỘ KÝ TỰ TAB DƯ THỪA TRONG VĂN BẢN ĐẦU VÀO
     text = re.sub(r'\t+', ' ', text).strip()
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
@@ -601,7 +645,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         
-        # 1. Tên Người Nói CHỈ CHỨA TÊN VÀ DẤU HAI CHẤM (Tuyệt đối không có phím cách thừa ở cuối)
+        # 1. Tên Người Nói CHỈ CHỨA TÊN VÀ DẤU HAI CHẤM
         spk_text = f"{speaker_name}:"
         spk_color = get_speaker_color(speaker_name, speaker_color_map, used_colors)
         run_speaker = new_paragraph.add_run(spk_text)
@@ -656,6 +700,10 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     original_document = Document(io.BytesIO(uploaded_file.getvalue()))
     raw_paragraphs = [p for p in original_document.paragraphs]
+    
+    # GỘP CÁC DÒNG TÊN VAI MỒ CỜ TRƯỚC KHÍ XỬ LÝ
+    processed_strings = preprocess_raw_paragraphs(raw_paragraphs, speaker_regex)
+    
     document = Document()
     
     # Tiêu đề Kịch bản
@@ -669,8 +717,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     # Quét Danh sách Vai
     unique_speakers = []
-    for paragraph in raw_paragraphs:
-        text = re.sub(r'\t+', ' ', paragraph.text).strip()
+    for text in processed_strings:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
@@ -721,17 +768,16 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     document.add_paragraph()
     start_index = len(document.paragraphs)
 
-    total_paras = len(raw_paragraphs)
+    total_paras = len(processed_strings)
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for idx, paragraph in enumerate(raw_paragraphs):
+    for idx, text in enumerate(processed_strings):
         if idx % max(1, total_paras // 10) == 0:
             progress = int((idx / total_paras) * 100)
             progress_bar.progress(progress)
             status_text.text(f"Đang phân tích & xử lý {idx}/{total_paras}...")
 
-        text = re.sub(r'\t+', ' ', paragraph.text).strip()
         if not text or text.upper() == title_text.upper(): continue
         if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
