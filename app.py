@@ -377,10 +377,15 @@ def build_speaker_regex(custom_speakers):
         pattern_str = rf"({base_pattern}):\s*"
     return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
 
+def is_stage_direction(name):
+    """Kiểm tra nếu chuỗi nằm trong ngoặc đơn (Ghi chú hành động như: (Thì thầm:), (Giọng méo tiếng:)...)"""
+    clean = name.strip()
+    return clean.startswith('(') or clean.endswith(')')
+
 def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
     """
     TỰ ĐỘNG BẮC CẶP VÀ GỘP DÒNG TÊN VAI MỒ CỜ VỚI DÒNG THOẠI NGAY PHÍA SAU
-    Bóc tách sạch sẽ các thẻ HTML <i>, <b>, <u> trước khi kiểm tra
+    Loại bỏ hoàn toàn lỗi Enter xuống dòng và phân biệt chính xác ghi chú (Thì thầm:)
     """
     cleaned_paras = []
     i = 0
@@ -393,8 +398,10 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
             continue
             
         spk_matches = list(speaker_regex.finditer(text))
-        if spk_matches:
-            last_match = spk_matches[-1]
+        valid_spk_matches = [m for m in spk_matches if not is_stage_direction(m.group(1))]
+        
+        if valid_spk_matches:
+            last_match = valid_spk_matches[-1]
             content_after = text[last_match.end():].strip()
             # Bóc tách sạch thẻ HTML để kiểm tra xem có thoại thật không
             real_content = re.sub(r'</?[ibuIBU]>', '', content_after).strip()
@@ -413,7 +420,12 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
                     is_timecode = TIMECODE_REGEX.match(next_text)
                     is_number = re.fullmatch(r"^\s*\d+\s*$", next_text)
                     is_srt = next_text.lower().startswith("srt conversion") or next_text.lower().startswith("vai:")
-                    is_next_speaker = bool(speaker_regex.match(next_text))
+                    
+                    next_spk_match = speaker_regex.match(next_text)
+                    is_next_speaker = False
+                    if next_spk_match:
+                        if not is_stage_direction(next_spk_match.group(1)):
+                            is_next_speaker = True
                     
                     if not (is_timecode or is_number or is_srt or is_next_speaker):
                         # GỘP HAI DÒNG LÀM MỘT!
@@ -434,7 +446,8 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
             continue
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
-            candidates[speaker_name] += 1
+            if not is_stage_direction(speaker_name):
+                candidates[speaker_name] += 1
     return candidates
 
 def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
@@ -452,7 +465,7 @@ def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
         if len(parts) == 1:
             dialogue_content = text
         else:
-            speaker_matches = list(speaker_regex.finditer(text))
+            speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
             last_idx = 0
             for m in speaker_matches:
                 end = m.end()
@@ -615,7 +628,10 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
-    if len(parts) == 1:
+    # Lọc bỏ các match trùng với ghi chú hành động như (Thì thầm:)
+    speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
+    
+    if not speaker_matches:
         new_paragraph = document.add_paragraph()
         new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
@@ -626,7 +642,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
         return
 
-    speaker_matches = list(speaker_regex.finditer(text))
     last_processed_index = 0
     
     for i, match in enumerate(speaker_matches):
@@ -751,7 +766,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
-            if speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
+            if not is_stage_direction(speaker_name) and speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
             
     if unique_speakers:
