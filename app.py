@@ -10,7 +10,7 @@ from collections import Counter
 import time
 import pandas as pd
 import json
-from gtts import gTTS # Thư viện tạo âm thanh phát âm chuẩn Google
+from gtts import gTTS
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
 st.set_page_config(
@@ -111,7 +111,6 @@ st.markdown("""
 
 # --- HÀM TẠO ÂM THANH PHÁT ÂM TIẾNG ANH CHUẨN ---
 def generate_english_audio(text_to_speak, accent='com'):
-    """Tạo audio MP3 từ Google Text-to-Speech (Mặc định: 'com' - Giọng Mỹ, 'co.uk' - Giọng Anh)"""
     try:
         tts = gTTS(text=text_to_speak, lang='en', tld=accent)
         fp = io.BytesIO()
@@ -126,6 +125,49 @@ def generate_english_audio(text_to_speak, accent='com'):
 NON_SPEAKER_DB_FILE = "custom_non_speakers.json"
 SPEAKER_DB_FILE = "custom_speakers.json"
 PHONETIC_DB_FILE = "custom_phonetics.json"
+CAST_DB_FILE = "custom_cast_mapping.json"
+
+DEFAULT_CAST_MAPPING = {
+    "BRI": "Trúc",
+    "CHASE": "Thiện",
+    "PRESTON": "Khánh",
+    "SCOTT": "Thông",
+    "KEELEY": "Tú",
+    "DAKA": "Quang",
+    "STEPHEN": "Quang",
+    "VINCE": "Quang",
+    "JOSH": "Thông",
+    "YOMI": "Tú",
+    "LARRY": "A. Trung",
+    "CHLOE": "Tú",
+    "STEVEN": "Quang (hoặc Thông)",
+    "LOGAN": "Thông",
+    "NATHAN": "A. Trung",
+    "RILEY": "Phụng",
+    "ZHONG": "Thông",
+    "MICHELLE (YOUTUBER)": "Tú",
+    "BEN AZELART": "Quang",
+    "ZONG": "Thông",
+    "BA BRI": "Thông",
+    "TYLER": "Phát",
+    "COBY": "Thiện",
+    "CORY": "Khánh",
+    "SPARKY": "A. Trung",
+    "GARRETT": "C. Dũng",
+    "CODY": "Cường",
+    "BETHANY": "Trúc",
+    "KRISTIN": "Phụng",
+    "AMY": "Tú",
+    "ALLISON": "Tú",
+    "AUBREY": "Phụng",
+    "TY JACKSON": "Thông",
+    "HLV": "Cường",
+    "JACKSON OLSON": "Thông",
+    "DANNY": "Quang",
+    "KYLE": "Quang",
+    "BILL": "Hita",
+    "TIM": "Hita"
+}
 
 DEFAULT_SOUTH_VIETNAM_PHONETICS = {
     "MCDONALD": "Mắc-đô-nồ",
@@ -268,6 +310,8 @@ if 'ns_input_key' not in st.session_state:
     st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state:
     st.session_state['pho_input_key'] = 0
+if 'cast_input_key' not in st.session_state:
+    st.session_state['cast_input_key'] = 0
 
 if 'custom_non_speakers' not in st.session_state:
     st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
@@ -279,6 +323,11 @@ if 'custom_phonetics' not in st.session_state:
     loaded_pho = load_json_db(PHONETIC_DB_FILE, DEFAULT_SOUTH_VIETNAM_PHONETICS)
     merged_pho = {**DEFAULT_SOUTH_VIETNAM_PHONETICS, **loaded_pho}
     st.session_state['custom_phonetics'] = merged_pho
+
+if 'custom_cast_mapping' not in st.session_state:
+    loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
+    merged_cast = {**DEFAULT_CAST_MAPPING, **loaded_cast}
+    st.session_state['custom_cast_mapping'] = merged_cast
 
 # --- DANH SÁCH MẶC ĐỊNH ---
 DEFAULT_NON_SPEAKER_PHRASES = {
@@ -399,7 +448,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, q, v
+            elif i % 6 == 2: r, g, b = p, v, t
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -587,10 +636,19 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 unique_speakers.append(speaker_name)
             
     if unique_speakers:
-        speaker_list_text = "VAI: " + ", ".join(unique_speakers)
+        cast_list_items = []
+        for spk in unique_speakers:
+            actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "")
+            if actor:
+                cast_list_items.append(f"{spk} ({actor})")
+            else:
+                cast_list_items.append(spk)
+                
+        speaker_list_text = "VAI LỒNG TIẾNG: " + ", ".join(cast_list_items)
         p = document.add_paragraph(speaker_list_text)
         p.runs[0].font.name = 'Times New Roman'
         p.runs[0].font.size = Pt(12)
+        p.runs[0].font.bold = True
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(6)
     
@@ -723,12 +781,16 @@ st.markdown("""
 <div class="hero-container">
     <div class="badge-pro">v2.5 Enterprise SaaS</div>
     <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
-    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word & tự động phiên âm giọng Nam thông minh.</div>
+    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & tự động phiên âm giọng Nam thông minh.</div>
 </div>
 """, unsafe_allow_html=True)
 
-# --- MÀN HÌNH CHÍNH TÁCH TABS ---
-tab_script, tab_phonetic_db = st.tabs(["🎬 Xử lý & Biên tập Kịch bản", "📚 Kho Database Phiên Âm Giọng Nam"])
+# --- MÀN HÌNH CHÍNH TÁCH 3 TABS ---
+tab_script, tab_cast_db, tab_phonetic_db = st.tabs([
+    "🎬 Xử lý & Biên tập Kịch bản", 
+    "🎭 Bảng Phân Vai Lồng Tiếng", 
+    "📚 Kho Database Phiên Âm Giọng Nam"
+])
 
 # ==========================================
 # TAB 1: XỬ LÝ KỊCH BẢN
@@ -755,14 +817,55 @@ with tab_script:
             speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
             candidates = scan_candidate_speakers(uploaded_file, speaker_regex)
 
-            detected_speakers = []
-            detected_non_speakers = []
+            detected_speakers_names = [name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES]
+            detected_non_speakers_names = [name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES]
 
-            for name, count in candidates.items():
-                if name.upper() in NON_SPEAKER_PHRASES:
-                    detected_non_speakers.append(f"{name} ({count} lần)")
-                else:
-                    detected_speakers.append(f"{name} ({count} lần)")
+            detected_speakers = [f"{name} ({candidates[name]} lần)" for name in detected_speakers_names]
+            detected_non_speakers = [f"{name} ({candidates[name]} lần)" for name in detected_non_speakers_names]
+
+            # --- QUẢN LÝ PHÂN VAI TRỰC TIẾP CHO KỊCH BẢN HIỆN TẠI ---
+            with st.container(border=True):
+                st.markdown("### 🎭 Phân Vai Lồng Tiếng Cho Kịch Bản Hiện Tại")
+                st.caption("Xem và gán người lồng tiếng Việt cho từng nhân vật trong file kịch bản này:")
+
+                if detected_speakers_names:
+                    cast_table_data = []
+                    for spk_name in detected_speakers_names:
+                        current_actor = st.session_state['custom_cast_mapping'].get(spk_name.upper(), "")
+                        cast_table_data.append({
+                            "Nhân vật (Tiếng Anh)": spk_name,
+                            "Diễn viên Lồng tiếng (Tiếng Việt)": current_actor,
+                            "Nạp vào Database": True
+                        })
+
+                    df_cast = pd.DataFrame(cast_table_data)
+
+                    edited_cast_df = st.data_editor(
+                        df_cast,
+                        column_config={
+                            "Nhân vật (Tiếng Anh)": st.column_config.TextColumn("Nhân vật (Kịch bản gốc)", disabled=True),
+                            "Diễn viên Lồng tiếng (Tiếng Việt)": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
+                            "Nạp vào Database": st.column_config.CheckboxColumn("Lưu Database?", default=True)
+                        },
+                        disabled=["Nhân vật (Tiếng Anh)"],
+                        hide_index=True,
+                        use_container_width=True,
+                        key="script_cast_editor_table"
+                    )
+
+                    if st.button("💾 Lưu Bảng Phân Vai Kịch Bản Này Vào Database", type="secondary", use_container_width=True):
+                        updated_cast_count = 0
+                        for _, row in edited_cast_df.iterrows():
+                            if row["Nạp vào Database"]:
+                                spk_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
+                                act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip()
+                                if act_v:
+                                    st.session_state['custom_cast_mapping'][spk_k] = act_v
+                                    updated_cast_count += 1
+                        save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
+                        st.success(f"✅ Đã lưu phân vai cho {updated_cast_count} nhân vật vào Database!")
+                        time.sleep(1)
+                        st.rerun()
 
             with st.container(border=True):
                 st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói")
@@ -815,7 +918,6 @@ with tab_script:
                 detected_eng_words = scan_english_words_in_dialogue(uploaded_file, speaker_regex)
 
                 if detected_eng_words:
-                    # TRÌNH NGHE PHÁT ÂM CHUẨN GOOGLE VOICE (DÀNH CHO KỊCH BẢN HIỆN TẠI)
                     st.markdown("#### 🔊 Trình nghe phát âm chuẩn giọng bản xứ (Google US/UK)")
                     col_listen1, col_listen2, col_listen3 = st.columns([2.5, 1.5, 1.5])
                     
@@ -925,14 +1027,112 @@ with tab_script:
             st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
 
 # ==========================================
-# TAB 2: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
+# TAB 2: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
+# ==========================================
+with tab_cast_db:
+    with st.container(border=True):
+        st.subheader("🎭 BẢNG PHÂN VAI LỒNG TIẾNG (GLOBAL DATABASE)")
+        st.markdown("Nơi thiết lập mặc định nhân vật Tiếng Anh nào sẽ do diễn viên lồng tiếng Việt nào đảm nhận cho Mai Han Team.")
+
+        # 1. Thêm phân vai mới
+        st.markdown("#### ➕ Thêm / Cập nhật Phân vai mới")
+        c_c1, c_c2, c_c3 = st.columns([2, 2, 1.2])
+        with c_c1:
+            add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state['cast_input_key']}")
+        with c_c2:
+            add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: Trúc, Thiện...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
+        with c_c3:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast"):
+                if add_role_eng and add_actor_vn:
+                    k = add_role_eng.upper().strip()
+                    v = add_actor_vn.strip()
+                    st.session_state['custom_cast_mapping'][k] = v
+                    save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
+                    st.session_state['cast_input_key'] += 1
+                    st.success(f"✅ Đã gán thành công: `{add_role_eng}` ➔ `{add_actor_vn}`")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("Vui lòng nhập đầy đủ tên nhân vật và diễn viên!")
+
+    st.markdown("---")
+    with st.container(border=True):
+        st.markdown("#### 📑 Danh sách Toàn bộ Bảng Phân Vai Đã Lưu")
+
+        search_cast_query = st.text_input("🔍 Tìm kiếm Nhân vật hoặc Diễn viên lồng tiếng:", placeholder="Gõ tên nhân vật hoặc diễn viên...").strip().upper()
+
+        all_cast_dict = st.session_state['custom_cast_mapping']
+
+        if search_cast_query:
+            filtered_cast = {
+                k: v for k, v in all_cast_dict.items()
+                if search_cast_query in k or search_cast_query in v.upper()
+            }
+        else:
+            filtered_cast = all_cast_dict
+
+        if filtered_cast:
+            cast_db_table = []
+            for eng_role, vn_actor in sorted(filtered_cast.items()):
+                cast_db_table.append({
+                    "Nhân vật (Tiếng Anh)": eng_role,
+                    "Diễn viên Lồng tiếng (Tiếng Việt)": vn_actor,
+                    "Xóa khỏi Database": False
+                })
+
+            df_cast_db = pd.DataFrame(cast_db_table)
+            st.caption(f"Đang hiển thị **{len(df_cast_db)}** vai lồng tiếng trong kho:")
+
+            edited_cast_db_df = st.data_editor(
+                df_cast_db,
+                column_config={
+                    "Nhân vật (Tiếng Anh)": st.column_config.TextColumn("Tên Nhân vật gốc (In hoa)", disabled=True),
+                    "Diễn viên Lồng tiếng (Tiếng Việt)": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
+                    "Xóa khỏi Database": st.column_config.CheckboxColumn("Tích chọn để XÓA")
+                },
+                disabled=["Nhân vật (Tiếng Anh)"],
+                hide_index=True,
+                use_container_width=True,
+                key="global_cast_db_editor"
+            )
+
+            if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT PHÂN VAI", type="primary", use_container_width=True, key="btn_save_global_cast"):
+                new_cast_db = {}
+                deleted_cast_count = 0
+
+                if search_cast_query:
+                    for k, v in all_cast_dict.items():
+                        if k not in filtered_cast:
+                            new_cast_db[k] = v
+
+                for _, row in edited_cast_db_df.iterrows():
+                    eng_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
+                    act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip()
+                    is_del = row["Xóa khỏi Database"]
+
+                    if is_del:
+                        deleted_cast_count += 1
+                    else:
+                        if act_v:
+                            new_cast_db[eng_k] = act_v
+
+                st.session_state['custom_cast_mapping'] = new_cast_db
+                save_json_db(CAST_DB_FILE, new_cast_db)
+                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)")
+                time.sleep(1)
+                st.rerun()
+        else:
+            st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
+
+# ==========================================
+# TAB 3: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
 # ==========================================
 with tab_phonetic_db:
     with st.container(border=True):
         st.subheader("📚 Từ Điển Phiên Âm Giọng Nam (Global Database)")
         st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
         
-        # TRÌNH NGHE PHÁT ÂM THỬ BẤT KỲ CỤM TỪ NÀO
         st.markdown("#### 🔊 Nghe phát âm thử bất kỳ cụm từ/từ Tiếng Anh nào")
         col_test1, col_test2, col_test3 = st.columns([2.5, 1.5, 1.5])
         with col_test1:
@@ -951,7 +1151,6 @@ with tab_phonetic_db:
 
         st.markdown("---")
 
-        # 1. Thêm thủ công từ mới
         st.markdown("#### ➕ Bổ sung từ phiên âm mới vào Kho")
         c1, c2, c3 = st.columns([2, 2, 1.2])
         with c1:
