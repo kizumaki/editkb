@@ -10,6 +10,7 @@ from collections import Counter
 import time
 import pandas as pd
 import json
+from gtts import gTTS # Thư viện tạo âm thanh phát âm chuẩn Google
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
 st.set_page_config(
@@ -22,14 +23,12 @@ st.set_page_config(
 # --- TIÊM CUSTOM CSS CHUẨN SAAS CAO CẤP ---
 st.markdown("""
 <style>
-    /* Tổng thể font & nền */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
     
-    /* Hero Banner Header */
     .hero-container {
         background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
         padding: 2.5rem 2rem;
@@ -62,7 +61,6 @@ st.markdown("""
         margin-bottom: 0.8rem;
     }
     
-    /* SaaS Stat Metric Cards */
     .metric-card {
         background: white;
         border: 1px solid #E2E8F0;
@@ -88,7 +86,6 @@ st.markdown("""
         margin-top: 0.25rem;
     }
 
-    /* Đổi kiểu dáng cho Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         border-bottom: 2px solid #E2E8F0;
@@ -101,7 +98,6 @@ st.markdown("""
         padding: 0 20px;
     }
     
-    /* Styled Footer */
     .saas-footer {
         text-align: center;
         padding: 2rem 0 1rem 0;
@@ -112,6 +108,19 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- HÀM TẠO ÂM THANH PHÁT ÂM TIẾNG ANH CHUẨN ---
+def generate_english_audio(text_to_speak, accent='com'):
+    """Tạo audio MP3 từ Google Text-to-Speech (Mặc định: 'com' - Giọng Mỹ, 'co.uk' - Giọng Anh)"""
+    try:
+        tts = gTTS(text=text_to_speak, lang='en', tld=accent)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp
+    except Exception as e:
+        st.error(f"Không thể tải âm thanh: {e}")
+        return None
 
 # --- HÀM ĐỌC / GHI DATABASE DỮ LIỆU CỤC BỘ ---
 NON_SPEAKER_DB_FILE = "custom_non_speakers.json"
@@ -390,7 +399,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, v, t
+            elif i % 6 == 2: r, g, b = p, q, v
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -798,7 +807,7 @@ with tab_script:
                     else:
                         st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
 
-            # --- QUẢN LÝ PHIÊN ÂM KỊCH BẢN HIỆN TẠI ---
+            # --- QUẢN LÝ PHIÊN ÂM & TRÌNH NGHE PHÁT ÂM TRONG KỊCH BẢN HIỆN TẠI ---
             with st.container(border=True):
                 st.markdown("### 🗣️ Từ Tiếng Anh Xuất Hiện Trong Kịch Bản")
                 st.caption("Quét và điều chỉnh phiên âm riêng cho kịch bản này (Đã qua bộ lọc thông minh):")
@@ -806,6 +815,26 @@ with tab_script:
                 detected_eng_words = scan_english_words_in_dialogue(uploaded_file, speaker_regex)
 
                 if detected_eng_words:
+                    # TRÌNH NGHE PHÁT ÂM CHUẨN GOOGLE VOICE (DÀNH CHO KỊCH BẢN HIỆN TẠI)
+                    st.markdown("#### 🔊 Trình nghe phát âm chuẩn giọng bản xứ (Google US/UK)")
+                    col_listen1, col_listen2, col_listen3 = st.columns([2.5, 1.5, 1.5])
+                    
+                    with col_listen1:
+                        word_to_listen = st.selectbox("Chọn từ cần nghe phát âm:", options=detected_eng_words, key="script_listen_select")
+                    with col_listen2:
+                        accent_choice = st.radio("Giọng phát âm:", options=["Giọng Mỹ (US)", "Giọng Anh (UK)"], horizontal=True, key="script_accent_radio")
+                    with col_listen3:
+                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                        listen_btn = st.button("🔊 Nghe phát âm", type="secondary", use_container_width=True)
+
+                    if listen_btn and word_to_listen:
+                        tld = 'com' if "Mỹ" in accent_choice else 'co.uk'
+                        audio_fp = generate_english_audio(word_to_listen, accent=tld)
+                        if audio_fp:
+                            st.audio(audio_fp, format="audio/mp3", autoplay=True)
+
+                    st.markdown("---")
+                    
                     table_data = []
                     for word in detected_eng_words:
                         current_pho = st.session_state['custom_phonetics'].get(word.upper(), word)
@@ -903,6 +932,25 @@ with tab_phonetic_db:
         st.subheader("📚 Từ Điển Phiên Âm Giọng Nam (Global Database)")
         st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
         
+        # TRÌNH NGHE PHÁT ÂM THỬ BẤT KỲ CỤM TỪ NÀO
+        st.markdown("#### 🔊 Nghe phát âm thử bất kỳ cụm từ/từ Tiếng Anh nào")
+        col_test1, col_test2, col_test3 = st.columns([2.5, 1.5, 1.5])
+        with col_test1:
+            free_test_word = st.text_input("Nhập từ/cụm Tiếng Anh cần nghe thử:", placeholder="VD: Starbucks, Hamburger, McDonald's...", key="free_audio_text")
+        with col_test2:
+            free_accent = st.radio("Giọng phát âm:", options=["Giọng Mỹ (US)", "Giọng Anh (UK)"], horizontal=True, key="free_audio_accent")
+        with col_test3:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            free_listen_btn = st.button("🔊 Phát âm thanh", type="secondary", use_container_width=True, key="btn_free_listen")
+
+        if free_listen_btn and free_test_word:
+            tld = 'com' if "Mỹ" in free_accent else 'co.uk'
+            test_fp = generate_english_audio(free_test_word, accent=tld)
+            if test_fp:
+                st.audio(test_fp, format="audio/mp3", autoplay=True)
+
+        st.markdown("---")
+
         # 1. Thêm thủ công từ mới
         st.markdown("#### ➕ Bổ sung từ phiên âm mới vào Kho")
         c1, c2, c3 = st.columns([2, 2, 1.2])
