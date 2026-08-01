@@ -382,6 +382,23 @@ def is_stage_direction(name):
     clean = name.strip()
     return clean.startswith('(') or clean.endswith(')')
 
+def get_paragraph_text_with_html(paragraph):
+    """
+    Trích xuất văn bản từ Paragraph và bảo toàn định dạng In Nghiêng (Italic) từ Word
+    chuyển thành các thẻ <i>...</i> để hệ thống tiếp tục giữ nguyên ở mọi công đoạn
+    """
+    text = ""
+    for run in paragraph.runs:
+        r_text = run.text
+        if not r_text:
+            continue
+        if run.italic and not ("<i>" in r_text or "</i>" in r_text):
+            text += f"<i>{r_text}</i>"
+        else:
+            text += r_text
+    text = text.replace("</i><i>", "")
+    return text
+
 def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
     """
     TỰ ĐỘNG BẮC CẶP VÀ GỘP DÒNG TÊN VAI MỒ CỜ VỚI DÒNG THOẠI NGAY PHÍA SAU
@@ -392,7 +409,8 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
     total = len(raw_paragraphs)
     
     while i < total:
-        text = re.sub(r'\t+', ' ', raw_paragraphs[i].text).strip()
+        raw_text = get_paragraph_text_with_html(raw_paragraphs[i])
+        text = re.sub(r'\t+', ' ', raw_text).strip()
         if not text:
             i += 1
             continue
@@ -410,13 +428,15 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
             if not real_content:
                 next_i = i + 1
                 while next_i < total:
-                    next_text = re.sub(r'\t+', ' ', raw_paragraphs[next_i].text).strip()
+                    next_raw_text = get_paragraph_text_with_html(raw_paragraphs[next_i])
+                    next_text = re.sub(r'\t+', ' ', next_raw_text).strip()
                     if next_text:
                         break
                     next_i += 1
                 
                 if next_i < total:
-                    next_text = re.sub(r'\t+', ' ', raw_paragraphs[next_i].text).strip()
+                    next_raw_text = get_paragraph_text_with_html(raw_paragraphs[next_i])
+                    next_text = re.sub(r'\t+', ' ', next_raw_text).strip()
                     is_timecode = TIMECODE_REGEX.match(next_text)
                     is_number = re.fullmatch(r"^\s*\d+\s*$", next_text)
                     is_srt = next_text.lower().startswith("srt conversion") or next_text.lower().startswith("vai:")
@@ -753,7 +773,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     # Tiêu đề Kịch bản
     title_text_raw = file_name_without_ext.upper()
-    title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace(" (GỐC)", "").strip()
+    title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace("_FINAL", "").replace(" (GỐC)", "").strip()
     title_paragraph = document.add_paragraph(title_text)
     title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_paragraph.runs[0].font.name = 'Times New Roman'
@@ -866,7 +886,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
 
 def clean_file_name_for_output(original_filename, tag="_edit"):
     name_without_ext = os.path.splitext(original_filename)[0]
-    cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$)', '', name_without_ext, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$|_final$)', '', name_without_ext, flags=re.IGNORECASE).strip()
     return f"{cleaned}{tag}.docx"
 
 # --- SIDEBAR (THANH ĐIỀU HƯỚNG SAAS) ---
@@ -1212,7 +1232,7 @@ with tab_resync:
             if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
                     r_file_io, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
-                    r_new_filename = clean_file_name_for_output(r_filename, tag="_resync")
+                    r_new_filename = clean_file_name_for_output(r_filename, tag="_final")
                     
                     st.session_state['resync_processed_file'] = r_file_io
                     st.session_state['resync_new_filename'] = r_new_filename
