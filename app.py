@@ -36,7 +36,7 @@ def save_json_db(filepath, data_set):
     except Exception as e:
         st.error(f"Không thể lưu vào Database: {e}")
 
-# Khởi tạo Session State
+# Khởi tạo Session State & Khóa động
 if 'uploader_key' not in st.session_state:
     st.session_state['uploader_key'] = 0
 if 'spk_input_key' not in st.session_state:
@@ -174,7 +174,7 @@ def apply_html_formatting_to_run(paragraph, current_text):
     if last_end < len(current_text):
         paragraph.add_run(current_text[last_end:])
 
-def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex, preview_html_list):
+def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex):
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
@@ -187,13 +187,6 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         new_paragraph.paragraph_format.space_before = Pt(0)
         new_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_formatting_to_run(new_paragraph, text)
-        
-        # Sửa CSS xem trước: Dùng padding-left + text-indent để KHÔNG bị cấn lề trái
-        preview_html_list.append(
-            f"<div style='padding-left: 100px; font-family: \"Times New Roman\"; font-size: 15px; line-height: 1.5; color: #111; margin-bottom: 2px; word-wrap: break-word;'>"
-            f"{text}"
-            f"</div>"
-        )
         return
 
     speaker_matches = list(speaker_regex.finditer(text))
@@ -214,12 +207,6 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
             continuation_paragraph.paragraph_format.space_before = Pt(0)
             continuation_paragraph.paragraph_format.space_after = Pt(0)
             apply_html_formatting_to_run(continuation_paragraph, leading_content)
-            
-            preview_html_list.append(
-                f"<div style='padding-left: 100px; font-family: \"Times New Roman\"; font-size: 15px; line-height: 1.5; color: #111; margin-bottom: 2px; word-wrap: break-word;'>"
-                f"{leading_content}"
-                f"</div>"
-            )
 
         if speaker_name.upper() in NON_SPEAKER_PHRASES:
             content_block = text[start:]
@@ -231,12 +218,6 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
             continuation_paragraph.paragraph_format.space_before = Pt(0)
             continuation_paragraph.paragraph_format.space_after = Pt(0)
             apply_html_formatting_to_run(continuation_paragraph, content_block)
-            
-            preview_html_list.append(
-                f"<div style='padding-left: 100px; font-family: \"Times New Roman\"; font-size: 15px; line-height: 1.5; color: #111; margin-bottom: 2px; word-wrap: break-word;'>"
-                f"{content_block}"
-                f"</div>"
-            )
             return
 
         stats_counter[speaker_name] += 1
@@ -255,11 +236,8 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         run_speaker = new_paragraph.add_run(speaker_full)
         run_speaker.font.bold = True
         
-        color_obj = get_speaker_color(speaker_name, speaker_color_map, used_colors)
-        color_hex = f"rgb({color_obj[0]}, {color_obj[1]}, {color_obj[2]})" if enable_colors else "#000000"
-        
         if enable_colors:
-            run_speaker.font.color.rgb = color_obj
+            run_speaker.font.color.rgb = get_speaker_color(speaker_name, speaker_color_map, used_colors)
         
         if len(speaker_full) > 10:
              new_paragraph.add_run('\t\t')
@@ -270,13 +248,6 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         new_paragraph.paragraph_format.space_before = Pt(0)
         new_paragraph.paragraph_format.space_after = Pt(0)
         last_processed_index = next_match_start
-        
-        # Căn chỉnh Hanging Indent chuẩn HTML không mất lề trái:
-        preview_html_list.append(
-            f"<div style='padding-left: 100px; text-indent: -100px; font-family: \"Times New Roman\"; font-size: 15px; line-height: 1.5; color: #111; margin-bottom: 2px; word-wrap: break-word;'>"
-            f"<b style='color: {color_hex}; display: inline-block; min-width: 90px;'>{speaker_full}</b>&nbsp;&nbsp;{content}"
-            f"</div>"
-        )
     
     remaining_content = text[last_processed_index:].strip()
     if remaining_content:
@@ -288,12 +259,6 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         continuation_paragraph.paragraph_format.space_before = Pt(0)
         continuation_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_formatting_to_run(continuation_paragraph, remaining_content)
-        
-        preview_html_list.append(
-            f"<div style='padding-left: 100px; font-family: \"Times New Roman\"; font-size: 15px; line-height: 1.5; color: #111; margin-bottom: 2px; word-wrap: break-word;'>"
-            f"{remaining_content}"
-            f"</div>"
-        )
 
 # --- MAIN PROCESSING ---
 def process_docx(uploaded_file, file_name_without_ext, enable_colors):
@@ -301,7 +266,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors)
     stats_counter = Counter()
-    preview_html_list = []
     
     speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
     
@@ -316,8 +280,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     title_paragraph.runs[0].font.name = 'Times New Roman'
     title_paragraph.runs[0].font.size = Pt(20)
     title_paragraph.runs[0].bold = True
-    
-    preview_html_list.append(f"<h2 style='text-align: center; color: #000; font-family: \"Times New Roman\"; font-weight: bold; font-size: 22px; margin-bottom: 10px;'>{title_text}</h2>")
     
     unique_speakers = []
     for paragraph in raw_paragraphs:
@@ -335,8 +297,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
         p.runs[0].font.size = Pt(12)
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(6)
-        
-        preview_html_list.append(f"<div style='font-family: \"Times New Roman\"; color: #000; font-size: 15px; font-weight: bold; margin-bottom: 15px;'>{speaker_list_text}</div>")
     
     document.add_paragraph()
     document.add_paragraph()
@@ -363,10 +323,8 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
             new_paragraph.runs[0].font.size = Pt(12)
             new_paragraph.paragraph_format.space_before = Pt(0)
             new_paragraph.paragraph_format.space_after = Pt(0)
-            
-            preview_html_list.append(f"<div style='font-family: \"Times New Roman\"; color: #222; font-weight: bold; font-size: 15px; margin-top: 12px; margin-bottom: 2px;'>{text}</div>")
         else:
-            format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex, preview_html_list)
+            format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex)
             
     progress_bar.progress(100)
     status_text.text("Định dạng hoàn tất!")
@@ -392,9 +350,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
         "top_speaker": stats_counter.most_common(1)[0] if stats_counter else ("Không có", 0)
     }
     
-    full_preview_html = "".join(preview_html_list)
-    
-    return modified_file, stats, full_preview_html
+    return modified_file, stats
 
 def clean_file_name_for_output(original_filename):
     name_without_ext = os.path.splitext(original_filename)[0]
@@ -405,7 +361,7 @@ def clean_file_name_for_output(original_filename):
 st.sidebar.title("⚙️ Tùy chỉnh (Settings)")
 
 if st.sidebar.button("🔄 Làm mới phiên làm việc", use_container_width=True, type="primary"):
-    for key in ['processed_file', 'new_filename', 'stats', 'preview_html']:
+    for key in ['processed_file', 'new_filename', 'stats']:
         if key in st.session_state:
             del st.session_state[key]
     st.session_state['uploader_key'] += 1
@@ -493,9 +449,7 @@ with col1:
         key=f"main_uploader_{st.session_state['uploader_key']}"
     )
 
-    if uploaded_file is None:
-        st.info("📌 **Vui lòng tải file kịch bản (.docx) ở trên để hiển thị phần Xem trước & Soát lỗi.**")
-    else:
+    if uploaded_file is not None:
         original_filename = uploaded_file.name
         file_name_without_ext = os.path.splitext(original_filename)[0] 
         st.success(f"Đã nhận file: **{original_filename}**")
@@ -512,8 +466,8 @@ with col1:
             else:
                 detected_speakers.append(f"{name} ({count} lần)")
 
-        st.markdown("### 🔍 SOÁT LỖI & XEM TRƯỚC TỰ ĐỘNG")
-        st.markdown("Kiểm tra nhanh danh sách nhận diện trước khi bấm định dạng:")
+        st.markdown("### 🔍 SOÁT LỖI NHẬN DIỆN")
+        st.markdown("Phân loại nhanh trước khi chạy định dạng:")
         
         tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
         
@@ -564,42 +518,15 @@ with col1:
         st.markdown("---")
         if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
             try:
-                modified_file_io, stats, preview_html = process_docx(uploaded_file, file_name_without_ext, enable_colors)
+                modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors)
                 new_filename = clean_file_name_for_output(original_filename)
                 
                 st.session_state['processed_file'] = modified_file_io
                 st.session_state['new_filename'] = new_filename
                 st.session_state['stats'] = stats
-                st.session_state['preview_html'] = preview_html
                 
             except Exception as e:
                 st.error(f"Đã có lỗi xảy ra: {e}")
-
-        # KHU VỰC XEM TRƯỚC VÀ TẢI FILE SAU KHI ĐỊNH DẠNG
-        if 'preview_html' in st.session_state:
-            st.markdown("---")
-            st.subheader("👁️ Xem trước kịch bản (Paper Preview)")
-            st.caption("Khung xem trước mô phỏng trang giấy in Word. Bạn có thể kéo lăn chuột lên/xuống và sang trái/phải để kiểm tra:")
-            
-            # KHUNG XEM TRƯỚC MÔ PHỎNG TỜ GIẤY CÓ THANH CUỘN 2 CHIỀU
-            paper_container_html = f"""
-            <div style="
-                background-color: #ffffff; 
-                padding: 35px 40px; 
-                border-radius: 8px; 
-                border: 1px solid #ccc; 
-                max-height: 520px; 
-                overflow-y: auto; 
-                overflow-x: auto; 
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                white-space: nowrap;
-            ">
-                <div style="display: inline-block; min-width: 650px;">
-                    {st.session_state['preview_html']}
-                </div>
-            </div>
-            """
-            st.markdown(paper_container_html, unsafe_allow_html=True)
 
         if 'processed_file' in st.session_state:
             st.markdown("---")
