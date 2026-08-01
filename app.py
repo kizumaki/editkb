@@ -36,7 +36,7 @@ def save_json_db(filepath, data_set):
     except Exception as e:
         st.error(f"Không thể lưu vào Database: {e}")
 
-# Khởi tạo Session State & Khóa động làm sạch ô nhập
+# Khởi tạo Session State
 if 'uploader_key' not in st.session_state:
     st.session_state['uploader_key'] = 0
 if 'spk_input_key' not in st.session_state:
@@ -375,12 +375,12 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
     manual_spk_input = st.text_area(
         "Nhập thủ công (cách nhau bằng dấu phẩy hoặc xuống dòng):", 
         height=80, 
-        key=f"spk_manual_{st.session_state['spk_input_key']}" # Khóa động giúp xóa sạch chữ
+        key=f"spk_manual_{st.session_state['spk_input_key']}"
     )
     upload_spk_file = st.file_uploader(
         "Tải file danh sách (.txt, .docx, .xlsx)", 
         type=['txt', 'docx', 'xlsx'], 
-        key=f"spk_uploader_{st.session_state['spk_input_key']}" # Khóa động giúp xóa file vừa tải
+        key=f"spk_uploader_{st.session_state['spk_input_key']}"
     )
     
     if st.button("Lưu vào Database Người Nói", use_container_width=True):
@@ -394,10 +394,7 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
         if new_spks:
             st.session_state['custom_speakers'].update(new_spks)
             save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-            
-            # Tăng biến đếm khóa động để xóa trắng khung nhập
             st.session_state['spk_input_key'] += 1
-            
             st.success(f"✅ Đã lưu {len(new_spks)} người nói vào Database!")
             time.sleep(1)
             st.rerun()
@@ -410,12 +407,12 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
     manual_input = st.text_area(
         "Nhập thủ công:", 
         height=80, 
-        key=f"ns_manual_{st.session_state['ns_input_key']}" # Khóa động
+        key=f"ns_manual_{st.session_state['ns_input_key']}"
     )
     upload_non_speaker = st.file_uploader(
         "Tải file danh sách (.txt, .docx, .xlsx)", 
         type=['txt', 'docx', 'xlsx'], 
-        key=f"ns_uploader_{st.session_state['ns_input_key']}" # Khóa động
+        key=f"ns_uploader_{st.session_state['ns_input_key']}"
     )
     
     if st.button("Lưu vào Database Từ Nhiễu", use_container_width=True):
@@ -429,10 +426,7 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
         if new_phrases:
             st.session_state['custom_non_speakers'].update(new_phrases)
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-            
-            # Tăng biến đếm khóa động để xóa trắng khung nhập
             st.session_state['ns_input_key'] += 1
-            
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu vào Database!")
             time.sleep(1)
             st.rerun()
@@ -455,7 +449,9 @@ with col1:
         key=f"main_uploader_{st.session_state['uploader_key']}"
     )
 
-    if uploaded_file is not None:
+    if uploaded_file is None:
+        st.info("📌 **Vui lòng tải file kịch bản (.docx) ở trên để hiển thị phần Xem trước & Soát lỗi.**")
+    else:
         original_filename = uploaded_file.name
         file_name_without_ext = os.path.splitext(original_filename)[0] 
         st.success(f"Đã nhận file: **{original_filename}**")
@@ -472,54 +468,55 @@ with col1:
             else:
                 detected_speakers.append(f"{name} ({count} lần)")
 
-        with st.expander("🔍 **XEM TRƯỚC: Soát lỗi & Cập nhật Database**", expanded=True):
-            st.markdown("Kiểm tra nhanh xem app nhận diện đúng tên nhân vật chưa trước khi bấm định dạng:")
-            
-            tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
-            
-            with tab_spk:
-                if detected_speakers:
-                    st.write(", ".join([f"`{s}`" for s in detected_speakers]))
-                    st.markdown("---")
-                    to_move_to_ns = st.multiselect(
-                        "Phát hiện từ nào bị nhận diện sai? Chọn bên dưới để LƯU VÀO DATABASE TỪ NHIỄU:",
-                        options=[name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES],
-                        key="select_to_ns"
-                    )
-                    if st.button("➡️ Đưa các từ chọn vào Database TỪ NHIỄU", type="secondary"):
-                        if to_move_to_ns:
-                            new_items = [item.upper() for item in to_move_to_ns]
-                            st.session_state['custom_non_speakers'].update(new_items)
-                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                            st.success(f"✅ Đã lưu thành công {len(new_items)} từ vào Database Từ Nhiễu!")
-                            time.sleep(1)
-                            st.rerun()
-                else:
-                    st.info("Chưa tìm thấy cụm từ người nói nào.")
+        # --- BẢNG SOI LỖI HIỂN THỊ TRỰC TIẾP (KHÔNG DÙNG EXPANDER NỮA) ---
+        st.markdown("### 🔍 SOÁT LỖI & XEM TRƯỚC TỰ ĐỘNG")
+        st.markdown("Kiểm tra nhanh danh sách nhận diện trước khi bấm định dạng:")
+        
+        tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
+        
+        with tab_spk:
+            if detected_speakers:
+                st.write(", ".join([f"`{s}`" for s in detected_speakers]))
+                st.markdown("---")
+                to_move_to_ns = st.multiselect(
+                    "Phát hiện từ nào bị nhận diện sai? Chọn bên dưới để LƯU VÀO DATABASE TỪ NHIỄU:",
+                    options=[name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES],
+                    key="select_to_ns"
+                )
+                if st.button("➡️ Đưa các từ chọn vào Database TỪ NHIỄU", type="secondary"):
+                    if to_move_to_ns:
+                        new_items = [item.upper() for item in to_move_to_ns]
+                        st.session_state['custom_non_speakers'].update(new_items)
+                        save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                        st.success(f"✅ Đã lưu thành công {len(new_items)} từ vào Database Từ Nhiễu!")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                st.info("Chưa tìm thấy cụm từ người nói nào.")
 
-            with tab_non_spk:
-                if detected_non_speakers:
-                    st.write(", ".join([f"`{s}`" for s in detected_non_speakers]))
-                    st.markdown("---")
-                    to_move_to_spk = st.multiselect(
-                        "Từ nào thực ra là NGƯỜI NÓI? Chọn bên dưới để LƯU VÀO DATABASE NGƯỜI NÓI:",
-                        options=[name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES],
-                        key="select_to_spk"
-                    )
-                    if st.button("➡️ Đưa các từ chọn vào Database NGƯỜI NÓI", type="secondary"):
-                        if to_move_to_spk:
-                            st.session_state['custom_speakers'].update(to_move_to_spk)
-                            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                            
-                            for item in to_move_to_spk:
-                                st.session_state['custom_non_speakers'].discard(item.upper())
-                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                            
-                            st.success(f"✅ Đã lưu thành công {len(to_move_to_spk)} tên vào Database Người Nói!")
-                            time.sleep(1)
-                            st.rerun()
-                else:
-                    st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
+        with tab_non_spk:
+            if detected_non_speakers:
+                st.write(", ".join([f"`{s}`" for s in detected_non_speakers]))
+                st.markdown("---")
+                to_move_to_spk = st.multiselect(
+                    "Từ nào thực ra là NGƯỜI NÓI? Chọn bên dưới để LƯU VÀO DATABASE NGƯỜI NÓI:",
+                    options=[name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES],
+                    key="select_to_spk"
+                )
+                if st.button("➡️ Đưa các từ chọn vào Database NGƯỜI NÓI", type="secondary"):
+                    if to_move_to_spk:
+                        st.session_state['custom_speakers'].update(to_move_to_spk)
+                        save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
+                        
+                        for item in to_move_to_spk:
+                            st.session_state['custom_non_speakers'].discard(item.upper())
+                        save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                        
+                        st.success(f"✅ Đã lưu thành công {len(to_move_to_spk)} tên vào Database Người Nói!")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
 
         st.markdown("---")
         if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
