@@ -9,17 +9,42 @@ import random
 from collections import Counter
 import time
 import pandas as pd
+import json # Thêm thư viện quản lý Database JSON
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT ---
 st.set_page_config(page_title="Pro Script Editor", page_icon="🎬", layout="wide")
 
-# Khởi tạo Session State
+# --- HÀM ĐỌC / GHI DATABASE DỮ LIỆU CỤC BỘ ---
+NON_SPEAKER_DB_FILE = "custom_non_speakers.json"
+SPEAKER_DB_FILE = "custom_speakers.json"
+
+def load_json_db(filepath):
+    """Đọc dữ liệu từ file Database JSON"""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return set(json.load(f))
+        except Exception:
+            return set()
+    return set()
+
+def save_json_db(filepath, data_set):
+    """Ghi dữ liệu mới vào Database JSON"""
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(list(data_set), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Không thể lưu vào Database: {e}")
+
+# Khởi tạo Session State kết hợp với Database JSON
 if 'reset_key' not in st.session_state:
     st.session_state['reset_key'] = 0
+
 if 'custom_non_speakers' not in st.session_state:
-    st.session_state['custom_non_speakers'] = set()
+    st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE)
+
 if 'custom_speakers' not in st.session_state:
-    st.session_state['custom_speakers'] = set()
+    st.session_state['custom_speakers'] = load_json_db(SPEAKER_DB_FILE)
 
 # --- DANH SÁCH MẶC ĐỊNH ---
 DEFAULT_NON_SPEAKER_PHRASES = {
@@ -287,13 +312,11 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
         if not text or text.upper() == title_text.upper(): continue
         if text.lower().startswith("srt conversion") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
-        # Xử lý Dòng Timecode
         if TIMECODE_REGEX.match(text):
             new_paragraph = document.add_paragraph(text)
             new_paragraph.runs[0].font.bold = True
             new_paragraph.runs[0].font.name = 'Times New Roman'
             new_paragraph.runs[0].font.size = Pt(12)
-            # Triệt tiêu tuyệt đối khoảng cách trên/dưới cho dòng Timecode
             new_paragraph.paragraph_format.space_before = Pt(0)
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
@@ -305,7 +328,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     progress_bar.empty()
     status_text.empty()
             
-    # Ép chuẩn định dạng toàn bộ kịch bản (1.5 lines, 0pt spacing)
     for paragraph in document.paragraphs[start_index:]:
         paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         paragraph.paragraph_format.space_before = Pt(0)
@@ -345,11 +367,11 @@ st.sidebar.markdown("---")
 enable_colors = st.sidebar.toggle("🌈 Bật tô màu nhân vật", value=True)
 
 # 1. Quản lý Người Nói Ưu Tiên (WHITELIST)
-with st.sidebar.expander("🎭 Quản lý Tên người nói (Whitelist)", expanded=False):
+with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=False):
     manual_spk_input = st.text_area("Nhập thủ công (cách nhau bằng dấu phẩy hoặc xuống dòng):", height=80, key="spk_manual")
     upload_spk_file = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['reset_key']}")
     
-    if st.button("Cập nhật Danh Sách Người Nói", use_container_width=True):
+    if st.button("Lưu vào Database Người Nói", use_container_width=True):
         new_spks = set()
         if manual_spk_input:
             parts = re.split(r'[,\n]', manual_spk_input)
@@ -359,22 +381,24 @@ with st.sidebar.expander("🎭 Quản lý Tên người nói (Whitelist)", expan
             
         if new_spks:
             st.session_state['custom_speakers'].update(new_spks)
-            st.success(f"Đã thêm {len(new_spks)} tên người nói!")
+            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers']) # Cập nhật Database
+            st.success(f"✅ Đã lưu {len(new_spks)} người nói vào Database!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_speakers']) > 0:
-        st.info(f"Đã thêm: **{len(st.session_state['custom_speakers'])}** người nói ưu tiên.")
-        if st.button("🗑️ Xóa danh sách người nói đã thêm"):
+        st.info(f"Database đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
+        if st.button("🗑️ Xóa sạch Database Người nói"):
             st.session_state['custom_speakers'] = set()
+            save_json_db(SPEAKER_DB_FILE, set())
             st.rerun()
 
 # 2. Quản lý Từ Nhiễu (BLACKLIST)
-with st.sidebar.expander("🚫 Quản lý Từ nhiễu (Non-speaker)", expanded=False):
+with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
     manual_input = st.text_area("Nhập thủ công:", height=80, key="ns_manual")
     upload_non_speaker = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['reset_key']}")
     
-    if st.button("Cập nhật Danh Sách Từ Nhiễu", use_container_width=True):
+    if st.button("Lưu vào Database Từ Nhiễu", use_container_width=True):
         new_phrases = set()
         if manual_input:
             parts = re.split(r'[,\n]', manual_input)
@@ -384,14 +408,16 @@ with st.sidebar.expander("🚫 Quản lý Từ nhiễu (Non-speaker)", expanded=
             
         if new_phrases:
             st.session_state['custom_non_speakers'].update(new_phrases)
-            st.success(f"Đã thêm {len(new_phrases)} từ nhiễu!")
+            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers']) # Cập nhật Database
+            st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu vào Database!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_non_speakers']) > 0:
-        st.info(f"Đã thêm: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
-        if st.button("🗑️ Xóa danh sách từ nhiễu đã thêm"):
+        st.info(f"Database đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
+        if st.button("🗑️ Xóa sạch Database Từ nhiễu"):
             st.session_state['custom_non_speakers'] = set()
+            save_json_db(NON_SPEAKER_DB_FILE, set())
             st.rerun()
 
 # --- GIAO DIỆN CHÍNH (UI) ---
@@ -426,7 +452,7 @@ with col1:
             else:
                 detected_speakers.append(f"{name} ({count} lần)")
 
-        with st.expander("🔍 **XEM TRƯỚC: Soát lỗi Người nói & Từ nhiễu trong file**", expanded=True):
+        with st.expander("🔍 **XEM TRƯỚC: Soát lỗi & Cập nhật Database**", expanded=True):
             st.markdown("Kiểm tra nhanh xem app nhận diện đúng tên nhân vật chưa trước khi bấm định dạng:")
             
             tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
@@ -436,15 +462,17 @@ with col1:
                     st.write(", ".join([f"`{s}`" for s in detected_speakers]))
                     st.markdown("---")
                     to_move_to_ns = st.multiselect(
-                        "Phát hiện từ nào bị nhận diện sai? Chọn bên dưới để chuyển sang TỪ NHIỄU:",
+                        "Phát hiện từ nào bị nhận diện sai? Chọn bên dưới để LƯU VÀO DATABASE TỪ NHIỄU:",
                         options=[name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES],
                         key="select_to_ns"
                     )
-                    if st.button("➡️ Đưa các từ chọn vào TỪ NHIỄU", type="secondary"):
+                    if st.button("➡️ Đưa các từ chọn vào Database TỪ NHIỄU", type="secondary"):
                         if to_move_to_ns:
-                            st.session_state['custom_non_speakers'].update([item.upper() for item in to_move_to_ns])
-                            st.success("Đã chuyển thành công!")
-                            time.sleep(0.8)
+                            new_items = [item.upper() for item in to_move_to_ns]
+                            st.session_state['custom_non_speakers'].update(new_items)
+                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers']) # LƯU DATABASE
+                            st.success(f"✅ Đã lưu thành công {len(new_items)} từ vào Database Từ Nhiễu! App sẽ tự ghi nhớ cho các kịch bản sau.")
+                            time.sleep(1.2)
                             st.rerun()
                 else:
                     st.info("Chưa tìm thấy cụm từ người nói nào.")
@@ -454,17 +482,21 @@ with col1:
                     st.write(", ".join([f"`{s}`" for s in detected_non_speakers]))
                     st.markdown("---")
                     to_move_to_spk = st.multiselect(
-                        "Từ nào thực ra là NGƯỜI NÓI? Chọn bên dưới để khôi phục:",
+                        "Từ nào thực ra là NGƯỜI NÓI? Chọn bên dưới để LƯU VÀO DATABASE NGƯỜI NÓI:",
                         options=[name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES],
                         key="select_to_spk"
                     )
-                    if st.button("➡️ Đưa các từ chọn vào NGƯỜI NÓI", type="secondary"):
+                    if st.button("➡️ Đưa các từ chọn vào Database NGƯỜI NÓI", type="secondary"):
                         if to_move_to_spk:
                             st.session_state['custom_speakers'].update(to_move_to_spk)
+                            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers']) # LƯU DATABASE
+                            
                             for item in to_move_to_spk:
                                 st.session_state['custom_non_speakers'].discard(item.upper())
-                            st.success("Đã khôi phục thành công!")
-                            time.sleep(0.8)
+                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                            
+                            st.success(f"✅ Đã lưu thành công {len(to_move_to_spk)} tên vào Database Người Nói! App sẽ tự ghi nhớ cho các kịch bản sau.")
+                            time.sleep(1.2)
                             st.rerun()
                 else:
                     st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
