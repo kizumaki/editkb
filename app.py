@@ -8,18 +8,20 @@ import re
 import random
 from collections import Counter
 import time
-import pandas as pd # Thư viện để đọc Excel
+import pandas as pd
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT ---
 st.set_page_config(page_title="Pro Script Editor", page_icon="🎬", layout="wide")
 
-# Khởi tạo Session State cho ứng dụng
+# Khởi tạo Session State
 if 'reset_key' not in st.session_state:
     st.session_state['reset_key'] = 0
 if 'custom_non_speakers' not in st.session_state:
     st.session_state['custom_non_speakers'] = set()
+if 'custom_speakers' not in st.session_state:
+    st.session_state['custom_speakers'] = set()
 
-# --- DANH SÁCH LỌC TỪ NHIỄU MẶC ĐỊNH ---
+# --- DANH SÁCH MẶC ĐỊNH ---
 DEFAULT_NON_SPEAKER_PHRASES = {
     "AND REMEMBER", "OFFICIAL DISTANCE", "GOOD NEWS FOR THEIR TEAMMATES", 
     "LL BE HONEST", "FIRST AND FOREMOST", "I SAID", "THE ONLY THING LEFT TO SETTLE", 
@@ -48,34 +50,46 @@ DEFAULT_NON_SPEAKER_PHRASES = {
     "BAD NEWS", "GOOD NEWS", "HE THOUGHT", "3 TEAMS REMAIN", "QUICK UPDATE", "DISTORTED", "MY FIRST QUESTION IS", "AND THE BEST PART IS", "BUT AS GORDON RAMSAY MIGHT SAY", "BUT THE GOOD NEWS IS", "LET ME JUST SAY", "BUT THE BEST PART", "I WILL SAY THOUGH", "LL SAY IS, UPDATE", "LL SAY IS", "UPDATE", "TO ALL OF YOU WATCHING WITH ME RIGHT NOW", "THIS IS THE LIFE", "I HAVE A QUESTION", "I WILL BE HONEST", "SO I CAN UPDATE MY INSTAGRAM BIO TO SAY"
 }
 
-# Gom danh sách mặc định và danh sách tùy chỉnh
 NON_SPEAKER_PHRASES = DEFAULT_NON_SPEAKER_PHRASES.union(st.session_state['custom_non_speakers'])
 
-SPEAKER_REGEX_DELIMITER = re.compile(r"([A-Z][a-z\s&]+):\s*", re.IGNORECASE)
 TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$")
 HTML_CONTENT_REGEX = re.compile(r"((?:</?[ibu]>)+)(.*?)(?:</?[ibu]>)+", re.IGNORECASE | re.DOTALL)
 
+# --- THUẬT TOÁN TẠO REGEX TỰ ĐỘNG THÔNG MINH ---
+def build_speaker_regex(custom_speakers):
+    """
+    Hỗ trợ Tiếng Việt có dấu, Số, Dấu ngoặc đơn, Dấu chấm, Dấu gạch ngang.
+    Ưu tiên danh sách Người Nói Tùy Chỉnh do người dùng nhập vào.
+    """
+    base_pattern = r"[\w\s&\.\-\(\)]+" # \w trong Python 3 nhận diện được toàn bộ Unicode Tiếng Việt
+    if custom_speakers:
+        sorted_custom = sorted(list(custom_speakers), key=len, reverse=True)
+        custom_pattern = "|".join([re.escape(s) for s in sorted_custom])
+        pattern_str = rf"({custom_pattern}|{base_pattern}):\s*"
+    else:
+        pattern_str = rf"({base_pattern}):\s*"
+    
+    return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
+
 # --- HELPER FUNCTIONS ---
 def extract_phrases_from_file(file_io, file_name):
-    """Trích xuất từ ngữ từ các định dạng file khác nhau"""
     phrases = set()
     try:
         if file_name.endswith('.txt'):
             content = file_io.getvalue().decode("utf-8")
-            phrases.update([line.strip().upper() for line in content.split('\n') if line.strip()])
+            phrases.update([line.strip() for line in content.split('\n') if line.strip()])
         elif file_name.endswith('.docx'):
             doc = Document(io.BytesIO(file_io.getvalue()))
             for p in doc.paragraphs:
                 if p.text.strip():
-                    # Tách bằng dấu phẩy hoặc xuống dòng
                     parts = re.split(r'[,\n]', p.text)
-                    phrases.update([part.strip().upper() for part in parts if part.strip()])
+                    phrases.update([part.strip() for part in parts if part.strip()])
         elif file_name.endswith('.xlsx'):
             df = pd.read_excel(file_io, header=None)
             for col in df.columns:
                 for item in df[col].dropna():
                     parts = re.split(r'[,\n]', str(item))
-                    phrases.update([part.strip().upper() for part in parts if part.strip()])
+                    phrases.update([part.strip() for part in parts if part.strip()])
     except Exception as e:
         st.error(f"Lỗi đọc file: {e}")
     return phrases
@@ -126,8 +140,8 @@ def apply_html_formatting_to_run(paragraph, current_text):
     if last_end < len(current_text):
         paragraph.add_run(current_text[last_end:])
 
-def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter):
-    parts = SPEAKER_REGEX_DELIMITER.split(text)
+def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex):
+    parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
     if len(parts) == 1:
@@ -141,7 +155,7 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         apply_html_formatting_to_run(new_paragraph, text)
         return
 
-    speaker_matches = list(SPEAKER_REGEX_DELIMITER.finditer(text))
+    speaker_matches = list(speaker_regex.finditer(text))
     last_processed_index = 0
     
     for i, match in enumerate(speaker_matches):
@@ -160,6 +174,7 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
             continuation_paragraph.paragraph_format.space_before = Pt(0)
             apply_html_formatting_to_run(continuation_paragraph, leading_content)
 
+        # Lọc nếu nằm trong danh sách từ nhiễu
         if speaker_name.upper() in NON_SPEAKER_PHRASES:
             content_block = text[start:]
             continuation_paragraph = document.add_paragraph()
@@ -219,6 +234,9 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     random.shuffle(used_colors)
     stats_counter = Counter()
     
+    # Tạo Regex động dựa trên người nói tùy chỉnh
+    speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
+    
     original_document = Document(io.BytesIO(uploaded_file.getvalue()))
     raw_paragraphs = [p for p in original_document.paragraphs]
     document = Document()
@@ -235,7 +253,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     for paragraph in raw_paragraphs:
         text = paragraph.text
         if text.lower().startswith("srt conversion"): continue 
-        for match in SPEAKER_REGEX_DELIMITER.finditer(text):
+        for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
             if speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
@@ -271,7 +289,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
             new_paragraph.runs[0].font.name = 'Times New Roman'
             new_paragraph.runs[0].font.size = Pt(12)
         else:
-            format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter)
+            format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex)
             
     progress_bar.progress(100)
     status_text.text("Định dạng hoàn tất!")
@@ -307,52 +325,70 @@ st.sidebar.title("⚙️ Tùy chỉnh (Settings)")
 
 # Nút Làm Mới Phiên Làm Việc
 if st.sidebar.button("🔄 Làm mới phiên làm việc", use_container_width=True, type="primary"):
-    # Xóa các biến trạng thái cũ
     for key in ['processed_file', 'new_filename', 'stats']:
         if key in st.session_state:
             del st.session_state[key]
-    st.session_state['reset_key'] += 1 # Thay đổi key uploader để reset
-    st.rerun() # Tải lại toàn bộ trang
+    st.session_state['reset_key'] += 1
+    st.rerun()
 
 st.sidebar.markdown("---")
 enable_colors = st.sidebar.toggle("🌈 Bật tô màu nhân vật", value=True)
 
-# Giao diện thêm Từ Nhiễu (NON_SPEAKER_PHRASES)
-with st.sidebar.expander("🚫 Quản lý Từ nhiễu (Non-speaker)", expanded=False):
-    st.markdown("Thêm các cụm từ (Tiếng Anh/Việt) bị app nhận diện nhầm thành tên nhân vật. (VD: CẢNH 1, MÁY QUAY, CHÚ Ý...)")
+# 1. Quản lý Người Nói Ưu Tiên (WHITELIST)
+with st.sidebar.expander("🎭 Quản lý Tên người nói (Whitelist)", expanded=False):
+    st.markdown("Thêm các tên nhân vật đặc biệt (Tiếng Việt có dấu, có số, ký tự đặc biệt) để app bắt chính xác 100%. (VD: NGƯỜI DẪN CHUYỆN, NV 01, DR. BEN...)")
     
-    manual_input = st.text_area("Nhập thủ công (cách nhau bằng dấu phẩy hoặc xuống dòng):", height=100)
+    manual_spk_input = st.text_area("Nhập thủ công (cách nhau bằng dấu phẩy hoặc xuống dòng):", height=80, key="spk_manual")
+    upload_spk_file = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['reset_key']}")
     
-    upload_non_speaker = st.file_uploader(
-        "Hoặc tải file lên (.txt, .docx, .xlsx)", 
-        type=['txt', 'docx', 'xlsx'], 
-        key=f"ns_uploader_{st.session_state['reset_key']}" # Tự làm mới khi nhấn Nút Reset
-    )
-    
-    if st.button("Cập nhật vào hệ thống", use_container_width=True):
-        new_phrases = set()
-        
-        # Xử lý Text Area
-        if manual_input:
-            parts = re.split(r'[,\n]', manual_input)
-            new_phrases.update([p.strip().upper() for p in parts if p.strip()])
+    if st.button("Cập nhật Danh Sách Người Nói", use_container_width=True):
+        new_spks = set()
+        if manual_spk_input:
+            parts = re.split(r'[,\n]', manual_spk_input)
+            new_spks.update([p.strip() for p in parts if p.strip()])
+        if upload_spk_file:
+            new_spks.update(extract_phrases_from_file(upload_spk_file, upload_spk_file.name))
             
-        # Xử lý File tải lên
-        if upload_non_speaker:
-            new_phrases.update(extract_phrases_from_file(upload_non_speaker, upload_non_speaker.name))
-            
-        if new_phrases:
-            st.session_state['custom_non_speakers'].update(new_phrases)
-            st.success(f"Đã cập nhật thêm {len(new_phrases)} cụm từ!")
+        if new_spks:
+            st.session_state['custom_speakers'].update(new_spks)
+            st.success(f"Đã thêm {len(new_spks)} tên người nói!")
             time.sleep(1)
             st.rerun()
         else:
-            st.warning("Vui lòng nhập từ hoặc tải file lên!")
+            st.warning("Vui lòng nhập tên hoặc chọn file!")
 
-    # Hiển thị số lượng từ tùy chỉnh đã thêm
+    if len(st.session_state['custom_speakers']) > 0:
+        st.info(f"Đã thêm: **{len(st.session_state['custom_speakers'])}** người nói ưu tiên.")
+        if st.button("🗑️ Xóa danh sách người nói đã thêm"):
+            st.session_state['custom_speakers'] = set()
+            st.rerun()
+
+# 2. Quản lý Từ Nhiễu (BLACKLIST)
+with st.sidebar.expander("🚫 Quản lý Từ nhiễu (Non-speaker)", expanded=False):
+    st.markdown("Thêm các cụm từ bị app nhận diện nhầm thành tên nhân vật. (VD: CẢNH 1, MÁY QUAY...)")
+    
+    manual_input = st.text_area("Nhập thủ công:", height=80, key="ns_manual")
+    upload_non_speaker = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['reset_key']}")
+    
+    if st.button("Cập nhật Danh Sách Từ Nhiễu", use_container_width=True):
+        new_phrases = set()
+        if manual_input:
+            parts = re.split(r'[,\n]', manual_input)
+            new_phrases.update([p.strip().upper() for p in parts if p.strip()])
+        if upload_non_speaker:
+            new_phrases.update([p.upper() for p in extract_phrases_from_file(upload_non_speaker, upload_non_speaker.name)])
+            
+        if new_phrases:
+            st.session_state['custom_non_speakers'].update(new_phrases)
+            st.success(f"Đã thêm {len(new_phrases)} từ nhiễu!")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.warning("Vui lòng nhập từ hoặc chọn file!")
+
     if len(st.session_state['custom_non_speakers']) > 0:
-        st.info(f"Đã tự thêm: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
-        if st.button("🗑️ Xóa từ nhiễu tùy chỉnh"):
+        st.info(f"Đã thêm: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
+        if st.button("🗑️ Xóa danh sách từ nhiễu đã thêm"):
             st.session_state['custom_non_speakers'] = set()
             st.rerun()
 
@@ -365,8 +401,6 @@ col1, col2 = st.columns([1.5, 1])
 
 with col1:
     st.subheader("📁 1. Tải lên kịch bản")
-    
-    # Gán key động để file uploader tự reset khi nhấn nút Làm mới
     uploaded_file = st.file_uploader(
         "Kéo thả file Word (.docx) của bạn vào đây", 
         type=['docx'], 
