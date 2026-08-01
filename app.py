@@ -532,7 +532,7 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     else:
         paragraph.add_run(current_text)
 
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
+def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
@@ -589,7 +589,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
         
         # Lọc bỏ tên diễn viên lồng tiếng cũ nếu vô tình bị dính trong văn bản biên tập
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-        if actor_name and content.startswith(actor_name):
+        if enable_cast and actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
 
         new_paragraph = document.add_paragraph()
@@ -604,13 +604,14 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
         if enable_colors:
             run_speaker.font.color.rgb = spk_color
             
-        # 2. KIỂM TRA: Nếu là LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN" (Bold + MÀU ĐỎ + IN HOA)
-        if speaker_name not in seen_speakers_first_time:
-            seen_speakers_first_time.add(speaker_name)
-            if actor_name:
-                run_actor = new_paragraph.add_run(f" {actor_name}")
-                run_actor.font.bold = True
-                run_actor.font.color.rgb = RED_COLOR
+        # 2. KIỂM TRA: Nếu BẬT PHÂN VAI & LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN" (Bold + MÀU ĐỎ + IN HOA)
+        if enable_cast:
+            if speaker_name not in seen_speakers_first_time:
+                seen_speakers_first_time.add(speaker_name)
+                if actor_name:
+                    run_actor = new_paragraph.add_run(f" {actor_name}")
+                    run_actor.font.bold = True
+                    run_actor.font.color.rgb = RED_COLOR
         
         if len(speaker_full) > 10:
              new_paragraph.add_run('\t\t')
@@ -634,7 +635,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
         apply_html_and_phonetic_to_paragraph(continuation_paragraph, remaining_content, enable_phonetic)
 
 # --- MAIN PROCESSING & RE-SYNC ---
-def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, is_resync=False):
+def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False):
     speaker_color_map = {}
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors)
@@ -656,7 +657,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     title_paragraph.runs[0].font.size = Pt(20)
     title_paragraph.runs[0].bold = True
     
-    # Quét Danh sách Vai & Phân vai xếp theo HÀNG DỌC ở đầu kịch bản
+    # Quét Danh sách Vai
     unique_speakers = []
     for paragraph in raw_paragraphs:
         text = paragraph.text.strip()
@@ -667,34 +668,45 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 unique_speakers.append(speaker_name)
             
     if unique_speakers:
-        header_vai = document.add_paragraph()
-        r_vai = header_vai.add_run("VAI: ")
-        r_vai.font.name = 'Times New Roman'
-        r_vai.font.size = Pt(12)
-        r_vai.font.bold = True
-        header_vai.paragraph_format.space_before = Pt(0)
-        header_vai.paragraph_format.space_after = Pt(0)
+        if enable_cast:
+            # Nếu BẬT Phân vai -> Xuất danh sách hàng dọc kèm diễn viên lồng tiếng
+            header_vai = document.add_paragraph()
+            r_vai = header_vai.add_run("VAI: ")
+            r_vai.font.name = 'Times New Roman'
+            r_vai.font.size = Pt(12)
+            r_vai.font.bold = True
+            header_vai.paragraph_format.space_before = Pt(0)
+            header_vai.paragraph_format.space_after = Pt(0)
 
-        for spk in unique_speakers:
-            p_spk = document.add_paragraph()
-            p_spk.paragraph_format.space_before = Pt(0)
-            p_spk.paragraph_format.space_after = Pt(0)
-            
-            spk_color = get_speaker_color(spk, speaker_color_map, used_colors)
-            r_spk_name = p_spk.add_run(f"{spk}: ")
-            r_spk_name.font.name = 'Times New Roman'
-            r_spk_name.font.size = Pt(12)
-            r_spk_name.font.bold = True
-            if enable_colors:
-                r_spk_name.font.color.rgb = spk_color
+            for spk in unique_speakers:
+                p_spk = document.add_paragraph()
+                p_spk.paragraph_format.space_before = Pt(0)
+                p_spk.paragraph_format.space_after = Pt(0)
                 
-            actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
-            if actor:
-                r_actor = p_spk.add_run(actor)
-                r_actor.font.name = 'Times New Roman'
-                r_actor.font.size = Pt(12)
-                r_actor.font.bold = True
-                r_actor.font.color.rgb = RED_COLOR
+                spk_color = get_speaker_color(spk, speaker_color_map, used_colors)
+                r_spk_name = p_spk.add_run(f"{spk}: ")
+                r_spk_name.font.name = 'Times New Roman'
+                r_spk_name.font.size = Pt(12)
+                r_spk_name.font.bold = True
+                if enable_colors:
+                    r_spk_name.font.color.rgb = spk_color
+                    
+                actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
+                if actor:
+                    r_actor = p_spk.add_run(actor)
+                    r_actor.font.name = 'Times New Roman'
+                    r_actor.font.size = Pt(12)
+                    r_actor.font.bold = True
+                    r_actor.font.color.rgb = RED_COLOR
+        else:
+            # Nếu TẮT Phân vai -> Xuất dòng VAI tiêu chuẩn gọn gàng
+            speaker_list_text = "VAI: " + ", ".join(unique_speakers)
+            p = document.add_paragraph(speaker_list_text)
+            p.runs[0].font.name = 'Times New Roman'
+            p.runs[0].font.size = Pt(12)
+            p.runs[0].font.bold = True
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.space_after = Pt(6)
     
     document.add_paragraph()
     start_index = len(document.paragraphs)
@@ -707,7 +719,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if idx % max(1, total_paras // 10) == 0:
             progress = int((idx / total_paras) * 100)
             progress_bar.progress(progress)
-            status_text.text(f"Đang phân tích & Re-sync {idx}/{total_paras}...")
+            status_text.text(f"Đang phân tích & xử lý {idx}/{total_paras}...")
 
         text = paragraph.text.strip()
         if not text or text.upper() == title_text.upper(): continue
@@ -722,7 +734,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
             cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
-            format_and_split_dialogue(document, cleaned_text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
+            format_and_split_dialogue(document, cleaned_text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
             
     progress_bar.progress(100)
     status_text.text("Xử lý hoàn tất!")
@@ -771,6 +783,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("#### 🎛️ Bật/Tắt Tính năng")
 enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
 enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
+enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, help="Hiển thị thông tin diễn viên lồng tiếng ở đầu trang và lần xuất hiện đầu tiên của nhân vật")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
@@ -1029,7 +1042,7 @@ with tab_script:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
                 try:
-                    modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, is_resync=False)
+                    modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False)
                     new_filename = clean_file_name_for_output(original_filename, tag="_edit")
                     
                     st.session_state['processed_file'] = modified_file_io
@@ -1097,7 +1110,7 @@ with tab_resync:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
-                    r_file_io, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, is_resync=True)
+                    r_file_io, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
                     r_new_filename = clean_file_name_for_output(r_filename, tag="_resync")
                     
                     st.session_state['resync_processed_file'] = r_file_io
