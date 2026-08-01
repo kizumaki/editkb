@@ -453,7 +453,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, v, t
+            elif i % 6 == 2: r, g, b = p, q, v
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -556,7 +556,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     last_processed_index = 0
     
     for i, match in enumerate(speaker_matches):
-        speaker_full = match.group(0)
         speaker_name = match.group(1).strip()
         start, end = match.span()
         
@@ -602,15 +601,16 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         
-        # 1. Thêm Tên Người Nói (Bold + Màu đại diện)
+        # 1. Tên Người Nói CHỈ CHỨA TÊN VÀ DẤU HAI CHẤM (Tuyệt đối không có phím cách thừa ở cuối)
+        spk_text = f"{speaker_name}:"
         spk_color = get_speaker_color(speaker_name, speaker_color_map, used_colors)
-        run_speaker = new_paragraph.add_run(speaker_full)
+        run_speaker = new_paragraph.add_run(spk_text)
         run_speaker.font.bold = True
         if enable_colors:
             run_speaker.font.color.rgb = spk_color
             
-        # 2. KIỂM TRA & TÍNH ĐỘ DÀI TIỀN TỐ (PREFIX LENGTH)
-        prefix_len = len(speaker_full)
+        # 2. KIỂM TRA & TÍNH CHÍNH XÁC ĐỘ DÀI TIỀN TỐ
+        prefix_len = len(spk_text)
         if enable_cast:
             if speaker_name not in seen_speakers_first_time:
                 seen_speakers_first_time.add(speaker_name)
@@ -620,7 +620,9 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                     run_actor.font.color.rgb = RED_COLOR
                     prefix_len += len(actor_name) + 1
         
-        # NẾU TỔNG ĐỘ DÀI VAI DÀI (>= 10 KÝ TỰ) -> THAY TAB BẰNG 1 DẤU CÁCH SPACEBAR ' '
+        # 3. CHỌN DẤU PHÂN CÁCH CHUẨN:
+        # NẾU TỔNG VAI DÀI (>= 10 KÝ TỰ) -> CHÈN DUY NHẤT 1 PHÍM CÁCH SPACEBAR ' '
+        # NẾU VAI NGẮN (< 10 KÝ TỰ) -> CHÈN DUY NHẤT 1 PHÍM TAB '\t'
         if prefix_len >= 10:
             new_paragraph.add_run(' ')
         else:
