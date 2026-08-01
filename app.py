@@ -967,41 +967,31 @@ with tab_phonetic_db:
                 key="global_phonetic_db_editor"
             )
 
-            col_save, col_reset = st.columns([2, 1])
-            with col_save:
-                if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT TRONG BẢNG", type="primary", use_container_width=True):
-                    new_db = {}
-                    deleted_count = 0
+            if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT TRONG BẢNG", type="primary", use_container_width=True):
+                new_db = {}
+                deleted_count = 0
+                
+                if search_query:
+                    for k, v in all_phonetics_dict.items():
+                        if k not in filtered_dict:
+                            new_db[k] = v
+
+                for _, row in edited_db_df.iterrows():
+                    eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
+                    pho_v = str(row["Phiên âm giọng Nam"]).strip()
+                    is_delete = row["Xóa khỏi Database"]
                     
-                    if search_query:
-                        for k, v in all_phonetics_dict.items():
-                            if k not in filtered_dict:
-                                new_db[k] = v
+                    if is_delete:
+                        deleted_count += 1
+                    else:
+                        if pho_v:
+                            new_db[eng_k] = pho_v
 
-                    for _, row in edited_db_df.iterrows():
-                        eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
-                        pho_v = str(row["Phiên âm giọng Nam"]).strip()
-                        is_delete = row["Xóa khỏi Database"]
-                        
-                        if is_delete:
-                            deleted_count += 1
-                        else:
-                            if pho_v:
-                                new_db[eng_k] = pho_v
-
-                    st.session_state['custom_phonetics'] = new_db
-                    save_json_db(PHONETIC_DB_FILE, new_db)
-                    st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_count} từ)")
-                    time.sleep(1)
-                    st.rerun()
-
-            with col_reset:
-                if st.button("♻️ Khôi phục lại Database Mặc định", use_container_width=True):
-                    st.session_state['custom_phonetics'] = DEFAULT_SOUTH_VIETNAM_PHONETICS.copy()
-                    save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
-                    st.success("✅ Đã khôi phục Kho phiên âm mặc định!")
-                    time.sleep(1)
-                    st.rerun()
+                st.session_state['custom_phonetics'] = new_db
+                save_json_db(PHONETIC_DB_FILE, new_db)
+                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_count} từ)")
+                time.sleep(1)
+                st.rerun()
         else:
             st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
