@@ -11,8 +11,107 @@ import time
 import pandas as pd
 import json
 
-# --- CẤU HÌNH TRANG CHỦ STREAMLIT ---
-st.set_page_config(page_title="Pro Script Editor", page_icon="🎬", layout="wide")
+# --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
+st.set_page_config(
+    page_title="ScriptPro Enterprise - Subtitle & Script Editor",
+    page_icon="🎬",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- TIÊM CUSTOM CSS CHUẨN SAAS CAO CẤP ---
+st.markdown("""
+<style>
+    /* Tổng thể font & nền */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Hero Banner Header */
+    .hero-container {
+        background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+        padding: 2.5rem 2rem;
+        border-radius: 16px;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
+    }
+    .hero-title {
+        font-size: 2.4rem;
+        font-weight: 800;
+        margin: 0;
+        letter-spacing: -0.02em;
+    }
+    .hero-subtitle {
+        font-size: 1.05rem;
+        opacity: 0.9;
+        margin-top: 0.5rem;
+    }
+    .badge-pro {
+        background-color: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(8px);
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: inline-block;
+        margin-bottom: 0.8rem;
+    }
+    
+    /* SaaS Stat Metric Cards */
+    .metric-card {
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: #64748B;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin-top: 0.25rem;
+    }
+
+    /* Đổi kiểu dáng cho Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 2px solid #E2E8F0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        border-radius: 8px 8px 0 0;
+        font-weight: 600;
+        padding: 0 20px;
+    }
+    
+    /* Styled Footer */
+    .saas-footer {
+        text-align: center;
+        padding: 2rem 0 1rem 0;
+        color: #94A3B8;
+        font-size: 0.85rem;
+        border-top: 1px solid #E2E8F0;
+        margin-top: 3rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # --- HÀM ĐỌC / GHI DATABASE DỮ LIỆU CỤC BỘ ---
 NON_SPEAKER_DB_FILE = "custom_non_speakers.json"
@@ -42,7 +141,6 @@ DEFAULT_SOUTH_VIETNAM_PHONETICS = {
     "FBI": "Ép-bi-ai"
 }
 
-# DANH SÁCH ÂM TIẾT TIẾNG VIỆT KHÔNG DẤU PHỔ BIẾN ĐỂ BỘ LỌC KHÔNG BỊ NHẦM LẪN
 VN_SYLLABLES = {
     "a", "ai", "an", "ang", "anh", "ao", "ap", "at", "au", "ay", "ba", "bac", "bai", "ban", "bang", "bao", 
     "bat", "bay", "be", "ben", "beng", "beo", "bi", "bic", "bien", "biet", "binh", "bo", "boc", "boi", "bon", 
@@ -293,6 +391,7 @@ def generate_vibrant_rgb_colors(count=200):
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
             elif i % 6 == 2: r, g, b = p, q, v
+            elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
         r, g, b = int(r * 255), int(g * 255), int(b * 255)
@@ -312,9 +411,6 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     return speaker_color_map[speaker_name]
 
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
-    """
-    Xử lý chèn Phiên Âm Giọng Nam + Highlight VÀNG CHO CẢ CỤM PHIÊN ÂM VÀ TỪ TIẾNG ANH
-    """
     if not current_text.strip(): return
     
     phonetic_db = st.session_state['custom_phonetics']
@@ -347,18 +443,15 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
             eng_word_original = match.group(0)
             start, end = match.span()
             
-            # 1. Thêm đoạn văn bản tiếng Việt phía trước
             if start > last_end:
                 paragraph.add_run(current_text[last_end:start])
                 
-            # 2. Lấy phiên âm tương ứng
             pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
             
-            # 3. Thêm phiên âm giọng Nam (HIGHLIGHT VÀNG)
+            # Tô màu Highlight VÀNG cho CẢ CỤM phiên âm + từ Tiếng Anh
             run_pho = paragraph.add_run(f"{pho_text} ")
             run_pho.font.highlight_color = WD_COLOR_INDEX.YELLOW
             
-            # 4. Thêm từ Tiếng Anh gốc đặt trong ngoặc () (HIGHLIGHT VÀNG)
             run_eng = paragraph.add_run(f"({eng_word_original})")
             run_eng.font.highlight_color = WD_COLOR_INDEX.YELLOW
             
@@ -553,10 +646,10 @@ def clean_file_name_for_output(original_filename):
     cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$)', '', name_without_ext, flags=re.IGNORECASE).strip()
     return f"{cleaned}_edit.docx"
 
-# --- SIDEBAR (THANH ĐIỀU HƯỚNG) ---
-st.sidebar.title("⚙️ Tùy chỉnh (Settings)")
+# --- SIDEBAR (THANH ĐIỀU HƯỚNG SAAS) ---
+st.sidebar.markdown("### ⚡ Control Panel")
 
-if st.sidebar.button("🔄 Làm mới phiên làm việc", use_container_width=True, type="primary"):
+if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
     for key in ['processed_file', 'new_filename', 'stats']:
         if key in st.session_state:
             del st.session_state[key]
@@ -564,23 +657,18 @@ if st.sidebar.button("🔄 Làm mới phiên làm việc", use_container_width=T
     st.rerun()
 
 st.sidebar.markdown("---")
-enable_colors = st.sidebar.toggle("🌈 Bật tô màu nhân vật", value=True)
-enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm Tiếng Anh giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
+st.sidebar.markdown("#### 🎛️ Bật/Tắt Tính năng")
+enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
+enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
 
-# 1. Quản lý Người Nói Ưu Tiên (WHITELIST)
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
+
 with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=False):
-    manual_spk_input = st.text_area(
-        "Nhập thủ công:", 
-        height=80, 
-        key=f"spk_manual_{st.session_state['spk_input_key']}"
-    )
-    upload_spk_file = st.file_uploader(
-        "Tải file danh sách (.txt, .docx, .xlsx)", 
-        type=['txt', 'docx', 'xlsx'], 
-        key=f"spk_uploader_{st.session_state['spk_input_key']}"
-    )
+    manual_spk_input = st.text_area("Nhập thủ công:", height=80, key=f"spk_manual_{st.session_state['spk_input_key']}")
+    upload_spk_file = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['spk_input_key']}")
     
-    if st.button("Lưu vào Database Người Nói", use_container_width=True):
+    if st.button("Lưu Người Nói", use_container_width=True):
         new_spks = set()
         if manual_spk_input:
             parts = re.split(r'[,\n]', manual_spk_input)
@@ -592,27 +680,18 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             st.session_state['custom_speakers'].update(new_spks)
             save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
             st.session_state['spk_input_key'] += 1
-            st.success(f"✅ Đã lưu {len(new_spks)} người nói vào Database!")
+            st.success(f"✅ Đã lưu {len(new_spks)} người nói!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_speakers']) > 0:
-        st.info(f"Database đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
+        st.info(f"Đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
 
-# 2. Quản lý Từ Nhiễu (BLACKLIST)
 with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
-    manual_input = st.text_area(
-        "Nhập thủ công:", 
-        height=80, 
-        key=f"ns_manual_{st.session_state['ns_input_key']}"
-    )
-    upload_non_speaker = st.file_uploader(
-        "Tải file danh sách (.txt, .docx, .xlsx)", 
-        type=['txt', 'docx', 'xlsx'], 
-        key=f"ns_uploader_{st.session_state['ns_input_key']}"
-    )
+    manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
+    upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
     
-    if st.button("Lưu vào Database Từ Nhiễu", use_container_width=True):
+    if st.button("Lưu Từ Nhiễu", use_container_width=True):
         new_phrases = set()
         if manual_input:
             parts = re.split(r'[,\n]', manual_input)
@@ -624,40 +703,46 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
             st.session_state['custom_non_speakers'].update(new_phrases)
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
             st.session_state['ns_input_key'] += 1
-            st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu vào Database!")
+            st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_non_speakers']) > 0:
-        st.info(f"Database đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
+        st.info(f"Đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
 
-# --- GIAO DIỆN MÀN HÌNH CHÍNH TÁCH 2 TAB ---
-st.title("🎬 Kịch Bản Pro - Word Script Editor")
-st.markdown("Hệ thống tự động biên tập và làm đẹp kịch bản tiêu chuẩn quốc tế.")
-st.markdown("---")
+# --- HERO BANNER HEADER (SaaS STYLING) ---
+st.markdown("""
+<div class="hero-container">
+    <div class="badge-pro">v2.5 Enterprise SaaS</div>
+    <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
+    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word & tự động phiên âm giọng Nam thông minh.</div>
+</div>
+""", unsafe_allow_html=True)
 
+# --- MÀN HÌNH CHÍNH TÁCH TABS ---
 tab_script, tab_phonetic_db = st.tabs(["🎬 Xử lý & Biên tập Kịch bản", "📚 Kho Database Phiên Âm Giọng Nam"])
 
 # ==========================================
 # TAB 1: XỬ LÝ KỊCH BẢN
 # ==========================================
 with tab_script:
-    col1, col2 = st.columns([1.5, 1])
+    col1, col2 = st.columns([1.6, 1])
 
     with col1:
-        st.subheader("📁 1. Tải lên kịch bản")
-        uploaded_file = st.file_uploader(
-            "Kéo thả file Word (.docx) của bạn vào đây", 
-            type=['docx'], 
-            key=f"main_uploader_{st.session_state['uploader_key']}"
-        )
+        with st.container(border=True):
+            st.markdown("### 📁 1. Tải lên kịch bản Word (.docx)")
+            uploaded_file = st.file_uploader(
+                "Kéo thả file .docx của bạn vào đây", 
+                type=['docx'], 
+                key=f"main_uploader_{st.session_state['uploader_key']}"
+            )
 
         if uploaded_file is None:
-            st.info("📌 **Vui lòng tải file kịch bản (.docx) ở trên để hiển thị phần Soát lỗi & Quản lý Phiên âm.**")
+            st.info("📌 **Vui lòng tải file kịch bản (.docx) ở trên để hiển thị công cụ biên tập.**")
         else:
             original_filename = uploaded_file.name
             file_name_without_ext = os.path.splitext(original_filename)[0] 
-            st.success(f"Đã nhận file: **{original_filename}**")
+            st.success(f"📄 Đã nhận file thành công: **{original_filename}**")
 
             speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
             candidates = scan_candidate_speakers(uploaded_file, speaker_regex)
@@ -671,99 +756,99 @@ with tab_script:
                 else:
                     detected_speakers.append(f"{name} ({count} lần)")
 
-            st.markdown("### 🔍 SOÁT LỖI NHẬN DIỆN NGƯỜI NÓI")
-            
-            tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
-            
-            with tab_spk:
-                if detected_speakers:
-                    st.write(", ".join([f"`{s}`" for s in detected_speakers]))
-                    to_move_to_ns = st.multiselect(
-                        "Phát hiện từ nào bị nhận diện sai? Chọn để LƯU VÀO DATABASE TỪ NHIỄU:",
-                        options=[name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES],
-                        key="select_to_ns"
+            with st.container(border=True):
+                st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói")
+                tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
+                
+                with tab_spk:
+                    if detected_speakers:
+                        st.write(", ".join([f"`{s}`" for s in detected_speakers]))
+                        to_move_to_ns = st.multiselect(
+                            "Phát hiện từ nào bị nhận diện sai? Chọn để LƯU VÀO DATABASE TỪ NHIỄU:",
+                            options=[name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES],
+                            key="select_to_ns"
+                        )
+                        if st.button("➡️ Đưa vào Database TỪ NHIỄU", type="secondary"):
+                            if to_move_to_ns:
+                                new_items = [item.upper() for item in to_move_to_ns]
+                                st.session_state['custom_non_speakers'].update(new_items)
+                                save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                                st.success(f"✅ Đã lưu {len(new_items)} từ vào Database Từ Nhiễu!")
+                                time.sleep(1)
+                                st.rerun()
+                    else:
+                        st.info("Chưa tìm thấy cụm từ người nói nào.")
+
+                with tab_non_spk:
+                    if detected_non_speakers:
+                        st.write(", ".join([f"`{s}`" for s in detected_non_speakers]))
+                        to_move_to_spk = st.multiselect(
+                            "Từ nào thực ra là NGƯỜI NÓI? Chọn để LƯU VÀO DATABASE NGƯỜI NÓI:",
+                            options=[name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES],
+                            key="select_to_spk"
+                        )
+                        if st.button("➡️ Đưa vào Database NGƯỜI NÓI", type="secondary"):
+                            if to_move_to_spk:
+                                st.session_state['custom_speakers'].update(to_move_to_spk)
+                                save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
+                                for item in to_move_to_spk: st.session_state['custom_non_speakers'].discard(item.upper())
+                                save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                                st.success(f"✅ Đã lưu {len(to_move_to_spk)} tên vào Database Người Nói!")
+                                time.sleep(1)
+                                st.rerun()
+                    else:
+                        st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
+
+            # --- QUẢN LÝ PHIÊN ÂM KỊCH BẢN HIỆN TẠI ---
+            with st.container(border=True):
+                st.markdown("### 🗣️ Từ Tiếng Anh Xuất Hiện Trong Kịch Bản")
+                st.caption("Quét và điều chỉnh phiên âm riêng cho kịch bản này (Đã qua bộ lọc thông minh):")
+
+                detected_eng_words = scan_english_words_in_dialogue(uploaded_file, speaker_regex)
+
+                if detected_eng_words:
+                    table_data = []
+                    for word in detected_eng_words:
+                        current_pho = st.session_state['custom_phonetics'].get(word.upper(), word)
+                        table_data.append({
+                            "Từ Tiếng Anh": word,
+                            "Phiên âm hiện tại": current_pho,
+                            "Đề xuất chỉnh sửa của bạn": current_pho,
+                            "Nạp vào Database": True
+                        })
+
+                    df_eng = pd.DataFrame(table_data)
+
+                    edited_df = st.data_editor(
+                        df_eng,
+                        column_config={
+                            "Từ Tiếng Anh": st.column_config.TextColumn("Từ Tiếng Anh gốc", disabled=True),
+                            "Phiên âm hiện tại": st.column_config.TextColumn("Phiên âm gán hiện tại", disabled=True),
+                            "Đề xuất chỉnh sửa của bạn": st.column_config.TextColumn("Đề xuất phiên âm mới"),
+                            "Nạp vào Database": st.column_config.CheckboxColumn("Lưu Database?", default=True)
+                        },
+                        disabled=["Từ Tiếng Anh", "Phiên âm hiện tại"],
+                        hide_index=True,
+                        use_container_width=True,
+                        key="phonetic_script_table"
                     )
-                    if st.button("➡️ Đưa vào Database TỪ NHIỄU", type="secondary"):
-                        if to_move_to_ns:
-                            new_items = [item.upper() for item in to_move_to_ns]
-                            st.session_state['custom_non_speakers'].update(new_items)
-                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                            st.success(f"✅ Đã lưu {len(new_items)} từ vào Database Từ Nhiễu!")
-                            time.sleep(1)
-                            st.rerun()
+
+                    if st.button("💾 Nạp chỉnh sửa kịch bản này vào Database Phiên Âm", type="secondary", use_container_width=True):
+                        updated_count = 0
+                        for _, row in edited_df.iterrows():
+                            if row["Nạp vào Database"]:
+                                eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
+                                pho_v = str(row["Đề xuất chỉnh sửa của bạn"]).strip()
+                                if pho_v:
+                                    st.session_state['custom_phonetics'][eng_k] = pho_v
+                                    updated_count += 1
+                        
+                        save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
+                        st.success(f"✅ Đã cập nhật {updated_count} từ phiên âm vào Database!")
+                        time.sleep(1)
+                        st.rerun()
                 else:
-                    st.info("Chưa tìm thấy cụm từ người nói nào.")
-
-            with tab_non_spk:
-                if detected_non_speakers:
-                    st.write(", ".join([f"`{s}`" for s in detected_non_speakers]))
-                    to_move_to_spk = st.multiselect(
-                        "Từ nào thực ra là NGƯỜI NÓI? Chọn để LƯU VÀO DATABASE NGƯỜI NÓI:",
-                        options=[name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES],
-                        key="select_to_spk"
-                    )
-                    if st.button("➡️ Đưa vào Database NGƯỜI NÓI", type="secondary"):
-                        if to_move_to_spk:
-                            st.session_state['custom_speakers'].update(to_move_to_spk)
-                            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                            for item in to_move_to_spk: st.session_state['custom_non_speakers'].discard(item.upper())
-                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                            st.success(f"✅ Đã lưu {len(to_move_to_spk)} tên vào Database Người Nói!")
-                            time.sleep(1)
-                            st.rerun()
-                else:
-                    st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
-
-            # --- QUẢN LÝ PHIÊN ÂM TRONG KỊCH BẢN HIỆN TẠI ---
-            st.markdown("---")
-            st.markdown("### 🗣️ TỪ TIẾNG ANH XUẤT HIỆN TRONG KỊCH BẢN HIỆN TẠI")
-            st.caption("Quét và điều chỉnh phiên âm riêng cho kịch bản này (Đã qua bộ lọc thông minh):")
-
-            detected_eng_words = scan_english_words_in_dialogue(uploaded_file, speaker_regex)
-
-            if detected_eng_words:
-                table_data = []
-                for word in detected_eng_words:
-                    current_pho = st.session_state['custom_phonetics'].get(word.upper(), word)
-                    table_data.append({
-                        "Từ Tiếng Anh": word,
-                        "Phiên âm hiện tại": current_pho,
-                        "Đề xuất chỉnh sửa của bạn": current_pho,
-                        "Nạp vào Database": True
-                    })
-
-                df_eng = pd.DataFrame(table_data)
-
-                edited_df = st.data_editor(
-                    df_eng,
-                    column_config={
-                        "Từ Tiếng Anh": st.column_config.TextColumn("Từ Tiếng Anh gốc", disabled=True),
-                        "Phiên âm hiện tại": st.column_config.TextColumn("Phiên âm gán hiện tại", disabled=True),
-                        "Đề xuất chỉnh sửa của bạn": st.column_config.TextColumn("Đề xuất phiên âm mới"),
-                        "Nạp vào Database": st.column_config.CheckboxColumn("Lưu Database?", default=True)
-                    },
-                    disabled=["Từ Tiếng Anh", "Phiên âm hiện tại"],
-                    hide_index=True,
-                    use_container_width=True,
-                    key="phonetic_script_table"
-                )
-
-                if st.button("💾 Nạp chỉnh sửa kịch bản này vào Database Phiên Âm", type="secondary", use_container_width=True):
-                    updated_count = 0
-                    for _, row in edited_df.iterrows():
-                        if row["Nạp vào Database"]:
-                            eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
-                            pho_v = str(row["Đề xuất chỉnh sửa của bạn"]).strip()
-                            if pho_v:
-                                st.session_state['custom_phonetics'][eng_k] = pho_v
-                                updated_count += 1
-                    
-                    save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
-                    st.success(f"✅ Đã cập nhật {updated_count} từ phiên âm vào Database!")
-                    time.sleep(1)
-                    st.rerun()
-            else:
-                st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")
+                    st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")
 
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
@@ -791,123 +876,139 @@ with tab_script:
                 st.balloons()
 
     with col2:
-        st.subheader("📊 Bảng điều khiển (Dashboard)")
-        st.markdown("Thống kê nhanh kịch bản của bạn")
-        
+        st.markdown("### 📊 SaaS Analytics")
         if 'stats' in st.session_state:
             stats = st.session_state['stats']
-            st.metric(label="🎭 Tổng số Nhân vật", value=stats["total_speakers"])
-            st.metric(label="💬 Tổng số Câu thoại", value=stats["total_lines"])
+            
+            st.markdown(f"""
+            <div class="metric-card" style="margin-bottom: 12px;">
+                <div class="metric-label">🎭 Tổng số Nhân vật</div>
+                <div class="metric-value">{stats["total_speakers"]}</div>
+            </div>
+            <div class="metric-card" style="margin-bottom: 12px;">
+                <div class="metric-label">💬 Tổng số Câu thoại</div>
+                <div class="metric-value">{stats["total_lines"]}</div>
+            </div>
+            """, unsafe_allow_html=True)
             
             top_name, top_count = stats["top_speaker"]
-            st.info(f"👑 **Nhân vật nói nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
+            st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
         else:
-            st.info("Bảng thống kê sẽ xuất hiện sau khi bạn xử lý kịch bản.")
+            st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
 
 # ==========================================
 # TAB 2: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
 # ==========================================
 with tab_phonetic_db:
-    st.subheader("📚 TỪ ĐIỂN PHIÊN ÂM GIỌNG NAM (DATABASE TỔNG)")
-    st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
-    
-    # 1. Thêm thủ công từ mới
-    st.markdown("### ➕ Bổ sung từ phiên âm mới vào Kho")
-    c1, c2, c3 = st.columns([2, 2, 1.2])
-    with c1:
-        tab_add_eng = st.text_input("Từ Tiếng Anh gốc:", placeholder="VD: Burger", key=f"tab_add_eng_{st.session_state['pho_input_key']}")
-    with c2:
-        tab_add_pho = st.text_input("Phiên âm giọng Nam:", placeholder="VD: Bơ-gơ", key=f"tab_add_pho_{st.session_state['pho_input_key']}")
-    with c3:
-        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("➕ Thêm vào Database", use_container_width=True, type="primary"):
-            if tab_add_eng and tab_add_pho:
-                k = tab_add_eng.upper().strip()
-                v = tab_add_pho.strip()
-                st.session_state['custom_phonetics'][k] = v
-                save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
-                st.session_state['pho_input_key'] += 1
-                st.success(f"✅ Đã thêm thành công: `{tab_add_eng}` ➔ `{tab_add_pho}`")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.warning("Vui lòng điền đủ 2 ô!")
+    with st.container(border=True):
+        st.subheader("📚 Từ Điển Phiên Âm Giọng Nam (Global Database)")
+        st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
+        
+        # 1. Thêm thủ công từ mới
+        st.markdown("#### ➕ Bổ sung từ phiên âm mới vào Kho")
+        c1, c2, c3 = st.columns([2, 2, 1.2])
+        with c1:
+            tab_add_eng = st.text_input("Từ Tiếng Anh gốc:", placeholder="VD: Burger", key=f"tab_add_eng_{st.session_state['pho_input_key']}")
+        with c2:
+            tab_add_pho = st.text_input("Phiên âm giọng Nam:", placeholder="VD: Bơ-gơ", key=f"tab_add_pho_{st.session_state['pho_input_key']}")
+        with c3:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("➕ Thêm vào Database", use_container_width=True, type="primary"):
+                if tab_add_eng and tab_add_pho:
+                    k = tab_add_eng.upper().strip()
+                    v = tab_add_pho.strip()
+                    st.session_state['custom_phonetics'][k] = v
+                    save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
+                    st.session_state['pho_input_key'] += 1
+                    st.success(f"✅ Đã thêm thành công: `{tab_add_eng}` ➔ `{tab_add_pho}`")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("Vui lòng điền đủ 2 ô!")
 
     st.markdown("---")
-    st.markdown("### 📑 Danh sách toàn bộ Từ phiên âm đã lưu")
+    with st.container(border=True):
+        st.markdown("#### 📑 Danh sách toàn bộ Từ phiên âm đã lưu")
 
-    search_query = st.text_input("🔍 Tìm kiếm từ Tiếng Anh hoặc Từ phiên âm:", placeholder="Gõ từ cần tìm ở đây...").strip().upper()
+        search_query = st.text_input("🔍 Tìm kiếm từ Tiếng Anh hoặc Từ phiên âm:", placeholder="Gõ từ cần tìm ở đây...").strip().upper()
 
-    all_phonetics_dict = st.session_state['custom_phonetics']
-    
-    if search_query:
-        filtered_dict = {
-            k: v for k, v in all_phonetics_dict.items() 
-            if search_query in k or search_query in v.upper()
-        }
-    else:
-        filtered_dict = all_phonetics_dict
+        all_phonetics_dict = st.session_state['custom_phonetics']
+        
+        if search_query:
+            filtered_dict = {
+                k: v for k, v in all_phonetics_dict.items() 
+                if search_query in k or search_query in v.upper()
+            }
+        else:
+            filtered_dict = all_phonetics_dict
 
-    if filtered_dict:
-        db_table_data = []
-        for eng_key, pho_val in sorted(filtered_dict.items()):
-            db_table_data.append({
-                "Từ Tiếng Anh": eng_key,
-                "Phiên âm giọng Nam": pho_val,
-                "Xóa khỏi Database": False
-            })
+        if filtered_dict:
+            db_table_data = []
+            for eng_key, pho_val in sorted(filtered_dict.items()):
+                db_table_data.append({
+                    "Từ Tiếng Anh": eng_key,
+                    "Phiên âm giọng Nam": pho_val,
+                    "Xóa khỏi Database": False
+                })
 
-        df_db = pd.DataFrame(db_table_data)
+            df_db = pd.DataFrame(db_table_data)
 
-        st.caption(f"Đang hiển thị **{len(df_db)}** từ phiên âm trong hệ thống:")
+            st.caption(f"Đang hiển thị **{len(df_db)}** từ phiên âm trong hệ thống:")
 
-        edited_db_df = st.data_editor(
-            df_db,
-            column_config={
-                "Từ Tiếng Anh": st.column_config.TextColumn("Từ Tiếng Anh gốc (In hoa)", disabled=True),
-                "Phiên âm giọng Nam": st.column_config.TextColumn("Phiên âm giọng Nam (Sửa trực tiếp tại đây)"),
-                "Xóa khỏi Database": st.column_config.CheckboxColumn("Tích chọn để XÓA")
-            },
-            disabled=["Từ Tiếng Anh"],
-            hide_index=True,
-            use_container_width=True,
-            key="global_phonetic_db_editor"
-        )
+            edited_db_df = st.data_editor(
+                df_db,
+                column_config={
+                    "Từ Tiếng Anh": st.column_config.TextColumn("Từ Tiếng Anh gốc (In hoa)", disabled=True),
+                    "Phiên âm giọng Nam": st.column_config.TextColumn("Phiên âm giọng Nam (Sửa trực tiếp tại đây)"),
+                    "Xóa khỏi Database": st.column_config.CheckboxColumn("Tích chọn để XÓA")
+                },
+                disabled=["Từ Tiếng Anh"],
+                hide_index=True,
+                use_container_width=True,
+                key="global_phonetic_db_editor"
+            )
 
-        col_save, col_reset = st.columns([2, 1])
-        with col_save:
-            if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT TRONG BẢNG", type="primary", use_container_width=True):
-                new_db = {}
-                deleted_count = 0
-                
-                if search_query:
-                    for k, v in all_phonetics_dict.items():
-                        if k not in filtered_dict:
-                            new_db[k] = v
-
-                for _, row in edited_db_df.iterrows():
-                    eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
-                    pho_v = str(row["Phiên âm giọng Nam"]).strip()
-                    is_delete = row["Xóa khỏi Database"]
+            col_save, col_reset = st.columns([2, 1])
+            with col_save:
+                if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT TRONG BẢNG", type="primary", use_container_width=True):
+                    new_db = {}
+                    deleted_count = 0
                     
-                    if is_delete:
-                        deleted_count += 1
-                    else:
-                        if pho_v:
-                            new_db[eng_k] = pho_v
+                    if search_query:
+                        for k, v in all_phonetics_dict.items():
+                            if k not in filtered_dict:
+                                new_db[k] = v
 
-                st.session_state['custom_phonetics'] = new_db
-                save_json_db(PHONETIC_DB_FILE, new_db)
-                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_count} từ)")
-                time.sleep(1)
-                st.rerun()
+                    for _, row in edited_db_df.iterrows():
+                        eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
+                        pho_v = str(row["Phiên âm giọng Nam"]).strip()
+                        is_delete = row["Xóa khỏi Database"]
+                        
+                        if is_delete:
+                            deleted_count += 1
+                        else:
+                            if pho_v:
+                                new_db[eng_k] = pho_v
 
-        with col_reset:
-            if st.button("♻️ Khôi phục lại Database Mặc định", use_container_width=True):
-                st.session_state['custom_phonetics'] = DEFAULT_SOUTH_VIETNAM_PHONETICS.copy()
-                save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
-                st.success("✅ Đã khôi phục Kho phiên âm mặc định!")
-                time.sleep(1)
-                st.rerun()
-    else:
-        st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
+                    st.session_state['custom_phonetics'] = new_db
+                    save_json_db(PHONETIC_DB_FILE, new_db)
+                    st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_count} từ)")
+                    time.sleep(1)
+                    st.rerun()
+
+            with col_reset:
+                if st.button("♻️ Khôi phục lại Database Mặc định", use_container_width=True):
+                    st.session_state['custom_phonetics'] = DEFAULT_SOUTH_VIETNAM_PHONETICS.copy()
+                    save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
+                    st.success("✅ Đã khôi phục Kho phiên âm mặc định!")
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
+
+# --- FOOTER SAAS CHUYÊN NGHIỆP ---
+st.markdown("""
+<div class="saas-footer">
+    ScriptPro Enterprise Edition • Designed for Professional Script Writing & Dubbing Studios • Streamlit Engine
+</div>
+""", unsafe_allow_html=True)
