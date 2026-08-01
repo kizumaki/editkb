@@ -65,7 +65,6 @@ def build_speaker_regex(custom_speakers):
         pattern_str = rf"({base_pattern}):\s*"
     return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
 
-# --- QUÉT VÀ SOI TẤT CẢ CỤM TỪ DẠNG "TÊN:" TRONG FILE ---
 def scan_candidate_speakers(uploaded_file, speaker_regex):
     doc = Document(io.BytesIO(uploaded_file.getvalue()))
     candidates = Counter()
@@ -78,7 +77,6 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
             candidates[speaker_name] += 1
     return candidates
 
-# --- HELPER FUNCTIONS ---
 def extract_phrases_from_file(file_io, file_name):
     phrases = set()
     try:
@@ -157,8 +155,8 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         new_paragraph.add_run('\t')
-        new_paragraph.paragraph_format.space_after = Pt(0)
         new_paragraph.paragraph_format.space_before = Pt(0)
+        new_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_formatting_to_run(new_paragraph, text)
         return
 
@@ -177,8 +175,8 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
             continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
             continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
             continuation_paragraph.add_run('\t')
-            continuation_paragraph.paragraph_format.space_after = Pt(0)
             continuation_paragraph.paragraph_format.space_before = Pt(0)
+            continuation_paragraph.paragraph_format.space_after = Pt(0)
             apply_html_formatting_to_run(continuation_paragraph, leading_content)
 
         if speaker_name.upper() in NON_SPEAKER_PHRASES:
@@ -188,9 +186,9 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
             continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
             continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
             continuation_paragraph.add_run('\t')
-            apply_html_formatting_to_run(continuation_paragraph, content_block)
-            continuation_paragraph.paragraph_format.space_after = Pt(0)
             continuation_paragraph.paragraph_format.space_before = Pt(0)
+            continuation_paragraph.paragraph_format.space_after = Pt(0)
+            apply_html_formatting_to_run(continuation_paragraph, content_block)
             return
 
         stats_counter[speaker_name] += 1
@@ -218,8 +216,8 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
              new_paragraph.add_run('\t')
 
         if content: apply_html_formatting_to_run(new_paragraph, content)
-        new_paragraph.paragraph_format.space_after = Pt(0)
         new_paragraph.paragraph_format.space_before = Pt(0)
+        new_paragraph.paragraph_format.space_after = Pt(0)
         last_processed_index = next_match_start
     
     remaining_content = text[last_processed_index:].strip()
@@ -229,8 +227,8 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
         continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         continuation_paragraph.add_run('\t')
-        continuation_paragraph.paragraph_format.space_after = Pt(0)
         continuation_paragraph.paragraph_format.space_before = Pt(0)
+        continuation_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_formatting_to_run(continuation_paragraph, remaining_content)
 
 # --- MAIN PROCESSING ---
@@ -268,6 +266,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
         p = document.add_paragraph(speaker_list_text)
         p.runs[0].font.name = 'Times New Roman'
         p.runs[0].font.size = Pt(12)
+        p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(6)
     
     document.add_paragraph()
@@ -288,11 +287,15 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
         if not text or text.upper() == title_text.upper(): continue
         if text.lower().startswith("srt conversion") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
+        # Xử lý Dòng Timecode
         if TIMECODE_REGEX.match(text):
             new_paragraph = document.add_paragraph(text)
             new_paragraph.runs[0].font.bold = True
             new_paragraph.runs[0].font.name = 'Times New Roman'
             new_paragraph.runs[0].font.size = Pt(12)
+            # Triệt tiêu tuyệt đối khoảng cách trên/dưới cho dòng Timecode
+            new_paragraph.paragraph_format.space_before = Pt(0)
+            new_paragraph.paragraph_format.space_after = Pt(0)
         else:
             format_and_split_dialogue(document, text, enable_colors, speaker_color_map, used_colors, stats_counter, speaker_regex)
             
@@ -302,8 +305,11 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     progress_bar.empty()
     status_text.empty()
             
+    # Ép chuẩn định dạng toàn bộ kịch bản (1.5 lines, 0pt spacing)
     for paragraph in document.paragraphs[start_index:]:
         paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
         for run in paragraph.runs:
             run.font.name = 'Times New Roman'
             run.font.size = Pt(12)
@@ -408,7 +414,6 @@ with col1:
         file_name_without_ext = os.path.splitext(original_filename)[0] 
         st.success(f"Đã nhận file: **{original_filename}**")
 
-        # --- BƯỚC SOI BẮT LỖI TỰ ĐỘNG (PREVIEW & HIGHLIGHT) ---
         speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
         candidates = scan_candidate_speakers(uploaded_file, speaker_regex)
 
@@ -456,7 +461,6 @@ with col1:
                     if st.button("➡️ Đưa các từ chọn vào NGƯỜI NÓI", type="secondary"):
                         if to_move_to_spk:
                             st.session_state['custom_speakers'].update(to_move_to_spk)
-                            # Loại bỏ khỏi từ nhiễu nếu có
                             for item in to_move_to_spk:
                                 st.session_state['custom_non_speakers'].discard(item.upper())
                             st.success("Đã khôi phục thành công!")
