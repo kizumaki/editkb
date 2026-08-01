@@ -382,7 +382,7 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
     doc = Document(io.BytesIO(uploaded_file.getvalue()))
     candidates = Counter()
     for p in doc.paragraphs:
-        text = p.text.strip()
+        text = re.sub(r'\t+', ' ', p.text).strip()
         if not text or text.lower().startswith("srt conversion"): 
             continue
         for match in speaker_regex.finditer(text):
@@ -395,7 +395,7 @@ def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
     eng_found = set()
     
     for p in doc.paragraphs:
-        text = p.text.strip()
+        text = re.sub(r'\t+', ' ', p.text).strip()
         if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text):
             continue
         
@@ -429,8 +429,9 @@ def extract_phrases_from_file(file_io, file_name):
         elif file_name.endswith('.docx'):
             doc = Document(io.BytesIO(file_io.getvalue()))
             for p in doc.paragraphs:
-                if p.text.strip():
-                    parts = re.split(r'[,\n]', p.text)
+                p_text = re.sub(r'\t+', ' ', p.text).strip()
+                if p_text:
+                    parts = re.split(r'[,\n]', p_text)
                     phrases.update([part.strip() for part in parts if part.strip()])
         elif file_name.endswith('.xlsx'):
             df = pd.read_excel(file_io, header=None)
@@ -473,16 +474,18 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     return speaker_color_map[speaker_name]
 
 def normalize_phonetics_in_text(text):
-    """Khôi phục cụm 'Phiên_âm (ENGLISH)' về từ 'ENGLISH' nguyên bản để chuẩn hóa lại highlight"""
+    """Khôi phục cụm 'Phiên_âm (ENGLISH)' về từ 'ENGLISH' nguyên bản và xóa bỏ hoàn toàn Tab rác cũ"""
+    text = re.sub(r'\t+', ' ', text)
     def replace_match(m):
         eng_word = m.group(1)
         return eng_word
     pattern = r'\b[\w\s-]+\s*\(([A-Za-z0-9\'-]+)\)'
     cleaned_text = re.sub(pattern, replace_match, text)
-    return cleaned_text
+    return re.sub(r'\s+', ' ', cleaned_text).strip()
 
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
-    if not current_text.strip(): return
+    current_text = re.sub(r'\t+', ' ', current_text).strip()
+    if not current_text: return
     
     phonetic_db = st.session_state['custom_phonetics']
     
@@ -533,6 +536,8 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
         paragraph.add_run(current_text)
 
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
+    # LÀM SẠCH VÀ BỎ TOÀN BỘ KÝ TỰ TAB DƯ THỪA TRONG VĂN BẢN ĐẦU VÀO
+    text = re.sub(r'\t+', ' ', text).strip()
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
@@ -585,7 +590,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         else:
             next_match_start = len(text)
             
-        content = text[end:next_match_start].strip()
+        content = re.sub(r'^\s*[\t\s]+', '', text[end:next_match_start]).strip()
         
         # Lọc bỏ tên diễn viên lồng tiếng cũ nếu vô tình bị dính trong văn bản biên tập
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
@@ -604,7 +609,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if enable_colors:
             run_speaker.font.color.rgb = spk_color
             
-        # 2. KIỂM TRA: Nếu BẬT PHÂN VAI & LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN" (Bold + MÀU ĐỎ + IN HOA)
+        # 2. KIỂM TRA: Nếu BẬT PHÂN VAI & LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN"
         if enable_cast:
             if speaker_name not in seen_speakers_first_time:
                 seen_speakers_first_time.add(speaker_name)
@@ -613,17 +618,15 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                     run_actor.font.bold = True
                     run_actor.font.color.rgb = RED_COLOR
         
-        if len(speaker_full) > 10:
-             new_paragraph.add_run('\t\t')
-        else:
-             new_paragraph.add_run('\t')
+        # CHỈ THÊM ĐÚNG 1 TAB DUY NHẤT ĐỂ KHÔNG BAO GIỜ BỊ "NHẢY TAB" KHỎI CỘT 1.0 INCH
+        new_paragraph.add_run('\t')
 
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
         new_paragraph.paragraph_format.space_before = Pt(0)
         new_paragraph.paragraph_format.space_after = Pt(0)
         last_processed_index = next_match_start
     
-    remaining_content = text[last_processed_index:].strip()
+    remaining_content = re.sub(r'^\s*[\t\s]+', '', text[last_processed_index:]).strip()
     if remaining_content:
         continuation_paragraph = document.add_paragraph()
         continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
@@ -660,7 +663,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     # Quét Danh sách Vai
     unique_speakers = []
     for paragraph in raw_paragraphs:
-        text = paragraph.text.strip()
+        text = re.sub(r'\t+', ' ', paragraph.text).strip()
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
@@ -669,7 +672,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             
     if unique_speakers:
         if enable_cast:
-            # Nếu BẬT Phân vai -> Xuất danh sách hàng dọc kèm diễn viên lồng tiếng
+            # Xuất danh sách hàng dọc kèm diễn viên lồng tiếng (Sạch Tab rác)
             header_vai = document.add_paragraph()
             r_vai = header_vai.add_run("VAI: ")
             r_vai.font.name = 'Times New Roman'
@@ -699,7 +702,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     r_actor.font.bold = True
                     r_actor.font.color.rgb = RED_COLOR
         else:
-            # Nếu TẮT Phân vai -> Xuất dòng VAI tiêu chuẩn gọn gàng
+            # Xuất dòng VAI tiêu chuẩn gọn gàng
             speaker_list_text = "VAI: " + ", ".join(unique_speakers)
             p = document.add_paragraph(speaker_list_text)
             p.runs[0].font.name = 'Times New Roman'
@@ -721,7 +724,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             progress_bar.progress(progress)
             status_text.text(f"Đang phân tích & xử lý {idx}/{total_paras}...")
 
-        text = paragraph.text.strip()
+        text = re.sub(r'\t+', ' ', paragraph.text).strip()
         if not text or text.upper() == title_text.upper(): continue
         if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
