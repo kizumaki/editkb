@@ -55,21 +55,28 @@ NON_SPEAKER_PHRASES = DEFAULT_NON_SPEAKER_PHRASES.union(st.session_state['custom
 TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$")
 HTML_CONTENT_REGEX = re.compile(r"((?:</?[ibu]>)+)(.*?)(?:</?[ibu]>)+", re.IGNORECASE | re.DOTALL)
 
-# --- THUẬT TOÁN TẠO REGEX TỰ ĐỘNG THÔNG MINH ---
 def build_speaker_regex(custom_speakers):
-    """
-    Hỗ trợ Tiếng Việt có dấu, Số, Dấu ngoặc đơn, Dấu chấm, Dấu gạch ngang.
-    Ưu tiên danh sách Người Nói Tùy Chỉnh do người dùng nhập vào.
-    """
-    base_pattern = r"[\w\s&\.\-\(\)]+" # \w trong Python 3 nhận diện được toàn bộ Unicode Tiếng Việt
+    base_pattern = r"[\w\s&\.\-\(\)]+"
     if custom_speakers:
         sorted_custom = sorted(list(custom_speakers), key=len, reverse=True)
         custom_pattern = "|".join([re.escape(s) for s in sorted_custom])
         pattern_str = rf"({custom_pattern}|{base_pattern}):\s*"
     else:
         pattern_str = rf"({base_pattern}):\s*"
-    
     return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
+
+# --- QUÉT VÀ SOI TẤT CẢ CỤM TỪ DẠNG "TÊN:" TRONG FILE ---
+def scan_candidate_speakers(uploaded_file, speaker_regex):
+    doc = Document(io.BytesIO(uploaded_file.getvalue()))
+    candidates = Counter()
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if not text or text.lower().startswith("srt conversion"): 
+            continue
+        for match in speaker_regex.finditer(text):
+            speaker_name = match.group(1).strip()
+            candidates[speaker_name] += 1
+    return candidates
 
 # --- HELPER FUNCTIONS ---
 def extract_phrases_from_file(file_io, file_name):
@@ -174,7 +181,6 @@ def format_and_split_dialogue(document, text, enable_colors, speaker_color_map, 
             continuation_paragraph.paragraph_format.space_before = Pt(0)
             apply_html_formatting_to_run(continuation_paragraph, leading_content)
 
-        # Lọc nếu nằm trong danh sách từ nhiễu
         if speaker_name.upper() in NON_SPEAKER_PHRASES:
             content_block = text[start:]
             continuation_paragraph = document.add_paragraph()
@@ -234,7 +240,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors):
     random.shuffle(used_colors)
     stats_counter = Counter()
     
-    # Tạo Regex động dựa trên người nói tùy chỉnh
     speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
     
     original_document = Document(io.BytesIO(uploaded_file.getvalue()))
@@ -323,7 +328,6 @@ def clean_file_name_for_output(original_filename):
 # --- SIDEBAR (THANH ĐIỀU HƯỚNG) ---
 st.sidebar.title("⚙️ Tùy chỉnh (Settings)")
 
-# Nút Làm Mới Phiên Làm Việc
 if st.sidebar.button("🔄 Làm mới phiên làm việc", use_container_width=True, type="primary"):
     for key in ['processed_file', 'new_filename', 'stats']:
         if key in st.session_state:
@@ -336,8 +340,6 @@ enable_colors = st.sidebar.toggle("🌈 Bật tô màu nhân vật", value=True)
 
 # 1. Quản lý Người Nói Ưu Tiên (WHITELIST)
 with st.sidebar.expander("🎭 Quản lý Tên người nói (Whitelist)", expanded=False):
-    st.markdown("Thêm các tên nhân vật đặc biệt (Tiếng Việt có dấu, có số, ký tự đặc biệt) để app bắt chính xác 100%. (VD: NGƯỜI DẪN CHUYỆN, NV 01, DR. BEN...)")
-    
     manual_spk_input = st.text_area("Nhập thủ công (cách nhau bằng dấu phẩy hoặc xuống dòng):", height=80, key="spk_manual")
     upload_spk_file = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['reset_key']}")
     
@@ -354,8 +356,6 @@ with st.sidebar.expander("🎭 Quản lý Tên người nói (Whitelist)", expan
             st.success(f"Đã thêm {len(new_spks)} tên người nói!")
             time.sleep(1)
             st.rerun()
-        else:
-            st.warning("Vui lòng nhập tên hoặc chọn file!")
 
     if len(st.session_state['custom_speakers']) > 0:
         st.info(f"Đã thêm: **{len(st.session_state['custom_speakers'])}** người nói ưu tiên.")
@@ -365,8 +365,6 @@ with st.sidebar.expander("🎭 Quản lý Tên người nói (Whitelist)", expan
 
 # 2. Quản lý Từ Nhiễu (BLACKLIST)
 with st.sidebar.expander("🚫 Quản lý Từ nhiễu (Non-speaker)", expanded=False):
-    st.markdown("Thêm các cụm từ bị app nhận diện nhầm thành tên nhân vật. (VD: CẢNH 1, MÁY QUAY...)")
-    
     manual_input = st.text_area("Nhập thủ công:", height=80, key="ns_manual")
     upload_non_speaker = st.file_uploader("Tải file danh sách (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['reset_key']}")
     
@@ -383,8 +381,6 @@ with st.sidebar.expander("🚫 Quản lý Từ nhiễu (Non-speaker)", expanded=
             st.success(f"Đã thêm {len(new_phrases)} từ nhiễu!")
             time.sleep(1)
             st.rerun()
-        else:
-            st.warning("Vui lòng nhập từ hoặc chọn file!")
 
     if len(st.session_state['custom_non_speakers']) > 0:
         st.info(f"Đã thêm: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
@@ -410,10 +406,67 @@ with col1:
     if uploaded_file is not None:
         original_filename = uploaded_file.name
         file_name_without_ext = os.path.splitext(original_filename)[0] 
-        
         st.success(f"Đã nhận file: **{original_filename}**")
-        
-        if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True):
+
+        # --- BƯỚC SOI BẮT LỖI TỰ ĐỘNG (PREVIEW & HIGHLIGHT) ---
+        speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
+        candidates = scan_candidate_speakers(uploaded_file, speaker_regex)
+
+        detected_speakers = []
+        detected_non_speakers = []
+
+        for name, count in candidates.items():
+            if name.upper() in NON_SPEAKER_PHRASES:
+                detected_non_speakers.append(f"{name} ({count} lần)")
+            else:
+                detected_speakers.append(f"{name} ({count} lần)")
+
+        with st.expander("🔍 **XEM TRƯỚC: Soát lỗi Người nói & Từ nhiễu trong file**", expanded=True):
+            st.markdown("Kiểm tra nhanh xem app nhận diện đúng tên nhân vật chưa trước khi bấm định dạng:")
+            
+            tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
+            
+            with tab_spk:
+                if detected_speakers:
+                    st.write(", ".join([f"`{s}`" for s in detected_speakers]))
+                    st.markdown("---")
+                    to_move_to_ns = st.multiselect(
+                        "Phát hiện từ nào bị nhận diện sai? Chọn bên dưới để chuyển sang TỪ NHIỄU:",
+                        options=[name for name in candidates.keys() if name.upper() not in NON_SPEAKER_PHRASES],
+                        key="select_to_ns"
+                    )
+                    if st.button("➡️ Đưa các từ chọn vào TỪ NHIỄU", type="secondary"):
+                        if to_move_to_ns:
+                            st.session_state['custom_non_speakers'].update([item.upper() for item in to_move_to_ns])
+                            st.success("Đã chuyển thành công!")
+                            time.sleep(0.8)
+                            st.rerun()
+                else:
+                    st.info("Chưa tìm thấy cụm từ người nói nào.")
+
+            with tab_non_spk:
+                if detected_non_speakers:
+                    st.write(", ".join([f"`{s}`" for s in detected_non_speakers]))
+                    st.markdown("---")
+                    to_move_to_spk = st.multiselect(
+                        "Từ nào thực ra là NGƯỜI NÓI? Chọn bên dưới để khôi phục:",
+                        options=[name for name in candidates.keys() if name.upper() in NON_SPEAKER_PHRASES],
+                        key="select_to_spk"
+                    )
+                    if st.button("➡️ Đưa các từ chọn vào NGƯỜI NÓI", type="secondary"):
+                        if to_move_to_spk:
+                            st.session_state['custom_speakers'].update(to_move_to_spk)
+                            # Loại bỏ khỏi từ nhiễu nếu có
+                            for item in to_move_to_spk:
+                                st.session_state['custom_non_speakers'].discard(item.upper())
+                            st.success("Đã khôi phục thành công!")
+                            time.sleep(0.8)
+                            st.rerun()
+                else:
+                    st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
+
+        st.markdown("---")
+        if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
             try:
                 modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors)
                 new_filename = clean_file_name_for_output(original_filename)
