@@ -363,7 +363,6 @@ DEFAULT_NON_SPEAKER_PHRASES = {
 NON_SPEAKER_PHRASES = DEFAULT_NON_SPEAKER_PHRASES.union(st.session_state['custom_non_speakers'])
 
 TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$")
-HTML_CONTENT_REGEX = re.compile(r"((?:</?[ibu]>)+)(.*?)(?:</?[ibu]>)+", re.IGNORECASE | re.DOTALL)
 ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 
 RED_COLOR = RGBColor(255, 0, 0) # Màu đỏ chuẩn cho Tên Diễn Viên Lồng Tiếng
@@ -528,6 +527,47 @@ def normalize_phonetics_in_text(text):
     cleaned_text = re.sub(pattern, replace_match, text)
     return re.sub(r'\s+', ' ', cleaned_text).strip()
 
+def add_text_run_with_html(paragraph, text, highlight=None):
+    """
+    BÓC TÁCH HOÀN TOÀN CÁC THẺ HTML <i>, <b>, <u>
+    Chuyển đổi thành chữ In Nghiêng (Italic), In Đậm (Bold), Gạch Chân (Underline) chuẩn Word
+    """
+    if not text:
+        return
+    tag_regex = re.compile(r'(</?[ibuIBU]>)')
+    parts = tag_regex.split(text)
+    
+    is_italic = False
+    is_bold = False
+    is_underline = False
+    
+    for part in parts:
+        if not part:
+            continue
+        lower_part = part.lower()
+        if lower_part == '<i>':
+            is_italic = True
+        elif lower_part == '</i>':
+            is_italic = False
+        elif lower_part == '<b>':
+            is_bold = True
+        elif lower_part == '</b>':
+            is_bold = False
+        elif lower_part == '<u>':
+            is_underline = True
+        elif lower_part == '</u>':
+            is_underline = False
+        else:
+            run = paragraph.add_run(part)
+            if is_italic:
+                run.font.italic = True
+            if is_bold:
+                run.font.bold = True
+            if is_underline:
+                run.font.underline = True
+            if highlight:
+                run.font.highlight_color = highlight
+
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
     current_text = re.sub(r'\t+', ' ', current_text).strip()
     if not current_text: return
@@ -535,17 +575,7 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     phonetic_db = st.session_state['custom_phonetics']
     
     if not enable_phonetic:
-        matches = list(HTML_CONTENT_REGEX.finditer(current_text))
-        last_end = 0
-        for match in matches:
-            tag_text = match.group(2)
-            start, end = match.span()
-            if start > last_end: paragraph.add_run(current_text[last_end:start])
-            run_html = paragraph.add_run(tag_text)
-            run_html.font.bold = True
-            run_html.font.italic = True
-            last_end = end
-        if last_end < len(current_text): paragraph.add_run(current_text[last_end:])
+        add_text_run_with_html(paragraph, current_text)
         return
 
     sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
@@ -563,22 +593,19 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
             start, end = match.span()
             
             if start > last_end:
-                paragraph.add_run(current_text[last_end:start])
+                add_text_run_with_html(paragraph, current_text[last_end:start])
                 
             pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
             
-            run_pho = paragraph.add_run(f"{pho_text} ")
-            run_pho.font.highlight_color = WD_COLOR_INDEX.YELLOW
-            
-            run_eng = paragraph.add_run(f"({eng_word_original})")
-            run_eng.font.highlight_color = WD_COLOR_INDEX.YELLOW
+            add_text_run_with_html(paragraph, f"{pho_text} ", highlight=WD_COLOR_INDEX.YELLOW)
+            add_text_run_with_html(paragraph, f"({eng_word_original})", highlight=WD_COLOR_INDEX.YELLOW)
             
             last_end = end
             
         if last_end < len(current_text):
-            paragraph.add_run(current_text[last_end:])
+            add_text_run_with_html(paragraph, current_text[last_end:])
     else:
-        paragraph.add_run(current_text)
+        add_text_run_with_html(paragraph, current_text)
 
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
