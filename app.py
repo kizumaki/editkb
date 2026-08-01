@@ -102,39 +102,31 @@ VN_SYLLABLES = {
 }
 
 def is_candidate_english_word(word):
-    """
-    Hàm kiểm tra thông minh lọc chính xác từ Tiếng Anh / Tên riêng nước ngoài
-    """
     clean_w = word.strip(".,!?:;\"'()[]{}")
     if not clean_w or len(clean_w) <= 1 or clean_w.isdigit():
         return False
         
     lower_w = clean_w.lower()
     
-    # 1. Đã có trong Database phiên âm -> CHẮC CHẮN GIỮ LẠI
     if clean_w.upper() in st.session_state['custom_phonetics']:
         return True
         
-    # 2. Nếu nằm trong danh sách âm tiết Tiếng Việt -> LOẠI BỎ NGAY LẬP TỨC
     if lower_w in VN_SYLLABLES:
         return False
         
-    # 3. Chứa ký tự ngoại ngữ đặc trưng (f, j, w, z)
     if any(char in lower_w for char in ['f', 'j', 'w', 'z']):
         return True
         
-    # 4. Chứa cụm phụ âm đôi hoặc hậu tố Tiếng Anh
     eng_patterns = [
         r"(bb|cc|dd|ff|gg|ll|mm|nn|pp|rr|ss|tt|zz)",
         r"(sh|ck|th|wh|ph|gh)",
         r"(tion|ment|ness|less|ing|ed|able|ible|ally|ce|ge|ck)$",
-        r"^([A-Z]{2,})$" # Viết tắt in hoa (KFC, TNT, FBI)
+        r"^([A-Z]{2,})$"
     ]
     for pattern in eng_patterns:
         if re.search(pattern, clean_w):
             return True
             
-    # 5. Viết hoa chữ cái đầu và không phải âm tiết tiếng Việt (VD: Allison, Arsement)
     if clean_w[0].isupper() and lower_w not in VN_SYLLABLES:
         return True
         
@@ -239,7 +231,6 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
     return candidates
 
 def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
-    """Quét và áp dụng thuật toán lọc thông minh"""
     doc = Document(io.BytesIO(uploaded_file.getvalue()))
     eng_found = set()
     
@@ -264,7 +255,6 @@ def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
 
         for match in ENGLISH_WORD_REGEX.finditer(dialogue_content):
             word = match.group(0).strip()
-            # Gọi hàm lọc thông minh is_candidate_english_word
             if is_candidate_english_word(word):
                 eng_found.add(word)
                 
@@ -302,8 +292,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, v, t
-            elif i % 6 == 3: r, g, b = p, q, v
+            elif i % 6 == 2: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
         r, g, b = int(r * 255), int(g * 255), int(b * 255)
@@ -323,6 +312,9 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     return speaker_color_map[speaker_name]
 
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
+    """
+    Xử lý chèn Phiên Âm Giọng Nam + Highlight VÀNG CHO CẢ CỤM PHIÊN ÂM VÀ TỪ TIẾNG ANH
+    """
     if not current_text.strip(): return
     
     phonetic_db = st.session_state['custom_phonetics']
@@ -355,13 +347,18 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
             eng_word_original = match.group(0)
             start, end = match.span()
             
+            # 1. Thêm đoạn văn bản tiếng Việt phía trước
             if start > last_end:
                 paragraph.add_run(current_text[last_end:start])
                 
+            # 2. Lấy phiên âm tương ứng
             pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
             
+            # 3. Thêm phiên âm giọng Nam (HIGHLIGHT VÀNG)
             run_pho = paragraph.add_run(f"{pho_text} ")
+            run_pho.font.highlight_color = WD_COLOR_INDEX.YELLOW
             
+            # 4. Thêm từ Tiếng Anh gốc đặt trong ngoặc () (HIGHLIGHT VÀNG)
             run_eng = paragraph.add_run(f"({eng_word_original})")
             run_eng.font.highlight_color = WD_COLOR_INDEX.YELLOW
             
