@@ -9,7 +9,7 @@ import random
 from collections import Counter
 import time
 import pandas as pd
-import json # Thêm thư viện quản lý Database JSON
+import json
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT ---
 st.set_page_config(page_title="Pro Script Editor", page_icon="🎬", layout="wide")
@@ -36,7 +36,7 @@ def save_json_db(filepath, data_set):
     except Exception as e:
         st.error(f"Không thể lưu vào Database: {e}")
 
-# Khởi tạo Session State kết hợp với Database JSON
+# Khởi tạo Session State
 if 'reset_key' not in st.session_state:
     st.session_state['reset_key'] = 0
 
@@ -382,16 +382,18 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
         if new_spks:
             st.session_state['custom_speakers'].update(new_spks)
             save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers']) # Cập nhật Database
+            
+            # Xóa ngay lập tức khung nhập liệu và file uploader
+            st.session_state['spk_manual'] = ""
+            st.session_state['reset_key'] += 1
+            
             st.success(f"✅ Đã lưu {len(new_spks)} người nói vào Database!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_speakers']) > 0:
         st.info(f"Database đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
-        if st.button("🗑️ Xóa sạch Database Người nói"):
-            st.session_state['custom_speakers'] = set()
-            save_json_db(SPEAKER_DB_FILE, set())
-            st.rerun()
+        # ĐÃ XÓA NÚT XÓA DATABASE ĐỂ TRÁNH BẤM NHẦM
 
 # 2. Quản lý Từ Nhiễu (BLACKLIST)
 with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
@@ -409,16 +411,18 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
         if new_phrases:
             st.session_state['custom_non_speakers'].update(new_phrases)
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers']) # Cập nhật Database
+            
+            # Xóa ngay lập tức khung nhập liệu và file uploader
+            st.session_state['ns_manual'] = ""
+            st.session_state['reset_key'] += 1
+            
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu vào Database!")
             time.sleep(1)
             st.rerun()
 
     if len(st.session_state['custom_non_speakers']) > 0:
         st.info(f"Database đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
-        if st.button("🗑️ Xóa sạch Database Từ nhiễu"):
-            st.session_state['custom_non_speakers'] = set()
-            save_json_db(NON_SPEAKER_DB_FILE, set())
-            st.rerun()
+        # ĐÃ XÓA NÚT XÓA DATABASE ĐỂ TRÁNH BẤM NHẦM
 
 # --- GIAO DIỆN CHÍNH (UI) ---
 st.title("🎬 Kịch Bản Pro - Word Script Editor")
@@ -470,8 +474,8 @@ with col1:
                         if to_move_to_ns:
                             new_items = [item.upper() for item in to_move_to_ns]
                             st.session_state['custom_non_speakers'].update(new_items)
-                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers']) # LƯU DATABASE
-                            st.success(f"✅ Đã lưu thành công {len(new_items)} từ vào Database Từ Nhiễu! App sẽ tự ghi nhớ cho các kịch bản sau.")
+                            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                            st.success(f"✅ Đã lưu thành công {len(new_items)} từ vào Database Từ Nhiễu!")
                             time.sleep(1.2)
                             st.rerun()
                 else:
@@ -489,13 +493,13 @@ with col1:
                     if st.button("➡️ Đưa các từ chọn vào Database NGƯỜI NÓI", type="secondary"):
                         if to_move_to_spk:
                             st.session_state['custom_speakers'].update(to_move_to_spk)
-                            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers']) # LƯU DATABASE
+                            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
                             
                             for item in to_move_to_spk:
                                 st.session_state['custom_non_speakers'].discard(item.upper())
                             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
                             
-                            st.success(f"✅ Đã lưu thành công {len(to_move_to_spk)} tên vào Database Người Nói! App sẽ tự ghi nhớ cho các kịch bản sau.")
+                            st.success(f"✅ Đã lưu thành công {len(to_move_to_spk)} tên vào Database Người Nói!")
                             time.sleep(1.2)
                             st.rerun()
                 else:
