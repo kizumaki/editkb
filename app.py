@@ -390,7 +390,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, q, v
+            elif i % 6 == 2: r, g, b = p, v, t
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -448,7 +448,6 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
                 
             pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
             
-            # Tô màu Highlight VÀNG cho CẢ CỤM phiên âm + từ Tiếng Anh
             run_pho = paragraph.add_run(f"{pho_text} ")
             run_pho.font.highlight_color = WD_COLOR_INDEX.YELLOW
             
@@ -1006,9 +1005,9 @@ with tab_phonetic_db:
         else:
             st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
-# --- FOOTER SAAS CHUYÊN NGHIỆP ---
+# --- FOOTER SAAS TÙY CHỈNH ---
 st.markdown("""
 <div class="saas-footer">
-    ScriptPro Enterprise Edition • Designed for Professional Script Writing & Dubbing Studios • Streamlit Engine
+    ScriptPro Enterprise Edition • Designed for Mai Han Team
 </div>
 """, unsafe_allow_html=True)
