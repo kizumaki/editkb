@@ -126,6 +126,7 @@ NON_SPEAKER_DB_FILE = "custom_non_speakers.json"
 SPEAKER_DB_FILE = "custom_speakers.json"
 PHONETIC_DB_FILE = "custom_phonetics.json"
 CAST_DB_FILE = "custom_cast_mapping.json"
+TRACKER_DB_FILE = "dubbing_tracker.json"
 
 DEFAULT_CAST_MAPPING = {
     "BRI": "TRÚC",
@@ -286,7 +287,7 @@ def load_json_db(filepath, default_data=None):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return set(data) if isinstance(data, list) else data
+                return set(data) if isinstance(data, list) and isinstance(default_data, set) else data
         except Exception:
             pass
     return default_data if default_data is not None else (set() if not isinstance(default_data, dict) else {})
@@ -330,6 +331,9 @@ if 'custom_cast_mapping' not in st.session_state:
     loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
     merged_cast = {**DEFAULT_CAST_MAPPING, **loaded_cast}
     st.session_state['custom_cast_mapping'] = merged_cast
+
+if 'dubbing_tracker' not in st.session_state:
+    st.session_state['dubbing_tracker'] = load_json_db(TRACKER_DB_FILE, [])
 
 # --- DANH SÁCH MẶC ĐỊNH ---
 DEFAULT_NON_SPEAKER_PHRASES = {
@@ -378,15 +382,10 @@ def build_speaker_regex(custom_speakers):
     return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
 
 def is_stage_direction(name):
-    """Kiểm tra nếu chuỗi nằm trong ngoặc đơn (Ghi chú hành động như: (Thì thầm:), (Giọng méo tiếng:)...)"""
     clean = name.strip()
     return clean.startswith('(') or clean.endswith(')')
 
 def get_paragraph_text_with_html(paragraph):
-    """
-    Trích xuất văn bản từ Paragraph và bảo toàn định dạng In Nghiêng (Italic) từ Word
-    chuyển thành các thẻ <i>...</i> để hệ thống tiếp tục giữ nguyên ở mọi công đoạn
-    """
     text = ""
     for run in paragraph.runs:
         r_text = run.text
@@ -400,10 +399,6 @@ def get_paragraph_text_with_html(paragraph):
     return text
 
 def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
-    """
-    TỰ ĐỘNG BẮC CẶP VÀ GỘP DÒNG TÊN VAI MỒ CỜ VỚI DÒNG THOẠI NGAY PHÍA SAU
-    Loại bỏ hoàn toàn lỗi Enter xuống dòng và phân biệt chính xác ghi chú (Thì thầm:)
-    """
     cleaned_paras = []
     i = 0
     total = len(raw_paragraphs)
@@ -421,10 +416,8 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
         if valid_spk_matches:
             last_match = valid_spk_matches[-1]
             content_after = text[last_match.end():].strip()
-            # Bóc tách sạch thẻ HTML để kiểm tra xem có thoại thật không
             real_content = re.sub(r'</?[ibuIBU]>', '', content_after).strip()
             
-            # Nếu dòng chỉ có tên vai (hoặc kèm thẻ HTML mở như <i>) mà chưa có thoại thật
             if not real_content:
                 next_i = i + 1
                 while next_i < total:
@@ -448,9 +441,8 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
                             is_next_speaker = True
                     
                     if not (is_timecode or is_number or is_srt or is_next_speaker):
-                        # GỘP HAI DÒNG LÀM MỘT!
                         text = f"{text}{next_text}" if text.endswith('>') else f"{text} {next_text}"
-                        i = next_i # Bỏ qua dòng kế tiếp vì đã gộp
+                        i = next_i
         
         cleaned_paras.append(text)
         i += 1
@@ -554,7 +546,6 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     return speaker_color_map[speaker_name]
 
 def normalize_phonetics_in_text(text):
-    """Khôi phục cụm 'Phiên_âm (ENGLISH)' về từ 'ENGLISH' nguyên bản và xóa bỏ hoàn toàn Tab rác cũ"""
     text = re.sub(r'\t+', ' ', text)
     def replace_match(m):
         eng_word = m.group(1)
@@ -564,10 +555,6 @@ def normalize_phonetics_in_text(text):
     return re.sub(r'\s+', ' ', cleaned_text).strip()
 
 def add_text_run_with_html(paragraph, text, highlight=None):
-    """
-    BÓC TÁCH HOÀN TOÀN CÁC THẺ HTML <i>, <b>, <u>
-    Chuyển đổi thành chữ In Nghiêng (Italic), In Đậm (Bold), Gạch Chân (Underline) chuẩn Word
-    """
     if not text:
         return
     tag_regex = re.compile(r'(</?[ibuIBU]>)')
@@ -648,7 +635,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
-    # Lọc bỏ các match trùng với ghi chú hành động như (Thì thầm:)
     speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
     
     if not speaker_matches:
@@ -700,7 +686,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
             
         content = re.sub(r'^\s*[\t\s]+', '', text[end:next_match_start]).strip()
         
-        # Lọc bỏ tên diễn viên lồng tiếng cũ nếu vô tình bị dính trong văn bản biên tập
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
         if enable_cast and actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
@@ -710,7 +695,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         
-        # 1. Tên Người Nói CHỈ CHỨA TÊN VÀ DẤU HAI CHẤM
         spk_text = f"{speaker_name}:"
         spk_color = get_speaker_color(speaker_name, speaker_color_map, used_colors)
         run_speaker = new_paragraph.add_run(spk_text)
@@ -718,7 +702,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if enable_colors:
             run_speaker.font.color.rgb = spk_color
             
-        # 2. KIỂM TRA & TÍNH CHÍNH XÁC ĐỘ DÀI TIỀN TỐ
         prefix_len = len(spk_text)
         if enable_cast:
             if speaker_name not in seen_speakers_first_time:
@@ -729,9 +712,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                     run_actor.font.color.rgb = RED_COLOR
                     prefix_len += len(actor_name) + 1
         
-        # 3. CHỌN DẤU PHÂN CÁCH CHUẨN:
-        # NẾU TỔNG VAI DÀI (>= 10 KÝ TỰ) -> CHÈN DUY NHẤT 1 PHÍM CÁCH SPACEBAR ' '
-        # NẾU VAI NGẮN (< 10 KÝ TỰ) -> CHÈN DUY NHẤT 1 PHÍM TAB '\t'
         if prefix_len >= 10:
             new_paragraph.add_run(' ')
         else:
@@ -766,12 +746,10 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     original_document = Document(io.BytesIO(uploaded_file.getvalue()))
     raw_paragraphs = [p for p in original_document.paragraphs]
     
-    # GỘP CÁC DÒNG TÊN VAI MỒ CỜ TRƯỚC KHÍ XỬ LÝ
     processed_strings = preprocess_raw_paragraphs(raw_paragraphs, speaker_regex)
     
     document = Document()
     
-    # Tiêu đề Kịch bản
     title_text_raw = file_name_without_ext.upper()
     title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace("_FINAL", "").replace(" (GỐC)", "").strip()
     title_paragraph = document.add_paragraph(title_text)
@@ -780,18 +758,20 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     title_paragraph.runs[0].font.size = Pt(20)
     title_paragraph.runs[0].bold = True
     
-    # Quét Danh sách Vai
     unique_speakers = []
+    assigned_actors = []
     for text in processed_strings:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
             if not is_stage_direction(speaker_name) and speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
+                act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+                if act and act not in assigned_actors:
+                    assigned_actors.append(act)
             
     if unique_speakers:
         if enable_cast:
-            # Xuất danh sách hàng dọc kèm diễn viên lồng tiếng (Sạch Tab rác)
             header_vai = document.add_paragraph()
             r_vai = header_vai.add_run("VAI: ")
             r_vai.font.name = 'Times New Roman'
@@ -821,7 +801,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     r_actor.font.bold = True
                     r_actor.font.color.rgb = RED_COLOR
         else:
-            # Xuất dòng VAI tiêu chuẩn gọn gàng
             speaker_list_text = "VAI: " + ", ".join(unique_speakers)
             p = document.add_paragraph(speaker_list_text)
             p.runs[0].font.name = 'Times New Roman'
@@ -879,7 +858,9 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     stats = {
         "total_speakers": len(unique_speakers),
         "total_lines": sum(stats_counter.values()),
-        "top_speaker": stats_counter.most_common(1)[0] if stats_counter else ("Không có", 0)
+        "top_speaker": stats_counter.most_common(1)[0] if stats_counter else ("Không có", 0),
+        "actors_list": assigned_actors,
+        "video_title": title_text
     }
     
     return modified_file, stats
@@ -964,10 +945,11 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- MÀN HÌNH CHÍNH TÁCH 4 TABS ---
-tab_script, tab_resync, tab_cast_db, tab_phonetic_db = st.tabs([
+# --- MÀN HÌNH CHÍNH TÁCH 5 TABS ---
+tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
+    "📋 Theo dõi Lồng tiếng",
     "🎭 Bảng Phân Vai Lồng Tiếng", 
     "📚 Kho Database Phiên Âm Giọng Nam"
 ])
@@ -1238,6 +1220,25 @@ with tab_resync:
                     st.session_state['resync_new_filename'] = r_new_filename
                     st.session_state['resync_stats'] = r_stats
                     
+                    # CẬP NHẬT TỰ ĐỘNG SANG TAB "THEO DÕI LỒNG TIẾNG"
+                    video_title = r_stats.get("video_title", r_name_no_ext)
+                    actors_list = r_stats.get("actors_list", [])
+                    actors_str = ", ".join(actors_list) if actors_list else "Chưa có thông tin"
+                    
+                    tracker_list = st.session_state['dubbing_tracker']
+                    existing_entry = next((item for item in tracker_list if item['video_title'].upper() == video_title.upper()), None)
+                    
+                    if existing_entry:
+                        existing_entry['actors'] = actors_str
+                    else:
+                        tracker_list.append({
+                            "video_title": video_title,
+                            "actors": actors_str
+                        })
+                    
+                    st.session_state['dubbing_tracker'] = tracker_list
+                    save_json_db(TRACKER_DB_FILE, tracker_list)
+                    
                 except Exception as e:
                     st.error(f"Lỗi xảy ra khi Re-Sync: {e}")
                     
@@ -1278,7 +1279,89 @@ with tab_resync:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
+# TAB 3: THEO DÕI LỒNG TIẾNG (TỰ ĐỘNG TRUY XUẤT)
+# ==========================================
+with tab_dub_tracker:
+    with st.container(border=True):
+        st.subheader("📋 BẢNG THEO DÕI LỒNG TIẾNG THEO VIDEO")
+        st.markdown("Nhật ký tự động cập nhật danh sách diễn viên tham gia lồng tiếng mỗi khi render kịch bản **FINAL** ở Tab 2.")
+
+        search_track = st.text_input("🔍 Tìm kiếm theo Tiêu đề video hoặc Tên diễn viên lồng tiếng:", placeholder="Gõ tiêu đề video hoặc tên diễn viên...").strip().upper()
+
+        tracker_data = st.session_state['dubbing_tracker']
+
+        if search_track:
+            filtered_tracker = [
+                item for item in tracker_data
+                if search_track in item['video_title'].upper() or search_track in item['actors'].upper()
+            ]
+        else:
+            filtered_tracker = tracker_data
+
+        if filtered_tracker:
+            formatted_table = []
+            for idx, item in enumerate(filtered_tracker, 1):
+                formatted_table.append({
+                    "STT": idx,
+                    "Tiêu đề video": item['video_title'],
+                    "Diễn viên lồng tiếng": item['actors'],
+                    "Xóa dòng": False
+                })
+
+            df_tracker = pd.DataFrame(formatted_table)
+
+            edited_tracker_df = st.data_editor(
+                df_tracker,
+                column_config={
+                    "STT": st.column_config.NumberColumn("STT", disabled=True, width="small"),
+                    "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video (Chỉnh sửa trực tiếp)"),
+                    "Diễn viên lồng tiếng": st.column_config.TextColumn("Diễn viên lồng tiếng (Chỉnh sửa trực tiếp)"),
+                    "Xóa dòng": st.column_config.CheckboxColumn("Xóa?")
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="dubbing_tracker_editor"
+            )
+
+            col_tr1, col_tr2 = st.columns([1, 1])
+            with col_tr1:
+                if st.button("💾 LƯU CẬP NHẬT BẢNG THEO DÕI", type="primary", use_container_width=True):
+                    new_tracker = []
+                    deleted_cnt = 0
+                    for _, row in edited_tracker_df.iterrows():
+                        if row["Xóa dòng"]:
+                            deleted_cnt += 1
+                        else:
+                            new_tracker.append({
+                                "video_title": str(row["Tiêu đề video"]).strip(),
+                                "actors": str(row["Diễn viên lồng tiếng"]).strip()
+                            })
+                    st.session_state['dubbing_tracker'] = new_tracker
+                    save_json_db(TRACKER_DB_FILE, new_tracker)
+                    st.success(f"✅ Đã cập nhật bảng theo dõi! (Đã xóa {deleted_cnt} video)")
+                    time.sleep(1)
+                    st.rerun()
+
+            with col_tr2:
+                # Nút Xuất file Excel cho Team
+                buffer_excel = io.BytesIO()
+                with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
+                    export_df = df_tracker[["STT", "Tiêu đề video", "Diễn viên lồng tiếng"]]
+                    export_df.to_excel(writer, index=False, sheet_name="Theo Doi Long Tieng")
+                buffer_excel.seek(0)
+
+                st.download_button(
+                    label="📊 XUẤT BẢNG THEO DÕI RA EXCEL (.XLSX)",
+                    data=buffer_excel,
+                    file_name="Bao_Cao_Theo_Doi_Long_Tieng.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("Chưa có dữ liệu theo dõi. Hãy chạy Re-Sync ở Tab 2 để tự động ghi nhận video mới!")
+
+# ==========================================
+# TAB 4: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
 # ==========================================
 with tab_cast_db:
     with st.container(border=True):
@@ -1376,7 +1459,7 @@ with tab_cast_db:
             st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
-# TAB 4: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
+# TAB 5: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
 # ==========================================
 with tab_phonetic_db:
     with st.container(border=True):
