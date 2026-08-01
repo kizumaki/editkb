@@ -128,45 +128,45 @@ PHONETIC_DB_FILE = "custom_phonetics.json"
 CAST_DB_FILE = "custom_cast_mapping.json"
 
 DEFAULT_CAST_MAPPING = {
-    "BRI": "Trúc",
-    "CHASE": "Thiện",
-    "PRESTON": "Khánh",
-    "SCOTT": "Thông",
-    "KEELEY": "Tú",
-    "DAKA": "Quang",
-    "STEPHEN": "Quang",
-    "VINCE": "Quang",
-    "JOSH": "Thông",
-    "YOMI": "Tú",
-    "LARRY": "A. Trung",
-    "CHLOE": "Tú",
-    "STEVEN": "Quang (hoặc Thông)",
-    "LOGAN": "Thông",
-    "NATHAN": "A. Trung",
-    "RILEY": "Phụng",
-    "ZHONG": "Thông",
-    "MICHELLE (YOUTUBER)": "Tú",
-    "BEN AZELART": "Quang",
-    "ZONG": "Thông",
-    "BA BRI": "Thông",
-    "TYLER": "Phát",
-    "COBY": "Thiện",
-    "CORY": "Khánh",
-    "SPARKY": "A. Trung",
-    "GARRETT": "C. Dũng",
-    "CODY": "Cường",
-    "BETHANY": "Trúc",
-    "KRISTIN": "Phụng",
-    "AMY": "Tú",
-    "ALLISON": "Tú",
-    "AUBREY": "Phụng",
-    "TY JACKSON": "Thông",
-    "HLV": "Cường",
-    "JACKSON OLSON": "Thông",
-    "DANNY": "Quang",
-    "KYLE": "Quang",
-    "BILL": "Hita",
-    "TIM": "Hita"
+    "BRI": "TRÚC",
+    "CHASE": "THIỆN",
+    "PRESTON": "KHÁNH",
+    "SCOTT": "THÔNG",
+    "KEELEY": "TÚ",
+    "DAKA": "QUANG",
+    "STEPHEN": "QUANG",
+    "VINCE": "QUANG",
+    "JOSH": "THÔNG",
+    "YOMI": "TÚ",
+    "LARRY": "A.TRUNG",
+    "CHLOE": "TÚ",
+    "STEVEN": "QUANG (HOẶC THÔNG)",
+    "LOGAN": "THÔNG",
+    "NATHAN": "A.TRUNG",
+    "RILEY": "PHỤNG",
+    "ZHONG": "THÔNG",
+    "MICHELLE (YOUTUBER)": "TÚ",
+    "BEN AZELART": "QUANG",
+    "ZONG": "THÔNG",
+    "BA BRI": "THÔNG",
+    "TYLER": "PHÁT",
+    "COBY": "THIỆN",
+    "CORY": "KHÁNH",
+    "SPARKY": "A.TRUNG",
+    "GARRETT": "C.DŨNG",
+    "CODY": "CƯỜNG",
+    "BETHANY": "TRÚC",
+    "KRISTIN": "PHỤNG",
+    "AMY": "TÚ",
+    "ALLISON": "TÚ",
+    "AUBREY": "PHỤNG",
+    "TY JACKSON": "THÔNG",
+    "HLV": "CƯỜNG",
+    "JACKSON OLSON": "THÔNG",
+    "DANNY": "QUANG",
+    "KYLE": "QUANG",
+    "BILL": "HITA",
+    "TIM": "HITA"
 }
 
 DEFAULT_SOUTH_VIETNAM_PHONETICS = {
@@ -364,6 +364,8 @@ TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}
 HTML_CONTENT_REGEX = re.compile(r"((?:</?[ibu]>)+)(.*?)(?:</?[ibu]>)+", re.IGNORECASE | re.DOTALL)
 ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 
+RED_COLOR = RGBColor(255, 0, 0) # Màu đỏ chuẩn cho Tên Diễn Viên Lồng Tiếng
+
 def build_speaker_regex(custom_speakers):
     base_pattern = r"[\w\s&\.\-\(\)]+"
     if custom_speakers:
@@ -448,7 +450,7 @@ def generate_vibrant_rgb_colors(count=200):
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
             if i % 6 == 0: r, g, b = v, t, p
             elif i % 6 == 1: r, g, b = q, v, p
-            elif i % 6 == 2: r, g, b = p, v, t
+            elif i % 6 == 2: r, g, b = p, q, v
             elif i % 6 == 3: r, g, b = p, q, v
             elif i % 6 == 4: r, g, b = t, p, v
             else: r, g, b = v, p, q
@@ -519,7 +521,7 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     else:
         paragraph.add_run(current_text)
 
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex):
+def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
@@ -578,12 +580,24 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, sp
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         
+        # 1. Thêm Tên Người Nói (Bold + Màu đại diện)
+        spk_color = get_speaker_color(speaker_name, speaker_color_map, used_colors)
         run_speaker = new_paragraph.add_run(speaker_full)
         run_speaker.font.bold = True
-        
         if enable_colors:
-            run_speaker.font.color.rgb = get_speaker_color(speaker_name, speaker_color_map, used_colors)
+            run_speaker.font.color.rgb = spk_color
+            
+        # 2. KIỂM TRA: Nếu là LẦN ĐẦU TIÊN xuất hiện trong kịch bản -> Chèn " TÊN_DIỄN_VIÊN" (Bold + MÀU ĐỎ + IN HOA)
+        if speaker_name not in seen_speakers_first_time:
+            seen_speakers_first_time.add(speaker_name)
+            actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+            if actor_name:
+                run_actor = new_paragraph.add_run(f" {actor_name}")
+                run_actor.font.bold = True
+                run_actor.font.color.rgb = RED_COLOR # Màu đỏ chuẩn
         
+        # Cấu hình Tab thẳng hàng
+        full_heading_len = len(speaker_full)
         if len(speaker_full) > 10:
              new_paragraph.add_run('\t\t')
         else:
@@ -611,6 +625,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors)
     stats_counter = Counter()
+    seen_speakers_first_time = set() # Theo dõi các nhân vật xuất hiện lần đầu tiên
     
     speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
     
@@ -618,6 +633,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     raw_paragraphs = [p for p in original_document.paragraphs]
     document = Document()
     
+    # 1. Tiêu đề Kịch bản
     title_text_raw = file_name_without_ext.upper()
     title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace(" (GỐC)", "").strip()
     title_paragraph = document.add_paragraph(title_text)
@@ -626,6 +642,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     title_paragraph.runs[0].font.size = Pt(20)
     title_paragraph.runs[0].bold = True
     
+    # 2. Quét Danh sách Vai & Phân vai xếp theo HÀNG DỌC ở đầu kịch bản
     unique_speakers = []
     for paragraph in raw_paragraphs:
         text = paragraph.text
@@ -636,23 +653,37 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 unique_speakers.append(speaker_name)
             
     if unique_speakers:
-        cast_list_items = []
+        header_vai = document.add_paragraph()
+        r_vai = header_vai.add_run("VAI: ")
+        r_vai.font.name = 'Times New Roman'
+        r_vai.font.size = Pt(12)
+        r_vai.font.bold = True
+        header_vai.paragraph_format.space_before = Pt(0)
+        header_vai.paragraph_format.space_after = Pt(0)
+
         for spk in unique_speakers:
-            actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "")
-            if actor:
-                cast_list_items.append(f"{spk} ({actor})")
-            else:
-                cast_list_items.append(spk)
+            p_spk = document.add_paragraph()
+            p_spk.paragraph_format.space_before = Pt(0)
+            p_spk.paragraph_format.space_after = Pt(0)
+            
+            # Tên nhân vật Tiếng Anh (Màu trùng với màu tô trong kịch bản)
+            spk_color = get_speaker_color(spk, speaker_color_map, used_colors)
+            r_spk_name = p_spk.add_run(f"{spk}: ")
+            r_spk_name.font.name = 'Times New Roman'
+            r_spk_name.font.size = Pt(12)
+            r_spk_name.font.bold = True
+            if enable_colors:
+                r_spk_name.font.color.rgb = spk_color
                 
-        speaker_list_text = "VAI LỒNG TIẾNG: " + ", ".join(cast_list_items)
-        p = document.add_paragraph(speaker_list_text)
-        p.runs[0].font.name = 'Times New Roman'
-        p.runs[0].font.size = Pt(12)
-        p.runs[0].font.bold = True
-        p.paragraph_format.space_before = Pt(0)
-        p.paragraph_format.space_after = Pt(6)
+            # Tên Diễn viên Lồng tiếng (MÀU ĐỎ, IN HOA)
+            actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
+            if actor:
+                r_actor = p_spk.add_run(actor)
+                r_actor.font.name = 'Times New Roman'
+                r_actor.font.size = Pt(12)
+                r_actor.font.bold = True
+                r_actor.font.color.rgb = RED_COLOR
     
-    document.add_paragraph()
     document.add_paragraph()
     start_index = len(document.paragraphs)
 
@@ -678,7 +709,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.paragraph_format.space_before = Pt(0)
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
-            format_and_split_dialogue(document, text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex)
+            format_and_split_dialogue(document, text, enable_colors, enable_phonetic, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
             
     progress_bar.progress(100)
     status_text.text("Định dạng hoàn tất!")
@@ -858,7 +889,7 @@ with tab_script:
                         for _, row in edited_cast_df.iterrows():
                             if row["Nạp vào Database"]:
                                 spk_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
-                                act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip()
+                                act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
                                 if act_v:
                                     st.session_state['custom_cast_mapping'][spk_k] = act_v
                                     updated_cast_count += 1
@@ -1040,13 +1071,13 @@ with tab_cast_db:
         with c_c1:
             add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state['cast_input_key']}")
         with c_c2:
-            add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: Trúc, Thiện...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
+            add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: TRÚC, THIỆN...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
         with c_c3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast"):
                 if add_role_eng and add_actor_vn:
                     k = add_role_eng.upper().strip()
-                    v = add_actor_vn.strip()
+                    v = add_actor_vn.strip().upper()
                     st.session_state['custom_cast_mapping'][k] = v
                     save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
                     st.session_state['cast_input_key'] += 1
@@ -1108,7 +1139,7 @@ with tab_cast_db:
 
                 for _, row in edited_cast_db_df.iterrows():
                     eng_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
-                    act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip()
+                    act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
                     is_del = row["Xóa khỏi Database"]
 
                     if is_del:
