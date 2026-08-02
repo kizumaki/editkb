@@ -157,7 +157,7 @@ def save_json_db(filepath, data_container):
             else: json.dump(data_container, f, ensure_ascii=False, indent=2)
     except Exception as e: st.error(f"Không thể lưu vào Database: {e}")
 
-# Initializing Session State
+# Khởi tạo Session State
 if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
 if 'resync_uploader_key' not in st.session_state: st.session_state['resync_uploader_key'] = 0
 if 'spk_input_key' not in st.session_state: st.session_state['spk_input_key'] = 0
@@ -478,9 +478,9 @@ EXCEL_COLOR_PALETTE = [
 ]
 
 def clean_dialogue_text_for_excel(text):
-    text = re.sub(r'<i[^>]*>(.*?)</i[^>]*>', r'(\1)', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'<b[^>]*>(.*?)</b[^>]*>', r'(\1)', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'<u[^>]*>(.*?)</u[^>]*>', r'(\1)', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<i[^>]*>(.*?)</i[^>]*>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<b[^>]*>(.*?)</b[^>]*>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<u[^>]*>(.*?)</u[^>]*>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
     text = re.sub(r'<[^>]*>', '', text, flags=re.DOTALL)
     return re.sub(r'\s+', ' ', text).strip()
 
@@ -491,61 +491,57 @@ def parse_srt_to_dataframe(srt_content):
 
     speaker_regex = build_speaker_regex(st.session_state.get('custom_speakers', set()))
 
-    def append_row_and_update_state(t_start, t_end, speaker, dialogue):
-        nonlocal last_known_speaker
-        data.append([t_start, t_end, speaker, clean_dialogue_text_for_excel(dialogue)])
-        last_known_speaker = speaker 
-
     for block in blocks:
-        lines = block.strip().split('\n')
-        if len(lines) < 3: continue
+        lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+        if len(lines) < 2: continue
 
-        time_line = lines[1].strip()
-        time_match = re.match(r'(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})', time_line)
+        time_line = ""
+        time_idx = -1
+        for idx, line in enumerate(lines[:2]):
+            if "-->" in line:
+                time_line = line
+                time_idx = idx
+                break
+
+        if not time_line: continue
+
+        time_match = re.match(r'(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})', time_line)
         if not time_match: continue
 
-        time_start = time_match.group(1) 
-        time_end = time_match.group(2)   
-        dialogue_lines = lines[2:]
-        current_dialogue = ""
-        block_initial_speaker = last_known_speaker
+        time_start = time_match.group(1).replace('.', ',')
+        time_end = time_match.group(2).replace('.', ',')
 
-        for line in dialogue_lines:
-            line = line.strip()
-            if not line: continue
-            segments = speaker_regex.split(line)
-            i = 0
-            while i < len(segments):
-                segment = segments[i].strip()
-                i += 1
-                if not segment: continue
+        dialogue_lines = lines[time_idx + 1:]
+        if not dialogue_lines: continue
 
-                if segment.endswith(':') and len(segment) > 1:
-                    speaker_tag = segment[:-1].strip()
-                    if is_valid_speaker_name(speaker_tag):
-                        if current_dialogue:
-                            speaker_to_use = block_initial_speaker if not data or data[-1][0] != time_start else last_known_speaker
-                            append_row_and_update_state(time_start, time_end, speaker_to_use, current_dialogue)
-                            current_dialogue = ""
-                        
-                        speaker = speaker_tag
-                        dialogue_segment = segments[i].strip() if i < len(segments) else ""
-                        i += 1
-                        if dialogue_segment:
-                            append_row_and_update_state(time_start, time_end, speaker, dialogue_segment)
-                        if block_initial_speaker == last_known_speaker:
-                             block_initial_speaker = speaker
-                    else:
-                        dialogue_segment = segments[i].strip() if i < len(segments) else ""
-                        i += 1
-                        recombined_text = segment + " " + dialogue_segment
-                        current_dialogue = (current_dialogue + " " + recombined_text) if current_dialogue else recombined_text
+        block_text = "\n".join(dialogue_lines)
+        speaker_matches = [m for m in speaker_regex.finditer(block_text) if is_valid_speaker_name(m.group(1))]
+
+        if not speaker_matches:
+            clean_text = clean_dialogue_text_for_excel(block_text)
+            if clean_text:
+                data.append([time_start, time_end, last_known_speaker, clean_text])
+        else:
+            first_match = speaker_matches[0]
+            leading_text = block_text[:first_match.start()].strip()
+            clean_leading = clean_dialogue_text_for_excel(leading_text)
+            if clean_leading:
+                data.append([time_start, time_end, last_known_speaker, clean_leading])
+
+            for i, m in enumerate(speaker_matches):
+                spk_name = m.group(1).strip()
+                end_pos = m.end()
+
+                if i + 1 < len(speaker_matches):
+                    next_start = speaker_matches[i+1].start()
+                    segment_text = block_text[end_pos:next_start]
                 else:
-                    current_dialogue = (current_dialogue + " " + segment) if current_dialogue else segment
+                    segment_text = block_text[end_pos:]
 
-        if current_dialogue:
-            speaker_to_use = block_initial_speaker if not data or data[-1][0] != time_start else last_known_speaker
-            append_row_and_update_state(time_start, time_end, speaker_to_use, current_dialogue)
+                clean_seg = clean_dialogue_text_for_excel(segment_text)
+                if clean_seg:
+                    data.append([time_start, time_end, spk_name, clean_seg])
+                    last_known_speaker = spk_name
 
     return pd.DataFrame(data, columns=['Start', 'End', 'Speaker', 'Dialogue'])
 
