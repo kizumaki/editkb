@@ -357,6 +357,15 @@ else:
 # ==========================================
 # 5. HÀM CÔNG CỤ XỬ LÝ KỊCH BẢN & CONVERTERS
 # ==========================================
+def calculate_duration_sec(timecode_line):
+    m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", timecode_line.strip())
+    if not m: return 1.0, 0.0, 0.0
+    h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
+    t1 = h1 * 3600 + m1 * 60 + s1 + ms1 / 1000.0
+    t2 = h2 * 3600 + m2 * 60 + s2 + ms2 / 1000.0
+    dur = t2 - t1
+    return dur if dur > 0 else 0.5, t1, t2
+
 def build_speaker_regex(custom_speakers):
     base_pattern = r"[\w\s&\.\-\(\)]+"
     if custom_speakers:
@@ -462,7 +471,6 @@ def process_docx_to_srt(uploaded_file):
             
     return srt_content.strip().encode('utf-8')
 
-# --- SRT TO EXCEL CONVERTER MODULE (ĐỒNG BỘ 100% DATABASE CỤM TỪ STUDIO) ---
 EXCEL_COLOR_PALETTE = [
     'background-color: #ADD8E6; color: #000000',
     'background-color: #90EE90; color: #000000',
@@ -587,7 +595,6 @@ def apply_excel_styles(df):
     except Exception:
         return df
 
-# --- HÀM TẠO MARKER TIMELINE CHO DAW (REAPER / PRO TOOLS / EDL) ---
 def timecode_to_sec(tc):
     m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", tc.strip())
     if not m: return 0.0
@@ -698,6 +705,21 @@ def round_seconds_to_int_minutes(total_sec):
     mins = int(total_sec // 60); secs = int(round(total_sec % 60))
     if secs >= 30: mins += 1
     return max(1, mins)
+
+def srt_timecode_to_ass(timecode_line):
+    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
+    if not m: return None, None
+    h1, m1, s1, ms1, h2, m2, s2, ms2 = m.groups()
+    ass_start = f"{int(h1)}:{m1}:{s1}.{int(ms1)//10:02d}"
+    ass_end = f"{int(h2)}:{m2}:{s2}.{int(ms2)//10:02d}"
+    return ass_start, ass_end
+
+def rgb_to_ass_hex(rgb_obj):
+    if not rgb_obj: return "&H00FFFFFF&"
+    try:
+        r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
+        return f"&H00{b:02X}{g:02X}{r:02X}&"
+    except Exception: return "&H00FFFFFF&"
 
 def is_stage_direction(name):
     clean = name.strip()
@@ -2387,7 +2409,6 @@ with tab_tools:
                 
                 col_m1, col_m2, col_m3 = st.columns(3)
                 
-                # REAPER CSV
                 with col_m1:
                     with st.container(border=True):
                         st.markdown("##### 🎧 1. REAPER (Region CSV)")
@@ -2400,7 +2421,6 @@ with tab_tools:
                             mime="text/csv", type="primary", use_container_width=True
                         )
 
-                # PRO TOOLS CSV
                 with col_m2:
                     with st.container(border=True):
                         st.markdown("##### 🎛️ 2. PRO TOOLS (Track Markers)")
@@ -2413,7 +2433,6 @@ with tab_tools:
                             mime="text/csv", type="primary", use_container_width=True
                         )
 
-                # CMX 3600 EDL
                 with col_m3:
                     with st.container(border=True):
                         st.markdown("##### 🎬 3. CMX 3600 EDL (Premiere/Resolve)")
