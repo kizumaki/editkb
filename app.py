@@ -617,7 +617,7 @@ def apply_excel_styles(df):
     try: return df.style.apply(highlight_speaker, axis=1)
     except Exception: return df
 
-# --- DUAL LANGUAGE ALIGNMENT HELPERS ---
+# --- DUAL ENGLISH COMPARISON & VIETNAMESE QC HELPERS ---
 def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_speakers=None):
     if filename.lower().endswith('.srt'):
         try: content_str = file_bytes.decode('utf-8')
@@ -644,69 +644,90 @@ def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_
         return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers)
     return pd.DataFrame(columns=['Start', 'End', 'Speaker', 'Dialogue'])
 
-def align_dual_language_scripts_flexible(df_master, df_sub, master_is_vn=True):
+def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None):
     aligned_rows = []
-    for idx_m, row_m in df_master.iterrows():
-        s_m = timecode_to_sec(row_m['Start'])
-        e_m = timecode_to_sec(row_m['End'])
-        dur_m = max(0.5, e_m - s_m)
+    
+    for idx_mh, row_mh in df_mh_eng.iterrows():
+        s_mh = timecode_to_sec(row_mh['Start'])
+        e_mh = timecode_to_sec(row_mh['End'])
+        dur_mh = max(0.5, e_mh - s_mh)
         
-        best_matches = []
-        for idx_s, row_s in df_sub.iterrows():
-            s_s = timecode_to_sec(row_s['Start'])
-            e_s = timecode_to_sec(row_s['End'])
-            overlap = calculate_time_overlap(s_m, e_m, s_s, e_s)
-            if overlap > 0.1: best_matches.append((overlap, row_s))
+        # 1. Tìm câu khớp trong Official English File của Khách
+        best_off_matches = []
+        for idx_off, row_off in df_off_eng.iterrows():
+            s_off = timecode_to_sec(row_off['Start'])
+            e_off = timecode_to_sec(row_off['End'])
+            overlap = calculate_time_overlap(s_mh, e_mh, s_off, e_off)
+            if overlap > 0.1:
+                best_off_matches.append((overlap, row_off))
                 
-        if best_matches:
-            sub_dialogues = [m[1]['Dialogue'] for m in best_matches]
-            sub_text_combined = " ".join(sub_dialogues)
-            sub_spk = best_matches[0][1]['Speaker']
+        if best_off_matches:
+            off_dialogues = [m[1]['Dialogue'] for m in best_off_matches]
+            off_text_combined = " ".join(off_dialogues)
+            off_spk = best_off_matches[0][1]['Speaker']
         else:
-            sub_text_combined = ""
-            sub_spk = ""
-            
-        if master_is_vn:
-            spk_vn = row_m['Speaker']; diag_vn = row_m['Dialogue']
-            spk_off = sub_spk; diag_off = sub_text_combined
+            off_text_combined = ""
+            off_spk = ""
+
+        # 2. Tìm câu dịch Tiếng Việt tương ứng (nếu có nạp file VN)
+        vn_text_combined = ""
+        vn_spk = ""
+        if df_vn is not None and not df_vn.empty:
+            best_vn_matches = []
+            for idx_vn, row_vn in df_vn.iterrows():
+                s_vn = timecode_to_sec(row_vn['Start'])
+                e_vn = timecode_to_sec(row_vn['End'])
+                overlap_vn = calculate_time_overlap(s_mh, e_mh, s_vn, e_vn)
+                if overlap_vn > 0.1:
+                    best_vn_matches.append((overlap_vn, row_vn))
+            if best_vn_matches:
+                vn_text_combined = " ".join([m[1]['Dialogue'] for m in best_vn_matches])
+                vn_spk = best_vn_matches[0][1]['Speaker']
         else:
-            spk_off = row_m['Speaker']; diag_off = row_m['Dialogue']
-            spk_vn = sub_spk; diag_vn = sub_text_combined
-            
+            vn_spk = row_mh['Speaker']
+
+        # 3. QC Audit: So sánh Tiếng Anh Mai Han vs Tiếng Anh Khách
         qc_status = "🟢 Khớp chuẩn"
-        qc_details = "Nội dung & Timecode trùng khớp"
+        qc_details = "Nội dung Tiếng Anh khớp chuẩn nghĩa"
         
-        if not diag_vn:
-            qc_status = "🔴 Thiếu dịch"
-            qc_details = "Câu gốc Tiếng Anh có thoại nhưng chưa có bản dịch Tiếng Việt"
-        elif not diag_off:
-            qc_status = "🔴 Thiếu câu gốc"
-            qc_details = "Bản dịch Tiếng Việt có thoại nhưng file Khách không có"
+        mh_diag_clean = row_mh['Dialogue'].strip()
+        off_diag_clean = off_text_combined.strip()
+        
+        if not off_diag_clean:
+            qc_status = "🔴 Thiếu câu gốc Khách"
+            qc_details = "File Mai Han có câu này nhưng file Khách không thấy có"
+        elif not mh_diag_clean:
+            qc_status = "🔴 Thiếu câu Mai Han"
+            qc_details = "File Khách có câu này nhưng Mai Han nghe bị bỏ sót"
         else:
-            if spk_off and spk_vn and spk_off.upper() != spk_vn.upper() and spk_vn.upper() != "UNKNOWN" and spk_off.upper() != "UNKNOWN":
-                qc_status = "🔵 Lệch vai"
-                qc_details = f"Khách: {spk_off} vs Việt: {spk_vn}"
-                
-            vn_chars = len(diag_vn)
-            cps_vn = vn_chars / dur_m
-            eng_words = len(diag_off.split()) if diag_off else 0
-            vn_words = len(diag_vn.split())
+            # So sánh độ khác biệt từ vựng giữa Tiếng Anh Mai Han và Tiếng Anh Khách
+            words_mh = set(re.findall(r'\b\w+\b', mh_diag_clean.lower()))
+            words_off = set(re.findall(r'\b\w+\b', off_diag_clean.lower()))
             
-            if cps_vn > 18 or (eng_words > 0 and vn_words / eng_words > 1.8):
-                qc_status = "🟡 Thoại quá dài"
-                qc_details = f"Mật độ thoại Tiếng Việt cao ({cps_vn:.1f} ký tự/s) - Dễ bị tràn mồm khi lồng tiếng"
+            diff_words = words_off.symmetric_difference(words_mh)
+            
+            # Nếu khác biệt từ vựng quá 30% ➔ AI có thể nghe sai từ vựng
+            if len(words_off) > 0 and len(diff_words) / len(words_off) > 0.3:
+                qc_status = "🟡 Khác từ vựng Tiếng Anh"
+                qc_details = f"Khác các từ: {', '.join(list(diff_words)[:5])} -> Kiểm tra lại câu Tiếng Việt!"
+
+            if row_mh['Speaker'].upper() != off_spk.upper() and off_spk.upper() != "UNKNOWN" and row_mh['Speaker'].upper() != "UNKNOWN":
+                qc_status = "🔵 Lệch người nói"
+                qc_details = f"Mai Han: {row_mh['Speaker']} vs Khách: {off_spk}"
 
         aligned_rows.append({
-            "Stt": idx_m + 1,
-            "Timecode": f"{row_m['Start']} --> {row_m['End']}",
-            "Start": row_m['Start'],
-            "End": row_m['End'],
-            "Khách (English)": f"{spk_off}: {diag_off}" if spk_off else diag_off,
-            "Việt (Dịch)": f"{spk_vn}: {diag_vn}" if spk_vn else diag_vn,
-            "Speaker_Off": spk_off,
-            "Speaker_VN": spk_vn,
-            "Dialogue_Off": diag_off,
-            "Dialogue_VN": diag_vn,
+            "Stt": idx_mh + 1,
+            "Timecode": f"{row_mh['Start']} --> {row_mh['End']}",
+            "Start": row_mh['Start'],
+            "End": row_mh['End'],
+            "Tiếng Anh Mai Han (AI/Heard)": f"{row_mh['Speaker']}: {row_mh['Dialogue']}",
+            "Tiếng Anh Khách (Official)": f"{off_spk}: {off_text_combined}" if off_spk else off_text_combined,
+            "Dịch Tiếng Việt (Cần Sửa)": f"{vn_spk}: {vn_text_combined}" if vn_spk else vn_text_combined,
+            "Speaker_MH": row_mh['Speaker'],
+            "Speaker_Off": off_spk,
+            "Dialogue_MH": row_mh['Dialogue'],
+            "Dialogue_Off": off_text_combined,
+            "Dialogue_VN": vn_text_combined,
             "Trạng thái QC": qc_status,
             "Ghi chú QC": qc_details
         })
@@ -724,7 +745,7 @@ def generate_qc_dual_excel(df_aligned):
 
     styled_df = df_aligned.style.apply(highlight_qc_rows, axis=1)
     with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
-        styled_df.to_excel(writer, index=False, sheet_name="Doi_Chieu_Song_Ngu")
+        styled_df.to_excel(writer, index=False, sheet_name="Doi_Chieu_English_QC")
     out_buf.seek(0)
     return out_buf
 
@@ -735,9 +756,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(20); p_title.runs[0].bold = True
     
     unique_speakers = []
-    for spk in df_aligned['Speaker_VN']:
-        if spk and spk not in unique_speakers and spk != "Unknown": unique_speakers.append(spk)
-    for spk in df_aligned['Speaker_Off']:
+    for spk in df_aligned['Speaker_MH']:
         if spk and spk not in unique_speakers and spk != "Unknown": unique_speakers.append(spk)
             
     if unique_speakers:
@@ -751,7 +770,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     
     for idx, row in df_aligned.iterrows():
         tc_line = row['Timecode']
-        spk = row['Speaker_VN'] if row['Speaker_VN'] else (row['Speaker_Off'] if row['Speaker_Off'] else "Unknown")
+        spk = row['Speaker_MH'] if row['Speaker_MH'] else "Unknown"
         diag = row['Dialogue_VN'] if row['Dialogue_VN'] else ""
         
         p_tc = document.add_paragraph(tc_line)
@@ -1436,7 +1455,7 @@ tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_
     "📋 Theo dõi & Báo cáo Lương",
     "🎭 Bảng Phân Vai Lồng Tiếng", 
     "📚 Kho Database Phiên Âm Giọng Nam",
-    "🔀 Đối Chiếu Kịch Bản Song Ngữ",
+    "🔀 Đối Chiếu 2 File Tiếng Anh & QC Dịch",
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
@@ -2365,60 +2384,53 @@ with tab_phonetic_db:
         else: st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
-# TAB 6: ĐỐI CHIẾU KỊCH BẢN SONG NGỮ (NEW & EXPANDED)
+# TAB 6: ĐỐI CHIẾU 2 FILE TIẾNG ANH & QC DỊCH (UPDATED WORKFLOW)
 # ==========================================
 with tab_dual_align:
-    st.subheader("🔀 ĐỐI CHIẾU SONG NGỮ & ĐỒNG BỘ FILE GỐC KHÁCH GỬI TRỄ")
-    st.markdown("Workspace soi kịch bản song ngữ 2 cột thông minh dành cho BTV. Tự động tìm câu đối chiếu, cảnh báo bỏ sót thoại, thoại dài và đồng bộ Timecode chuẩn theo lựa chọn của bạn.")
+    st.subheader("🔀 ĐỐI CHIẾU 2 FILE TIẾNG ANH & SOÁT SỬA BẢN DỊCH VIỆT")
+    st.markdown("So sánh file Tiếng Anh do Mai Han Team nghe (giữ 100% Timecode chuẩn Subtitle Edit) với file Tiếng Anh Gốc do Khách gửi trễ. Tự động phát hiện ô AI nghe sai từ để BTV sửa trực tiếp ô Tiếng Việt kế bên!")
 
-    col_dual1, col_dual2 = st.columns(2)
+    col_dual1, col_dual2, col_dual3 = st.columns(3)
     with col_dual1:
         with st.container(border=True):
-            st.markdown("##### 📄 1. File Tiếng Anh Gốc từ Khách (Official English Script)")
-            st.caption("File kịch bản Tiếng Anh (Gửi trước hoặc gửi trễ từ khách hàng):")
-            uploaded_official = st.file_uploader("Tải file Khách (.srt hoặc .docx):", type=['srt', 'docx'], key="uploader_dual_official")
+            st.markdown("##### 📄 1. File Tiếng Anh Mai Han (Master Timecode)")
+            st.caption("File Tiếng Anh ngắt câu & kéo mốc thời gian chuẩn do Mai Han Team thực hiện:")
+            uploaded_mh_eng = st.file_uploader("Tải file Anh Mai Han (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_mh_eng")
 
     with col_dual2:
         with st.container(border=True):
-            st.markdown("##### 📄 2. File Tiếng Việt Dịch Hiện Tại (Vietnamese Script)")
-            st.caption("File kịch bản Tiếng Việt đã dịch (Tạo từ Subtitle Edit của Mai Han Team):")
-            uploaded_translated = st.file_uploader("Tải file Tiếng Việt (.srt hoặc .docx):", type=['srt', 'docx'], key="uploader_dual_translated")
+            st.markdown("##### 📄 2. File Tiếng Anh Gốc của Khách (Official English)")
+            st.caption("File Tiếng Anh gốc do khách hàng gửi sang sau đó:")
+            uploaded_off_eng = st.file_uploader("Tải file Anh Khách (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_off_eng")
 
-    if uploaded_official is not None and uploaded_translated is not None:
+    with col_dual3:
+        with st.container(border=True):
+            st.markdown("##### 📄 3. File Tiếng Việt Hiện Tại (Vietnamese Script)")
+            st.caption("File Dịch Tiếng Việt Mai Han đã dịch từ bản AI nghe trước đây:")
+            uploaded_vn_script = st.file_uploader("Tải file Tiếng Việt (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_vn_script")
+
+    if uploaded_mh_eng is not None and uploaded_off_eng is not None:
         c_spks = st.session_state.get('custom_speakers', set())
         c_non_spks = st.session_state.get('custom_non_speakers', set())
 
-        df_off = parse_any_script_file_to_df(uploaded_official.getvalue(), uploaded_official.name, c_spks, c_non_spks)
-        df_vn = parse_any_script_file_to_df(uploaded_translated.getvalue(), uploaded_translated.name, c_spks, c_non_spks)
+        df_mh_eng = parse_any_script_file_to_df(uploaded_mh_eng.getvalue(), uploaded_mh_eng.name, c_spks, c_non_spks)
+        df_off_eng = parse_any_script_file_to_df(uploaded_off_eng.getvalue(), uploaded_off_eng.name, c_spks, c_non_spks)
+        
+        df_vn_script = None
+        if uploaded_vn_script is not None:
+            df_vn_script = parse_any_script_file_to_df(uploaded_vn_script.getvalue(), uploaded_vn_script.name, c_spks, c_non_spks)
 
-        if not df_off.empty and not df_vn.empty:
-            st.markdown("---")
-            st.markdown("#### 🎯 Lựa Chọn File Giữ Mốc Thời Gian (Master Timecode)")
-            
-            master_tc_choice = st.radio(
-                "Chọn file có mốc thời gian (Timecode) chuẩn xác nhất để làm khung đối chiếu:",
-                options=[
-                    "File Tiếng Việt (Timecode chuẩn Subtitle Edit - Mai Han Team)",
-                    "File Khách gửi (Timecode Tiếng Anh)"
-                ],
-                index=0,
-                help="Nếu chọn 'File Tiếng Việt', hệ thống sẽ giữ 100% timecode chuẩn do Mai Han Team ngắt nhịp và khớp câu Tiếng Anh của Khách sang."
-            )
-
-            master_is_vn = ("Tiếng Việt" in master_tc_choice)
-            df_master_input = df_vn if master_is_vn else df_off
-            df_sub_input = df_off if master_is_vn else df_vn
-
-            df_aligned = align_dual_language_scripts_flexible(df_master_input, df_sub_input, master_is_vn=master_is_vn)
+        if not df_mh_eng.empty and not df_off_eng.empty:
+            df_aligned = align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn_script)
 
             # Analytics Summary
             tot_rows = len(df_aligned)
             missing_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🔴' in str(st_v))
-            long_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🟡' in str(st_v))
+            word_diff_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🟡' in str(st_v))
             mismatch_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🔵' in str(st_v))
 
             st.markdown("---")
-            st.markdown("#### 📊 Báo Cáo Soát Lỗi Tự Động (QC Audit Summary)")
+            st.markdown("#### 📊 Báo Cáo QC So Sánh Nội Dung Tiếng Anh (English Content Audit)")
 
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
@@ -2431,15 +2443,15 @@ with tab_dual_align:
             with col_m2:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-label">🔴 Câu thiếu dịch / thiếu gốc</div>
+                    <div class="metric-label">🔴 Bỏ sót câu thoại</div>
                     <div class="metric-value" style="color:#DC2626;">{missing_cnt}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col_m3:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-label">🟡 Thoại quá dài (CPS)</div>
-                    <div class="metric-value" style="color:#D97706;">{long_cnt}</div>
+                    <div class="metric-label">🟡 Khác biệt từ vựng (AI nghe nhầm)</div>
+                    <div class="metric-value" style="color:#D97706;">{word_diff_cnt}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col_m4:
@@ -2451,10 +2463,10 @@ with tab_dual_align:
                 """, unsafe_allow_html=True)
 
             st.markdown("---")
-            st.markdown("#### 👁️ Workspace Bảng Đối Chiếu Song Ngữ 2 Cột (Chỉnh Sửa Trực Tiếp)")
-            st.caption("Gõ chỉnh sửa câu Tiếng Việt ngay trong bảng nếu phát hiện lỗi. Sau đó bấm nút xuất file bên dưới:")
+            st.markdown("#### 👁️ Workspace Bảng Đối Chiếu Tiếng Anh & Chỉnh Sửa Dịch Tiếng Việt")
+            st.caption("Nhìn ô màu VÀNG/ĐỎ để biết AI nghe sai từ nào, sau đó gõ sửa trực tiếp câu Tiếng Việt ở ô kế bên:")
 
-            qc_filter = st.selectbox("🔍 Lọc danh sách câu theo Trạng thái QC:", options=["TẤT CẢ CÁC CÂU", "🔴 Chỉ xem câu THIẾU DỊCH / THIẾU GỐC", "🟡 Chỉ xem câu THOẠI QUÁ DÀI", "🔵 Chỉ xem câu LỆCH VAI"])
+            qc_filter = st.selectbox("🔍 Lọc danh sách câu theo Trạng thái QC:", options=["TẤT CẢ CÁC CÂU", "🟡 Chỉ xem câu KHÁC TỪ VỰNG (Cần sửa dịch)", "🔴 Chỉ xem câu BỎ SÓT THOẠI", "🔵 Chỉ xem câu LỆCH VAI"])
 
             if "🔴" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🔴', na=False)]
             elif "🟡" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🟡', na=False)]
@@ -2462,32 +2474,33 @@ with tab_dual_align:
             else: df_display = df_aligned
 
             edited_aligned_df = st.data_editor(
-                df_display[['Stt', 'Timecode', 'Khách (English)', 'Việt (Dịch)', 'Trạng thái QC', 'Ghi chú QC']],
+                df_display[['Stt', 'Timecode', 'Tiếng Anh Mai Han (AI/Heard)', 'Tiếng Anh Khách (Official)', 'Dịch Tiếng Việt (Cần Sửa)', 'Trạng thái QC', 'Ghi chú QC']],
                 column_config={
                     "Stt": st.column_config.NumberColumn("Stt", disabled=True, width="small"),
-                    "Timecode": st.column_config.TextColumn("Mốc Timecode Master", disabled=True),
-                    "Khách (English)": st.column_config.TextColumn("Kịch bản Gốc (Khách gửi)", disabled=True),
-                    "Việt (Dịch)": st.column_config.TextColumn("Kịch bản Việt (Sửa trực tiếp tại đây)"),
+                    "Timecode": st.column_config.TextColumn("Mốc Timecode Mai Han", disabled=True),
+                    "Tiếng Anh Mai Han (AI/Heard)": st.column_config.TextColumn("Bản Anh Mai Han nghe", disabled=True),
+                    "Tiếng Anh Khách (Official)": st.column_config.TextColumn("Bản Anh Khách gửi chuẩn", disabled=True),
+                    "Dịch Tiếng Việt (Cần Sửa)": st.column_config.TextColumn("Kịch bản Tiếng Việt (Sửa trực tiếp tại đây)"),
                     "Trạng thái QC": st.column_config.TextColumn("Trạng thái", disabled=True),
-                    "Ghi chú QC": st.column_config.TextColumn("Ghi chú QC", disabled=True)
+                    "Ghi chú QC": st.column_config.TextColumn("Ghi chú từ vựng khác biệt", disabled=True)
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="dual_language_editor_table"
+                key="dual_english_editor_table"
             )
 
             st.markdown("---")
-            st.markdown("#### ⬇️ Xuất File Đã Đồng Bộ Chuẩn Theo Master Timecode Đã Chọn")
+            st.markdown("#### ⬇️ Xuất File Kịch Bản Tiếng Việt Hoàn Chỉnh (Giữ Timecode Mai Han)")
 
             col_ex1, col_ex2, col_ex3 = st.columns(3)
-            base_out_name = os.path.splitext(uploaded_translated.name if master_is_vn else uploaded_official.name)[0]
+            base_out_name = os.path.splitext(uploaded_mh_eng.name)[0]
 
             with col_ex1:
                 qc_excel_buf = generate_qc_dual_excel(df_aligned)
                 st.download_button(
-                    label="📊 TẢI BÁO CÁO SOI SONG NGỮ (.XLSX)",
+                    label="📊 TẢI BÁO CÁO DOI CHIẾU EXCEL (.XLSX)",
                     data=qc_excel_buf,
-                    file_name=f"{base_out_name}_DoiChieu_SongNgu.xlsx",
+                    file_name=f"{base_out_name}_DoiChieu_English_QC.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary", use_container_width=True
                 )
@@ -2495,9 +2508,9 @@ with tab_dual_align:
             with col_ex2:
                 aligned_docx_buf = generate_aligned_docx_file(df_aligned, base_out_name, enable_colors, enable_phonetic, enable_cast)
                 st.download_button(
-                    label="📄 TẢI WORD VIỆT ĐÃ ĐỒNG BỘ (.DOCX)",
+                    label="📄 TẢI WORD VIỆT HOÀN CHỈNH (.DOCX)",
                     data=aligned_docx_buf,
-                    file_name=f"{base_out_name}_VI_DongBo.docx",
+                    file_name=f"{base_out_name}_VI_Final.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     type="primary", use_container_width=True
                 )
@@ -2506,14 +2519,14 @@ with tab_dual_align:
                 # Generate SRT
                 srt_out_lines = []
                 for idx_s, r_s in df_aligned.iterrows():
-                    spk_text = f"{r_s['Speaker_VN']}: {r_s['Dialogue_VN']}" if r_s['Speaker_VN'] else r_s['Dialogue_VN']
+                    spk_text = f"{r_s['Speaker_MH']}: {r_s['Dialogue_VN']}" if r_s['Speaker_MH'] else r_s['Dialogue_VN']
                     srt_out_lines.append(f"{idx_s+1}\n{r_s['Timecode']}\n{spk_text}\n")
                 srt_out_bytes = "\n".join(srt_out_lines).encode('utf-8-sig')
 
                 st.download_button(
-                    label="📝 TẢI SUBTITLE SRT ĐÃ ĐỒNG BỘ (.SRT)",
+                    label="📝 TẢI SUBTITLE SRT VIỆT (.SRT)",
                     data=srt_out_bytes,
-                    file_name=f"{base_out_name}_VI_DongBo.srt",
+                    file_name=f"{base_out_name}_VI_Final.srt",
                     mime="text/plain",
                     type="primary", use_container_width=True
                 )
