@@ -392,6 +392,8 @@ def is_valid_speaker_name(name):
     clean = name.strip()
     if not clean or len(clean) > 25:
         return False
+    if clean.isdigit() or re.match(r'^\d+[\d\s:]*$', clean):
+        return False
     if is_stage_direction(clean):
         return False
     if clean.upper() in NON_SPEAKER_PHRASES:
@@ -670,9 +672,12 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
 
 def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
+    phonetic_db = st.session_state.get('custom_phonetics', {})
     def replace_match(m):
         eng_word = m.group(1)
-        return eng_word
+        if eng_word.upper() in phonetic_db or is_candidate_english_word(eng_word):
+            return eng_word
+        return m.group(0)
     pattern = r'\b[\w\s-]+\s*\(([A-Za-z0-9\'-]+)\)'
     cleaned_text = re.sub(pattern, replace_match, text)
     return re.sub(r'\s+', ' ', cleaned_text).strip()
@@ -776,16 +781,17 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
                 
             ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
 
-    spk_hex = rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&"
+    is_all = (speaker_name.strip().upper() == "ALL")
+    spk_hex = "&H0000FF&" if is_all else (rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&")
     prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
     
-    if enable_cast and is_first_time and actor_name:
+    if enable_cast and is_first_time and actor_name and not is_all:
         prefix_ass += f"{{\\c&H0000FF&}}{{\\b1}} {actor_name}{{\\b0}}"
         
     full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
     return full_ass_line
 
-# --- BÓC TÁCH HOÀN TOÀN CỦA NÓI RA KHỎI ĐIỀU KIỆN ĐẾM CPS CHUẨN XÁC ---
+# --- XỬ LÝ ĐỊNH DẠNG MÀU SẮC & HIGHLIGHT VÀNG CHO ALL: ---
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
     text = re.sub(r'\t+', ' ', text).strip()
     TAB_STOP_POSITION = Inches(1.0)
@@ -845,7 +851,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
         
-        # Nhặt và khôi phục tên diễn viên dính trong thân kịch bản
         if not actor_name:
             first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
             if first_word and first_word in st.session_state['custom_cast_mapping'].values():
@@ -872,16 +877,21 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         
+        is_all = (speaker_name.strip().upper() == "ALL")
         spk_text = f"{speaker_name}:"
-        spk_color = get_speaker_color(speaker_name, speaker_color_map, used_colors)
+        spk_color = RED_COLOR if is_all else get_speaker_color(speaker_name, speaker_color_map, used_colors)
+        
         run_speaker = new_paragraph.add_run(spk_text)
         run_speaker.font.bold = True
-        if enable_colors:
+        
+        if is_all:
+            run_speaker.font.color.rgb = RED_COLOR
+            run_speaker.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        elif enable_colors:
             run_speaker.font.color.rgb = spk_color
             
         is_first_time = False
-        prefix_len = len(spk_text)
-        if enable_cast:
+        if enable_cast and not is_all:
             if speaker_name not in seen_speakers_first_time:
                 seen_speakers_first_time.add(speaker_name)
                 is_first_time = True
@@ -889,12 +899,8 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                     run_actor = new_paragraph.add_run(f" {actor_name}")
                     run_actor.font.bold = True
                     run_actor.font.color.rgb = RED_COLOR
-                    prefix_len += len(actor_name) + 1
-        
-        if prefix_len >= 10:
-            new_paragraph.add_run(' ')
-        else:
-            new_paragraph.add_run('\t')
+
+        new_paragraph.add_run('\t')
 
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
         new_paragraph.paragraph_format.space_before = Pt(0)
@@ -999,7 +1005,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     header_zone = processed_strings[:first_timecode_idx] if first_timecode_idx > 0 else []
     body_zone = processed_strings[first_timecode_idx:] if first_timecode_idx > 0 else processed_strings
     
-    # QUÉT BÓC TÁCH DIỄN VIÊN TỪ HEADER ZONE
     for h_line in header_zone:
         if ":" in h_line and not h_line.lower().startswith("srt conversion"):
             parts = h_line.split(":", 1)
@@ -1033,7 +1038,8 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     if act not in assigned_actors:
                         assigned_actors.append(act)
                 else:
-                    unassigned_speakers.append(speaker_name)
+                    if speaker_name.upper() != "ALL":
+                        unassigned_speakers.append(speaker_name)
                     
     if unassigned_speakers:
         qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
@@ -1053,16 +1059,22 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 p_spk.paragraph_format.space_before = Pt(0)
                 p_spk.paragraph_format.space_after = Pt(0)
                 
-                spk_color = get_speaker_color(spk, speaker_color_map, used_colors)
+                is_all = (spk.strip().upper() == "ALL")
+                spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, used_colors)
+                
                 r_spk_name = p_spk.add_run(f"{spk}: ")
                 r_spk_name.font.name = 'Times New Roman'
                 r_spk_name.font.size = Pt(12)
                 r_spk_name.font.bold = True
-                if enable_colors:
+                
+                if is_all:
+                    r_spk_name.font.color.rgb = RED_COLOR
+                    r_spk_name.font.highlight_color = WD_COLOR_INDEX.YELLOW
+                elif enable_colors:
                     r_spk_name.font.color.rgb = spk_color
                     
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
-                if actor:
+                if actor and not is_all:
                     r_actor = p_spk.add_run(actor)
                     r_actor.font.name = 'Times New Roman'
                     r_actor.font.size = Pt(12)
@@ -1119,7 +1131,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 actor_dialogue_map, current_timecode_line
             )
             
-            # TÍNH CHỈ SỐ CPS CHUẨN XÁC DỰA TRÊN THUẦN LỜI THOẠI (BỎ TÊN NGƯỜI NÓI)
             if current_timecode_line and pure_dialogue_text:
                 dur, _, _ = calculate_duration_sec(current_timecode_line)
                 clean_chars = len(re.sub(r'</?[ibuIBU]>', '', pure_dialogue_text).strip())
@@ -2198,7 +2209,6 @@ with tab_dub_tracker:
                 actor_payroll_rows = []
                 grand_actor_pay = 0
                 
-                # TÍNH CHÍNH XÁC TỔNG THỜI LƯỢNG (MỖI VIDEO CHỈ CỘNG 1 LẦN DUY NHẤT)
                 unique_video_titles = set()
                 grand_unique_mins = 0
                 for item in active_tracker_data:
