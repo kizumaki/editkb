@@ -34,7 +34,6 @@ CAST_DB_FILE = "custom_cast_mapping.json"
 TRACKER_DB_FILE = "dubbing_tracker.json"
 RATES_DB_FILE = "payroll_rates.json"
 PRONOUN_REL_DB_FILE = "custom_pronoun_relationships.json"
-GLOSSARY_DB_FILE = "custom_glossary_db.json"
 
 DEFAULT_CAST_MAPPING = {
     "BRI": "TRÚC", "CHASE": "THIỆN", "PRESTON": "KHÁNH", "SCOTT": "THÔNG",
@@ -143,7 +142,6 @@ DEFAULT_NON_SPEAKER_PHRASES = {
     "BAD NEWS", "GOOD NEWS", "HE THOUGHT", "3 TEAMS REMAIN", "QUICK UPDATE", "DISTORTED", "MY FIRST QUESTION IS", "AND THE BEST PART IS", "BUT AS GORDON RAMSAY MIGHT SAY", "BUT THE GOOD NEWS IS", "LET ME JUST SAY", "BUT THE BEST PART", "I WILL SAY THOUGH", "LL SAY IS, UPDATE", "LL SAY IS", "UPDATE", "TO ALL OF YOU WATCHING WITH ME RIGHT NOW", "THIS IS THE LIFE", "I HAVE A QUESTION", "I WILL BE HONEST", "SO I CAN UPDATE MY INSTAGRAM BIO TO SAY"
 }
 
-# Các đại từ Tiếng Việt thường dùng trong xưng hô phim/video
 VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
 VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
 
@@ -372,6 +370,51 @@ else:
 # ==========================================
 # 5. HÀM BÓC TÁCH BẰNG REGEX & THUẬT TOÁN
 # ==========================================
+def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, normalize_spaces=True, capitalize_first=True, remove_leading_dash=True):
+    if not text or not isinstance(text, str): return ""
+    res = text
+    
+    # 1. Bóc tách thẻ ASS formatting
+    res = re.sub(r'\{\\[^}]*\}', '', res)
+    res = re.sub(r'\\N', '\n', res, flags=re.IGNORECASE)
+    
+    # 2. Bóc tách thẻ HTML rác
+    if strip_all_tags:
+        res = re.sub(r'<[^>]*>', '', res)
+    else:
+        res = re.sub(r'<(?!/?(i|b|u)\b)[^>]*>', '', res, flags=re.IGNORECASE)
+        
+    # 3. Xóa dấu gạch đầu dòng thừa
+    if remove_leading_dash:
+        res = re.sub(r'^\s*[-–—]\s*', '', res)
+        res = re.sub(r'(\n)\s*[-–—]\s*', r'\1', res)
+        
+    # 4. Sửa lỗi dấu câu Tiếng Việt
+    if fix_punctuation:
+        res = re.sub(r'\s+([,!?:;\.\)])', r'\1', res)
+        res = re.sub(r'([,!?:;])([A-Za-zÀ-ỹ0-9])', r'\1 \2', res)
+        res = re.sub(r'(\.\.\.)([A-Za-zÀ-ỹ0-9])', r'\1 \2', res)
+        res = re.sub(r'"\s*(.*?)\s*"', r'"\1"', res)
+        
+    # 5. Thu gọn khoảng trắng thừa
+    if normalize_spaces:
+        res = re.sub(r'[ \t]+', ' ', res)
+        res = re.sub(r'\s*\n\s*', '\n', res)
+        res = res.strip()
+        
+    # 6. Viết hoa đầu câu & sau tên người nói
+    if capitalize_first and res:
+        lines = res.split('\n')
+        cap_lines = []
+        for line in lines:
+            m = re.match(r'^([^:]+:\s*)([a-zà-ỹ])(.*)$', line)
+            if m: line = m.group(1) + m.group(2).upper() + m.group(3)
+            elif line and line[0].islower(): line = line[0].upper() + line[1:]
+            cap_lines.append(line)
+        res = '\n'.join(cap_lines)
+        
+    return res
+
 def calculate_duration_sec(timecode_line):
     m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", timecode_line.strip())
     if not m: return 1.0, 0.0, 0.0
@@ -514,7 +557,8 @@ def process_srt_to_docx(uploaded_file, file_name_without_ext):
             p_timecode.paragraph_format.space_after = Pt(0)
             
         if text_lines:
-            clean_text = "\n".join([re.sub(r'<[^>]*>', '', l) for l in text_lines])
+            raw_text = "\n".join(text_lines)
+            clean_text = clean_and_normalize_text(raw_text, strip_all_tags=True)
             p_content = document.add_paragraph(clean_text)
             set_font_and_size(p_content.runs[0], TARGET_FONT, TARGET_SIZE)
             p_content.paragraph_format.space_after = Pt(12)
@@ -539,7 +583,9 @@ def process_docx_to_srt(uploaded_file):
             i += 2 
             while i < len(lines):
                 if lines[i].isdigit() and i + 1 < len(lines) and timecode_pattern.search(lines[i+1]): break 
-                else: srt_content += lines[i] + "\n"; i += 1
+                else: 
+                    clean_l = clean_and_normalize_text(lines[i], strip_all_tags=True)
+                    srt_content += clean_l + "\n"; i += 1
         else: i += 1
             
     return srt_content.strip().encode('utf-8-sig')
@@ -567,11 +613,8 @@ EXCEL_COLOR_PALETTE = [
 ]
 
 def clean_dialogue_text_for_excel(text):
-    text = re.sub(r'<i[^>]*>(.*?)</i[^>]*>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'<b[^>]*>(.*?)</b[^>]*>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'<u[^>]*>(.*?)</u[^>]*>', r'\1', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'<[^>]*>', '', text, flags=re.DOTALL)
-    return re.sub(r'\s+', ' ', text).strip()
+    text = clean_and_normalize_text(text, strip_all_tags=True)
+    return text
 
 def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None, default_speaker="Unknown"):
     if custom_speakers is None: custom_speakers = st.session_state.get('custom_speakers', set())
@@ -1399,7 +1442,10 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(12)
             new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         else:
-            cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
+            # Tự động giặt sạch ngầm văn bản trước khi xử lý
+            cleaned_text = clean_and_normalize_text(text, strip_all_tags=False)
+            if is_resync: cleaned_text = normalize_phonetics_in_text(cleaned_text)
+            
             ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
                 document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
                 speaker_color_map, used_colors, stats_counter, seen_speakers_first_time,
@@ -1497,8 +1543,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- MÀN HÌNH CHÍNH TÁCH 8 TABS ---
-tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_tools = st.tabs([
+# --- MÀN HÌNH CHÍNH TÁCH 9 TABS ---
+tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_cleaner, tab_tools = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
     "📋 Theo dõi & Báo cáo Lương",
@@ -1506,6 +1552,7 @@ tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_
     "📚 Kho Database Phiên Âm Giọng Nam",
     "🔀 Đối Chiếu 2 File Tiếng Anh & QC Dịch",
     "🔎 Soát Bất Nhất Thuật Ngữ & Xưng Hô",
+    "🧹 Dọn Dẹp & Chuẩn Hóa Phụ Đề",
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
@@ -2614,7 +2661,7 @@ with tab_dual_align:
                 )
 
 # ==========================================
-# TAB 7: SOÁT BẤT NHẤT THUẬT NGỮ & XƯNG HÔ (NEW!)
+# TAB 7: SOÁT BẤT NHẤT THUẬT NGỮ & XƯNG HÔ
 # ==========================================
 with tab_consistency:
     st.subheader("🔎 SOÁT BẤT NHẤT THUẬT NGỮ & QUAN HỆ XƯNG HÔ NHÂN VẬT")
@@ -2781,14 +2828,12 @@ with tab_consistency:
             df_g_script = parse_any_script_file_to_df(uploaded_glossary_script.getvalue(), uploaded_glossary_script.name, c_spks_g, c_non_spks_g)
 
             if not df_g_script.empty:
-                # Quét các từ tiếng Anh và tìm ngữ cảnh bản dịch
                 all_dialogues_str = " ".join(df_g_script['Dialogue'].dropna().tolist())
                 eng_matches = ENGLISH_WORD_REGEX.findall(all_dialogues_str)
                 eng_counts = Counter([w for w in eng_matches if is_candidate_english_word(w)])
 
                 glossary_audit_rows = []
                 for word, cnt in eng_counts.most_common(20):
-                    # Tìm các câu thoại chứa từ này
                     matching_lines = df_g_script[df_g_script['Dialogue'].str.contains(r'\b' + re.escape(word) + r'\b', case=False, na=False)]
                     sample_texts = matching_lines['Dialogue'].head(3).tolist()
 
@@ -2800,12 +2845,197 @@ with tab_consistency:
 
                 if glossary_audit_rows:
                     df_g_audit = pd.DataFrame(glossary_audit_rows)
-                    st.markdown("##### 📑 Bảng Thống Kê Thuật Ngữ Lặp Lại Trong Kịch Bản")
+                    st.markdown("##### 📑 Bảng Thống Kê Thuật Ngữ Lặp Lặp Trong Kịch Bản")
                     st.dataframe(df_g_audit, hide_index=True, use_container_width=True)
                 else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
 
 # ==========================================
-# TAB 8: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
+# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER & TAG STRIPPER - NEW!)
+# ==========================================
+with tab_cleaner:
+    st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
+    st.markdown("Tự động giặt sạch kịch bản rác, bóc tách thẻ HTML/ASS rác, sửa lỗi gõ phím, sửa lỗi dấu câu Tiếng Việt và thu gọn khoảng trắng dư thừa.")
+
+    subtab_paste_clean, subtab_file_clean = st.tabs([
+        "✍️ Xử Lý & Dọn Dẹp Văn Bản Trực Tiếp", 
+        "📁 Dọn Dẹp & Chuẩn Hóa File Hàng Loạt (.srt / .docx)"
+    ])
+
+    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP
+    with subtab_paste_clean:
+        st.markdown("#### 1. Chọn Quy Tắc Giặt Sạch Văn Bản")
+        col_opt1, col_opt2, col_opt3, col_opt4 = st.columns(4)
+        with col_opt1:
+            opt_strip_html = st.checkbox("🏷️ Xóa sạch thẻ HTML/Color", value=True, help="Loại bỏ toàn bộ các thẻ màu <font color=...>, <span...>")
+        with col_opt2:
+            opt_fix_punct = st.checkbox("✍️ Sửa lỗi dấu câu Tiếng Việt", value=True, help="Sửa khoảng trắng trước/sau dấu phẩy, chấm, ngoặc kép, ba chấm")
+        with col_opt3:
+            opt_cap_first = st.checkbox("🔤 Viết hoa đầu câu & Sau tên", value=True, help="Viết hoa ký tự đầu tiên của câu thoại và sau nhãn 'Tyler:'")
+        with col_opt4:
+            opt_remove_dash = st.checkbox("✂️ Xóa dấu gạch đầu dòng '-'", value=True, help="Xóa dấu - ở đầu câu thoại phụ đề")
+
+        st.markdown("---")
+        col_text_in, col_text_out = st.columns(2)
+
+        with col_text_in:
+            st.markdown("##### 📥 Văn Bản Rác Đầu Vào (Paste văn bản vào đây):")
+            input_raw_text = st.text_area(
+                "Nội dung cần làm sạch:",
+                value="<font color=\"red\">Cory :</font> Tránh xa  đồng đội tui ra !\n\n- <i>Garrett :</i> \" kịch tính quá \"\n\nTyler :chào bạn ,rất vui được  gặp...bạn",
+                height=280,
+                key="textarea_raw_clean_input"
+            )
+
+        cleaned_result_text = ""
+        if input_raw_text:
+            cleaned_result_text = clean_and_normalize_text(
+                input_raw_text, 
+                strip_all_tags=opt_strip_html, 
+                fix_punctuation=opt_fix_punct, 
+                normalize_spaces=True, 
+                capitalize_first=opt_cap_first, 
+                remove_leading_dash=opt_remove_dash
+            )
+
+        with col_text_out:
+            st.markdown("##### 📤 Văn Bản Đã Làm Sạch Hoàn Hảo:")
+            st.text_area(
+                "Kết quả sau khi dọn dẹp:",
+                value=cleaned_result_text,
+                height=280,
+                key="textarea_clean_output"
+            )
+
+        if input_raw_text and cleaned_result_text:
+            orig_chars = len(input_raw_text)
+            clean_chars = len(cleaned_result_text)
+            diff_chars = orig_chars - clean_chars
+            st.success(f"✅ Đã dọn dẹp xong! Giảm **{diff_chars}** ký tự rác/khoảng trắng thừa (Từ {orig_chars} ➔ {clean_chars} ký tự).")
+
+    # 2. PHÂN KHU 2: DỌN DẸP FILE HÀNG LOẠT
+    with subtab_file_clean:
+        st.markdown("#### 📁 Dọn Dẹp File Phụ Đề & Kịch Bản Hàng Loạt")
+        st.caption("Tải lên 1 hoặc nhiều file .srt / .docx bị rác định dạng. Hệ thống sẽ làm sạch văn bản từng câu thoại nhưng giữ nguyên 100% Timecode và Số thứ tự câu:")
+
+        uploaded_clean_files = st.file_uploader(
+            "Tải file .srt hoặc .docx cần giặt sạch:", 
+            type=['srt', 'docx'], 
+            accept_multiple_files=True, 
+            key="batch_clean_file_uploader"
+        )
+
+        if uploaded_clean_files:
+            st.info(f"Đã chọn **{len(uploaded_clean_files)}** file cần dọn dẹp.")
+            if st.button("✨ BẮT ĐẦU GIẶT SẠCH CÁC FILE TRÊN", type="primary", use_container_width=True, key="btn_run_batch_clean"):
+                try:
+                    if len(uploaded_clean_files) == 1:
+                        f_item = uploaded_clean_files[0]
+                        f_name_no_ext = os.path.splitext(f_item.name)[0]
+                        f_ext = os.path.splitext(f_item.name)[1].lower()
+
+                        if f_ext == '.srt':
+                            try: raw_str = f_item.getvalue().decode('utf-8')
+                            except UnicodeDecodeError: raw_str = f_item.getvalue().decode('latin-1')
+                            
+                            cleaned_srt_lines = []
+                            for block in re.split(r'\n\s*\n', raw_str.strip()):
+                                lines_b = [l.strip() for l in block.strip().split('\n') if l.strip()]
+                                if len(lines_b) < 2: continue
+                                tc_idx = -1
+                                for idx_b, l_b in enumerate(lines_b[:2]):
+                                    if "-->" in l_b: tc_idx = idx_b; break
+                                if tc_idx == -1: continue
+                                
+                                idx_line = lines_b[0] if tc_idx == 1 else ""
+                                tc_line = lines_b[tc_idx]
+                                diag_lines = lines_b[tc_idx+1:]
+                                
+                                clean_diag = clean_and_normalize_text("\n".join(diag_lines), strip_all_tags=True)
+                                
+                                out_b = ""
+                                if idx_line: out_b += idx_line + "\n"
+                                out_b += tc_line + "\n" + clean_diag
+                                cleaned_srt_lines.append(out_b)
+                                
+                            out_bytes = "\n\n".join(cleaned_srt_lines).encode('utf-8-sig')
+                            st.success("✅ Đã làm sạch file SRT thành công!")
+                            st.download_button(
+                                label=f"⬇️ TẢI FILE SRT SẠCH ({f_name_no_ext}_Clean.srt)",
+                                data=out_bytes,
+                                file_name=f"{f_name_no_ext}_Clean.srt",
+                                mime="text/plain",
+                                type="primary",
+                                use_container_width=True
+                            )
+                        elif f_ext == '.docx':
+                            doc = Document(io.BytesIO(f_item.getvalue()))
+                            new_doc = Document()
+                            timecode_pattern = re.compile(r'^\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}$')
+
+                            for p in doc.paragraphs:
+                                txt = p.text.strip()
+                                if not txt: continue
+                                if timecode_pattern.match(txt) or txt.isdigit() or txt.lower().startswith("srt conversion"):
+                                    p_out = new_doc.add_paragraph(txt)
+                                    p_out.runs[0].font.name = 'Times New Roman'; p_out.runs[0].font.size = Pt(12)
+                                    if timecode_pattern.match(txt) or txt.isdigit(): p_out.runs[0].bold = True
+                                    p_out.paragraph_format.space_before = Pt(0); p_out.paragraph_format.space_after = Pt(0)
+                                else:
+                                    cleaned_p = clean_and_normalize_text(txt, strip_all_tags=True)
+                                    p_out = new_doc.add_paragraph(cleaned_p)
+                                    p_out.runs[0].font.name = 'Times New Roman'; p_out.runs[0].font.size = Pt(12)
+                                    p_out.paragraph_format.space_before = Pt(0); p_out.paragraph_format.space_after = Pt(4)
+
+                            doc_buf = io.BytesIO(); new_doc.save(doc_buf); doc_buf.seek(0)
+                            st.success("✅ Đã làm sạch file Word DOCX thành công!")
+                            st.download_button(
+                                label=f"⬇️ TẢI FILE WORD SẠCH ({f_name_no_ext}_Clean.docx)",
+                                data=doc_buf,
+                                file_name=f"{f_name_no_ext}_Clean.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                type="primary",
+                                use_container_width=True
+                            )
+                    else:
+                        zip_clean_buf = io.BytesIO()
+                        with zipfile.ZipFile(zip_clean_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                            for f_item in uploaded_clean_files:
+                                f_name_no_ext = os.path.splitext(f_item.name)[0]
+                                f_ext = os.path.splitext(f_item.name)[1].lower()
+                                if f_ext == '.srt':
+                                    try: raw_str = f_item.getvalue().decode('utf-8')
+                                    except UnicodeDecodeError: raw_str = f_item.getvalue().decode('latin-1')
+                                    
+                                    cleaned_srt_lines = []
+                                    for block in re.split(r'\n\s*\n', raw_str.strip()):
+                                        lines_b = [l.strip() for l in block.strip().split('\n') if l.strip()]
+                                        if len(lines_b) < 2: continue
+                                        tc_idx = -1
+                                        for idx_b, l_b in enumerate(lines_b[:2]):
+                                            if "-->" in l_b: tc_idx = idx_b; break
+                                        if tc_idx == -1: continue
+                                        
+                                        idx_line = lines_b[0] if tc_idx == 1 else ""
+                                        tc_line = lines_b[tc_idx]
+                                        clean_diag = clean_and_normalize_text("\n".join(lines_b[tc_idx+1:]), strip_all_tags=True)
+                                        out_b = f"{idx_line}\n" if idx_line else ""
+                                        out_b += tc_line + "\n" + clean_diag
+                                        cleaned_srt_lines.append(out_b)
+                                    zf.writestr(f"{f_name_no_ext}_Clean.srt", "\n\n".join(cleaned_srt_lines).encode('utf-8-sig'))
+                        zip_clean_buf.seek(0)
+                        st.success(f"✅ Đã dọn dẹp thành công {len(uploaded_clean_files)} file!")
+                        st.download_button(
+                            label="📦 TẢI TRỌN BỘ FILE SẠCH (.ZIP)",
+                            data=zip_clean_buf,
+                            file_name="Cleaned_Files_Pack.zip",
+                            mime="application/zip",
+                            type="primary",
+                            use_container_width=True
+                        )
+                except Exception as e: st.error(f"Lỗi dọn dẹp file: {e}")
+
+# ==========================================
+# TAB 9: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
 # ==========================================
 with tab_tools:
     subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
