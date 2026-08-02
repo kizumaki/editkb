@@ -12,7 +12,7 @@ import pandas as pd
 import json
 from gtts import gTTS
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
 st.set_page_config(
@@ -105,7 +105,7 @@ st.markdown("""
         border-left: 4px solid #EF4444;
         padding: 12px 16px;
         border-radius: 8px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         font-size: 0.9rem;
     }
     
@@ -119,6 +119,44 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- PHASE 3: HÀM AI LIP-SYNC ASSISTANT (RÚT GỌN THOẠI KHẨU HÌNH MIỀN NAM) ---
+def suggest_shortened_vietnamese_dialogue(text):
+    clean_t = re.sub(r'</?[ibuIBU]>', '', text).strip()
+    replacements = [
+        (r"\bthì ra là vậy\b", "ra là vậy"),
+        (r"\bbởi vì\b", "vì"),
+        (r"\bkhông thể nào\b", "không thể"),
+        (r"\bngay lập tức\b", "lập tức"),
+        (r"\bthật sự là\b", "thiệt là"),
+        (r"\bthành thật mà nói\b", "nói thiệt"),
+        (r"\bmột cách rất\b", "rất"),
+        (r"\bcó thể được\b", "được"),
+        (r"\bphải không vậy\b", "hả"),
+        (r"\bđúng không vậy\b", "đúng hông"),
+        (r"\bnhư thế nào\b", "sao"),
+        (r"\blàm sao bây giờ\b", "sao giờ"),
+        (r"\bbởi vì thế nên\b", "cho nên"),
+        (r"\bchính là vì\b", "tại"),
+        (r"\bthực ra thì\b", "thiệt ra")
+    ]
+    shortened = clean_t
+    for pat, rep in replacements:
+        shortened = re.sub(pat, rep, shortened, flags=re.IGNORECASE)
+    return shortened
+
+# --- PHASE 3: HÀM PHÁT ÂM THOẠI TIẾNG VIỆT (VIETNAMESE AI PREVIEW) ---
+def generate_vietnamese_audio(text_to_speak):
+    try:
+        clean_text = re.sub(r'</?[ibuIBU]>', '', text_to_speak).strip()
+        tts = gTTS(text=clean_text, lang='vi')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp
+    except Exception as e:
+        st.error(f"Không thể tải âm thanh Tiếng Việt: {e}")
+        return None
 
 # --- HÀM TẠO ÂM THANH PHÁT ÂM TIẾNG ANH CHUẨN ---
 def generate_english_audio(text_to_speak, accent='com'):
@@ -432,7 +470,7 @@ def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay
     p_total = doc.add_paragraph(f"👉 TỔNG THÙ LAO THANH TOÁN: {total_pay:,.0f} VNĐ")
     p_total.runs[0].font.name = 'Times New Roman'
     p_total.runs[0].font.size = Pt(13)
-    p_total.runs[0].font.bold = True
+    p_total.runs[0].bold = True
     
     buf = io.BytesIO()
     doc.save(buf)
@@ -989,7 +1027,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     unassigned_speakers.append(speaker_name)
                     
     if unassigned_speakers:
-        qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
+        qc_warnings.append({"type": "unassigned", "msg": f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}"})
             
     if unique_speakers:
         if enable_cast:
@@ -1077,7 +1115,12 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 clean_chars = len(re.sub(r'</?[ibuIBU]>', '', plain_text_line).strip())
                 cps = clean_chars / dur if dur > 0 else 0
                 if cps > 20: 
-                    qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{plain_text_line[:40]}...\"")
+                    qc_warnings.append({
+                        "type": "cps",
+                        "timecode": current_timecode_line,
+                        "cps": cps,
+                        "text": plain_text_line
+                    })
             
             if current_timecode_line and ass_formatted_line:
                 start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
@@ -1233,9 +1276,9 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
 # --- HERO BANNER HEADER (SaaS STYLING) ---
 st.markdown("""
 <div class="hero-container">
-    <div class="badge-pro">v2.5 Enterprise SaaS</div>
+    <div class="badge-pro">v3.0 Phase 3 AI SaaS</div>
     <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
-    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & tự động phiên âm giọng Nam thông minh.</div>
+    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & Trợ lý AI Lip-Sync thông minh.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1457,12 +1500,30 @@ with tab_script:
             if 'processed_docx' in st.session_state:
                 st.markdown("---")
                 
+                # PHASE 3: BÁO CÁO CẢNH BÁO QC + AI LIP-SYNC + VIETNAMESE PREVIEW
                 qc_warns = st.session_state['stats'].get("qc_warnings", [])
                 if qc_warns:
-                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
-                        st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
-                        for w in qc_warns[:10]:
-                            st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
+                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG & TRỢ LÝ AI LIP-SYNC", expanded=True):
+                        st.caption("Tự động kiểm tra độ dài thoại, tốc độ đọc CPS và hỗ trợ nghe thử / rút gọn thoại bằng AI:")
+                        for idx_w, w in enumerate(qc_warns[:10]):
+                            if isinstance(w, dict) and w.get("type") == "cps":
+                                tc_str = w["timecode"]
+                                cps_val = w["cps"]
+                                orig_txt = w["text"]
+                                short_txt = suggest_shortened_vietnamese_dialogue(orig_txt)
+                                
+                                st.markdown(f"<div class='qc-card-warning'>⏱️ <b>Tốc độ đọc nhanh ({cps_val:.1f} ký tự/s)</b> tại <code>{tc_str}</code><br><b>Thoại gốc:</b> \"{orig_txt}\"<br><b>🪄 AI Lip-Sync gợi ý:</b> \"{short_txt}\"</div>", unsafe_allow_html=True)
+                                
+                                c_qc1, c_qc2 = st.columns([1, 1])
+                                with c_qc1:
+                                    if st.button(f"🔊 Nghe thử thoại Việt #{idx_w+1}", key=f"btn_audio_qc_{idx_w}"):
+                                        vi_fp = generate_vietnamese_audio(orig_txt)
+                                        if vi_fp:
+                                            st.audio(vi_fp, format="audio/mp3", autoplay=True)
+                            else:
+                                msg = w.get("msg") if isinstance(w, dict) else str(w)
+                                st.markdown(f"<div class='qc-card-warning'>{msg}</div>", unsafe_allow_html=True)
+                                
                         if len(qc_warns) > 10:
                             st.info(f"...và thêm {len(qc_warns)-10} cảnh báo khác.")
                 
@@ -1629,10 +1690,27 @@ with tab_resync:
                 
                 r_qc_warns = st.session_state['resync_stats'].get("qc_warnings", [])
                 if r_qc_warns:
-                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
-                        st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
-                        for w in r_qc_warns[:10]:
-                            st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
+                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG & TRỢ LÝ AI LIP-SYNC", expanded=True):
+                        st.caption("Tự động kiểm tra độ dài thoại, tốc độ đọc CPS và hỗ trợ nghe thử / rút gọn thoại bằng AI:")
+                        for idx_rw, w in enumerate(r_qc_warns[:10]):
+                            if isinstance(w, dict) and w.get("type") == "cps":
+                                tc_str = w["timecode"]
+                                cps_val = w["cps"]
+                                orig_txt = w["text"]
+                                short_txt = suggest_shortened_vietnamese_dialogue(orig_txt)
+                                
+                                st.markdown(f"<div class='qc-card-warning'>⏱️ <b>Tốc độ đọc nhanh ({cps_val:.1f} ký tự/s)</b> tại <code>{tc_str}</code><br><b>Thoại gốc:</b> \"{orig_txt}\"<br><b>🪄 AI Lip-Sync gợi ý:</b> \"{short_txt}\"</div>", unsafe_allow_html=True)
+                                
+                                c_rqc1, c_rqc2 = st.columns([1, 1])
+                                with c_rqc1:
+                                    if st.button(f"🔊 Nghe thử thoại Việt #{idx_rw+1}", key=f"btn_r_audio_qc_{idx_rw}"):
+                                        r_vi_fp = generate_vietnamese_audio(orig_txt)
+                                        if r_vi_fp:
+                                            st.audio(r_vi_fp, format="audio/mp3", autoplay=True)
+                            else:
+                                msg = w.get("msg") if isinstance(w, dict) else str(w)
+                                st.markdown(f"<div class='qc-card-warning'>{msg}</div>", unsafe_allow_html=True)
+                                
                         if len(r_qc_warns) > 10:
                             st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
                 
@@ -1728,7 +1806,7 @@ with tab_resync:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (EXACT FORMAT MATCH)
+# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (PHASE 3 ENHANCED ANALYTICS)
 # ==========================================
 with tab_dub_tracker:
     st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN DỰ ÁN")
@@ -1847,11 +1925,9 @@ with tab_dub_tracker:
                             orig_item['project_week'] = str(row["Tuần dự án"]).strip()
                             orig_item['video_title'] = str(row["Tiêu đề video"]).strip()
                             
-                            # TỰ ĐỘNG BÓC TÁCH CỘT DIỄN VIÊN NHẬP NHIỀU TÊN CÁCH NHAU BẰNG DẤU PHẨY
                             new_acts_raw = [a.strip().upper() for a in str(row["Diễn viên"]).split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
                             orig_item['actors'] = ", ".join(new_acts_raw) if new_acts_raw else "CHƯA CÓ THÔNG TIN"
                             
-                            # ĐỒNG BỘ LẠI ACTOR BREAKDOWN ĐỂ THÀNH TIỀN VÀ TAB SUBTAB 2 CẬP NHẬT TƯƠNG ỨNG!
                             old_bd = orig_item.get("actor_breakdown", {})
                             new_bd = {}
                             for act in new_acts_raw:
@@ -1881,6 +1957,7 @@ with tab_dub_tracker:
 
             total_studio_money = 0
             excel_sheets_data = {}
+            weekly_chart_data = {}
 
             for pw_name, items in sorted(project_weeks_map.items()):
                 st.markdown(f"##### 📅 {pw_name.upper()}")
@@ -1923,6 +2000,7 @@ with tab_dub_tracker:
                     })
 
                 total_studio_money += week_tot_money
+                weekly_chart_data[pw_name] = week_tot_money
 
                 week_rows.append({
                     "Stt": "TỔNG",
@@ -1942,6 +2020,16 @@ with tab_dub_tracker:
                 )
                 
                 excel_sheets_data[pw_name[:30]] = df_week_display
+
+            # PHASE 3: BIỂU ĐỒ THỐNG KÊ LƯƠNG THEO TUẦN (ANALYTICS PRO)
+            if weekly_chart_data:
+                st.markdown("---")
+                st.markdown("##### 📊 PHASE 3 ANALYTICS PRO: BIỂU ĐỒ TỔNG NGÂN SÁCH LƯƠNG THEO TUẦN")
+                chart_df = pd.DataFrame({
+                    "Tuần Dự Án": list(weekly_chart_data.keys()),
+                    "Tổng Ngân Sách Lương (VNĐ)": list(weekly_chart_data.values())
+                }).set_index("Tuần Dự Án")
+                st.bar_chart(chart_df)
 
             with col_tr2:
                 excel_payroll_buffer = io.BytesIO()
@@ -1976,7 +2064,6 @@ with tab_dub_tracker:
             else:
                 active_tracker_data = [item for item in tracker_data if item.get("project_week", "Tuần 1") == selected_week_filter]
 
-            # Gom nhóm dữ liệu diễn viên tự động từ chuỗi 'Diễn viên' đã qua chỉnh sửa
             actor_weekly_map = {}
             for item in active_tracker_data:
                 v_title = item['video_title']
@@ -1984,7 +2071,6 @@ with tab_dub_tracker:
                 bd = item.get("actor_breakdown", {})
                 v_lines = item.get("total_lines", 0)
                 
-                # Tự động trích xuất diễn viên từ chuỗi 'Diễn viên' đã sửa trực tiếp
                 acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
 
                 for act_name_clean in acting_actors:
@@ -2123,6 +2209,15 @@ with tab_dub_tracker:
                     hide_index=True,
                     use_container_width=True
                 )
+
+                # PHASE 3: BIỂU ĐỒ PHÂN BỔ THÙ LAO DIỄN VIÊN
+                chart_actor_df = pd.DataFrame([
+                    {"Diễn viên": r["Diễn viên Lồng tiếng"], "Thù Lao (VNĐ)": float(re.sub(r'[^\d]', '', r["Thành tiền Lương"]))}
+                    for r in actor_payroll_rows if r["Stt"] != "TỔNG"
+                ]).set_index("Diễn viên")
+                if not chart_actor_df.empty:
+                    st.markdown("##### 📊 PHASE 3 ANALYTICS PRO: BIỂU ĐỒ SO SÁNH THÙ LAO TỪNG DIỄN VIÊN")
+                    st.bar_chart(chart_actor_df)
 
                 excel_actor_buf = io.BytesIO()
                 with pd.ExcelWriter(excel_actor_buf, engine='openpyxl') as writer:
