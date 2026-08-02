@@ -27,9 +27,9 @@ st.sidebar.markdown("### ⚡ Control Panel")
 
 ui_theme_choice = st.sidebar.radio(
     "Lựa chọn Skin hiển thị:",
-    options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Linh hoạt)"],
+    options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Tối ưu tương phản)"],
     index=0,
-    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện quen thuộc của team. Chế độ 'Enterprise Pro' mang lại phong cách Dark Dashboard hiện đại."
+    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện truyền thống. Chế độ 'Enterprise Pro' mang lại phong cách Studio hiện đại, rõ nét và tương phản cao."
 )
 
 if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
@@ -42,59 +42,74 @@ if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, 
 
 # --- DYNAMIC CSS INJECTION THEO CHẾ ĐỘ ĐƯỢC CHỌN ---
 if "Enterprise Pro" in ui_theme_choice:
-    # SKIN PRO: DARK SLATE DASHBOARD HOÀN CHỈNH
+    # SKIN ENTERPRISE PRO: HIGH-CONTRAST MODERN STUDIO
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        html, body, [class*="css"], .stApp {
-            font-family: 'Inter', sans-serif;
-            background-color: #0B0F17 !important;
-            color: #F1F5F9 !important;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #0F172A;
         }
-        [data-testid="stSidebar"] {
-            background-color: #111827 !important;
-            border-right: 1px solid #1F2937 !important;
-        }
+        
+        /* Hero Banner */
         .hero-container {
-            background: linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%) !important;
-            padding: 2rem !important; border-radius: 14px !important; color: white !important;
-            margin-bottom: 1.5rem !important; border: 1px solid #6366F1 !important;
-            box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.3) !important;
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            padding: 2.2rem 2rem;
+            border-radius: 14px;
+            color: #FFFFFF;
+            margin-bottom: 1.8rem;
+            border-left: 6px solid #38BDF8;
+            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2);
         }
-        .hero-title { font-size: 2.2rem !important; font-weight: 800 !important; color: #F8FAFC !important; margin: 0; }
-        .hero-subtitle { font-size: 1rem !important; color: #C7D2FE !important; margin-top: 0.4rem; }
+        .hero-title { font-size: 2.3rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; color: #FFFFFF; }
+        .hero-subtitle { font-size: 1.05rem; color: #94A3B8; margin-top: 0.4rem; font-weight: 400; }
         .badge-pro {
-            background: #6366F1 !important; color: white !important; padding: 4px 12px !important;
-            border-radius: 6px !important; font-size: 0.75rem !important; font-weight: 700 !important;
-            text-transform: uppercase; display: inline-block; margin-bottom: 0.5rem;
+            background-color: #0284C7; color: #FFFFFF; padding: 4px 12px;
+            border-radius: 6px; font-size: 0.75rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; margin-bottom: 0.6rem;
         }
+        
+        /* Containers & Cards */
         [data-testid="stVerticalBlockBorderWrapper"] {
-            background-color: #111827 !important;
-            border: 1px solid #1F2937 !important;
+            background-color: #FFFFFF !important;
+            border: 1px solid #CBD5E1 !important;
             border-radius: 12px !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         }
+        
         .metric-card {
-            background: #1E293B !important; border: 1px solid #334155 !important;
-            border-radius: 10px !important; padding: 1.2rem !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+            background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+            padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            transition: all 0.2s ease-in-out;
         }
-        .metric-label { font-size: 0.8rem !important; color: #94A3B8 !important; font-weight: 600 !important; }
-        .metric-value { font-size: 1.7rem !important; font-weight: 800 !important; color: #38BDF8 !important; margin-top: 0.2rem; }
+        .metric-card:hover { border-color: #0284C7; transform: translateY(-2px); box-shadow: 0 8px 15px rgba(0,0,0,0.06); }
+        .metric-label { font-size: 0.8rem; color: #475569; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .metric-value { font-size: 1.8rem; font-weight: 800; color: #0F172A; margin-top: 0.2rem; }
+        
+        /* Tabs Bar */
         .stTabs [data-baseweb="tab-list"] {
-            background-color: #111827 !important; padding: 6px !important;
-            border-radius: 10px !important; border: 1px solid #1F2937 !important; gap: 8px !important;
+            gap: 8px; border-bottom: 2px solid #E2E8F0; padding-bottom: 2px;
         }
         .stTabs [data-baseweb="tab"] {
-            color: #9CA3AF !important; border-radius: 6px !important; font-weight: 600 !important; padding: 0 16px !important;
+            height: 48px; border-radius: 8px 8px 0 0; font-weight: 700;
+            padding: 0 20px; color: #475569; font-size: 0.95rem;
         }
         .stTabs [aria-selected="true"] {
-            background-color: #4338CA !important; color: #FFFFFF !important;
+            background-color: #F1F5F9 !important; color: #0284C7 !important;
+            border-bottom: 3px solid #0284C7 !important;
         }
+        
+        /* Warnings & Notifications */
         .qc-card-warning {
-            background-color: #450A0A !important; border-left: 4px solid #EF4444 !important;
-            color: #FCA5A5 !important; padding: 10px 14px !important; border-radius: 6px !important; margin-bottom: 8px;
+            background-color: #FEF2F2; border-left: 5px solid #DC2626;
+            color: #991B1B; padding: 12px 16px; border-radius: 8px;
+            margin-bottom: 10px; font-size: 0.92rem; font-weight: 500;
         }
-        .saas-footer { text-align: center; padding: 2rem 0; color: #64748B; font-size: 0.85rem; border-top: 1px solid #1F2937; margin-top: 3rem; }
+        .saas-footer {
+            text-align: center; padding: 2rem 0; color: #64748B;
+            font-size: 0.85rem; border-top: 1px solid #E2E8F0; margin-top: 3rem; font-weight: 500;
+        }
     </style>
     """, unsafe_allow_html=True)
 else:
