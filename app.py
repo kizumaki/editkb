@@ -516,7 +516,7 @@ def process_docx_to_srt(uploaded_file):
                 else: srt_content += lines[i] + "\n"; i += 1
         else: i += 1
             
-    return srt_content.strip().encode('utf-8')
+    return srt_content.strip().encode('utf-8-sig')
 
 # --- SRT TO EXCEL CONVERTER ---
 EXCEL_COLOR_PALETTE = [
@@ -1219,7 +1219,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     ass_file = io.BytesIO(ass_content.encode('utf-8'))
     
     srt_content = "\n".join(srt_dialogues)
-    srt_file = io.BytesIO(srt_content.encode('utf-8'))
+    srt_file = io.BytesIO(srt_content.encode('utf-8-sig'))
     
     actor_zip_bytes = io.BytesIO()
     with zipfile.ZipFile(actor_zip_bytes, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -2423,7 +2423,7 @@ with tab_tools:
                         reaper_csv_str = generate_reaper_region_csv(df_markers)
                         st.download_button(
                             label=f"⬇️ Tải {m_base_name}_Reaper.csv",
-                            data=reaper_csv_str.encode('utf-8'),
+                            data=reaper_csv_str.encode('utf-8-sig'),
                             file_name=f"{m_base_name}_Reaper.csv",
                             mime="text/csv", type="primary", use_container_width=True
                         )
@@ -2435,7 +2435,7 @@ with tab_tools:
                         pt_csv_str = generate_pro_tools_csv(df_markers)
                         st.download_button(
                             label=f"⬇️ Tải {m_base_name}_ProTools.csv",
-                            data=pt_csv_str.encode('utf-8'),
+                            data=pt_csv_str.encode('utf-8-sig'),
                             file_name=f"{m_base_name}_ProTools.csv",
                             mime="text/csv", type="primary", use_container_width=True
                         )
@@ -2447,7 +2447,7 @@ with tab_tools:
                         edl_str = generate_cmx3600_edl(df_markers)
                         st.download_button(
                             label=f"⬇️ Tải {m_base_name}.edl",
-                            data=edl_str.encode('utf-8'),
+                            data=edl_str.encode('utf-8-sig'),
                             file_name=f"{m_base_name}.edl",
                             mime="text/plain", type="primary", use_container_width=True
                         )
