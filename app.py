@@ -228,7 +228,7 @@ VN_SYLLABLES = {
     "luot", "ma", "mac", "mai", "mam", "man", "mang", "mao", "map", "mat", "mau", "may", "me", "men", "meo", 
     "mi", "mia", "mien", "mieu", "minh", "mo", "moc", "moi", "mon", "mong", "mot", "mu", "mua", "muc", "mui", 
     "mum", "mung", "muoc", "muoi", "muon", "muong", "na", "nac", "nai", "nam", "nan", "nang", "nao", "nap", 
-    "nat", "nau", "nay", "ne", "nen", "neo", "ni", "nia", "niem", "nien", "niet", "nieu", "ninh", "no", "noc", 
+    "nat", "nau", "nay", "ne", "nen", "neo", "ni", "nia", "niem", "nien", "nieu", "ninh", "no", "noc", 
     "noi", "non", "nong", "not", "nu", "nua", "nuc", "nui", "num", "nung", "nuoc", "nuoi", "nuon", "nuong", 
     "nga", "ngac", "ngai", "ngam", "ngan", "ngang", "ngao", "ngap", "ngat", "ngau", "ngay", "nge", "ngen", 
     "nghe", "nghen", "ngheo", "nghi", "nghia", "nghiem", "nghien", "nghiet", "nghieu", "nghinh", "ngo", "ngoc", 
@@ -1671,7 +1671,7 @@ with tab_resync:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG
+# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (OPTIMIZED DISPLAY)
 # ==========================================
 with tab_dub_tracker:
     st.subheader("📋 CÔNG CỤ QUẢN LÝ THEO DÕI & TÍNH THÙ LAO LỒNG TIẾNG")
@@ -1697,6 +1697,9 @@ with tab_dub_tracker:
                 step=5000,
                 key="num_payroll_unit_rate"
             )
+            # HIỂN THỊ ĐỊNH DẠNG CÓ DẤU PHẨY HÀNG NGÀN DỄ NHÌN
+            unit_label = "phút" if "Phút" in rate_mode_choice else ("câu" if "Câu" in rate_mode_choice else "từ")
+            st.caption(f"👉 **Đơn giá áp dụng:** `{default_unit_rate:,.0f}` VNĐ / {unit_label}")
             
         # TỰ ĐỘNG CẬP NHẬT TRỰC TIẾP
         if "Phút" in rate_mode_choice:
@@ -1739,12 +1742,20 @@ with tab_dub_tracker:
                 v_lines = item.get("total_lines", 0)
                 v_dur_min = int(item.get("video_duration_min", 1))
                 
+                # Đếm số diễn viên tham gia
+                bd = item.get("actor_breakdown", {})
+                if bd:
+                    num_actors = len(bd)
+                else:
+                    raw_acts = [a.strip() for a in item.get('actors', '').split(',') if a.strip() and a.strip() != "Chưa có thông tin"]
+                    num_actors = max(1, len(raw_acts))
+                
+                # BẢO TỒN TÍNH CỦ TRỌN VẸN THÙ LAO VIDEO CHO TẤT CẢ DIỄN VIÊN
                 if current_mode == "minute":
-                    v_total_pay = v_dur_min * current_rate
+                    v_total_pay = (v_dur_min * current_rate) * num_actors
                 elif current_mode == "line":
                     v_total_pay = v_lines * current_rate
                 else: # word
-                    bd = item.get("actor_breakdown", {})
                     tot_words = sum(a["words"] for a in bd.values()) if bd else 0
                     v_total_pay = tot_words * current_rate
                     
@@ -1754,6 +1765,7 @@ with tab_dub_tracker:
                     "Tiêu đề video": item['video_title'],
                     "Thời lượng (phút)": v_dur_min,
                     "Diễn viên lồng tiếng": item['actors'],
+                    "Số diễn viên": num_actors,
                     "Tổng số câu": v_lines,
                     "Dự toán Thù lao Video": f"{v_total_pay:,.0f} VNĐ",
                     "Xóa dòng": False
@@ -1769,6 +1781,7 @@ with tab_dub_tracker:
                     "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video (Sửa trực tiếp)"),
                     "Thời lượng (phút)": st.column_config.NumberColumn("Độ dài (Phút)", disabled=True),
                     "Diễn viên lồng tiếng": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
+                    "Số diễn viên": st.column_config.NumberColumn("Số diễn viên", disabled=True),
                     "Tổng số câu": st.column_config.NumberColumn("Tổng số câu", disabled=True),
                     "Dự toán Thù lao Video": st.column_config.TextColumn("Dự toán Thù lao Video", disabled=True),
                     "Xóa dòng": st.column_config.CheckboxColumn("Xóa?")
@@ -1801,7 +1814,7 @@ with tab_dub_tracker:
             with col_tr2:
                 buffer_excel = io.BytesIO()
                 with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
-                    export_df = df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng (phút)", "Diễn viên lồng tiếng", "Tổng số câu", "Dự toán Thù lao Video"]]
+                    export_df = df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng (phút)", "Diễn viên lồng tiếng", "Số diễn viên", "Tổng số câu", "Dự toán Thù lao Video"]]
                     export_df.to_excel(writer, index=False, sheet_name="Nhat Ky Video")
                 buffer_excel.seek(0)
 
@@ -1837,7 +1850,7 @@ with tab_dub_tracker:
                 actor_payroll_map[act_name]["videos_count"] += 1
                 actor_payroll_map[act_name]["total_lines"] += a_info["lines"]
                 actor_payroll_map[act_name]["total_words"] += a_info["words"]
-                # GIỮ NGUYÊN TÍNH TRỌN VẸN PHÚT VIDEO CHO DIỄN VIÊN
+                # TÍNH TRỌN VẸN THỜI LƯỢNG VIDEO CHO MỖI DIỄN VIÊN THAM GIA
                 actor_payroll_map[act_name]["total_video_mins"] += v_dur
                 actor_payroll_map[act_name]["videos_list"].append(v_title)
 
@@ -1869,9 +1882,9 @@ with tab_dub_tracker:
 
             df_payroll = pd.DataFrame(payroll_rows)
             
-            st.metric("💰 TỔNG NGÂN SÁCH THÙ LAO TỔNG CỘNG:", f"{grand_total_pay:,.0f} VNĐ")
+            st.metric("💰 TỔNG NGÂN SÁCH THÙ LAO CẢ STUDIO:", f"{grand_total_pay:,.0f} VNĐ")
 
-            # CHỈ HIỂN THỊ CỘT THÔNG SỐ ĐƯỢC CHỌN ĐỂ BẢNG LUÔN GỌN GÀNG, KHÔNG RÁC THÔNG TIN
+            # CHỈ HIỂN THỊ DUY NHẤT CỘT LỰA CHỌN TÍNH LƯƠNG - LOẠI BỎ 2 THÔNG SỐ CÒN LẠI DỂ BẢNG LUÔN SẠCH GỌN
             if current_mode == "minute":
                 display_cols = ["STT", "Diễn viên Lồng tiếng", "Số Video tham gia", "Tổng phút video", "Thành tiền Thù lao", "Danh sách Video"]
             elif current_mode == "line":
@@ -1892,7 +1905,7 @@ with tab_dub_tracker:
                 export_payroll.to_excel(writer, index=False, sheet_name="Bao Cao Luong Dien Vien")
                 
                 if 'df_tracker' in locals():
-                    df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng (phút)", "Diễn viên lồng tiếng", "Tổng số câu", "Dự toán Thù lao Video"]].to_excel(writer, index=False, sheet_name="Chi Tiet Video")
+                    df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng (phút)", "Diễn viên lồng tiếng", "Số diễn viên", "Tổng số câu", "Dự toán Thù lao Video"]].to_excel(writer, index=False, sheet_name="Chi Tiet Video")
                     
             excel_payroll_buffer.seek(0)
 
