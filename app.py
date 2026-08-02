@@ -13,7 +13,6 @@ import json
 from gtts import gTTS
 import zipfile
 from datetime import datetime
-import pysrt
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT ---
 st.set_page_config(
@@ -139,7 +138,7 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-# --- HÀM CÔNG CỤ CHUYỂN ĐỔI SRT ⇄ DOCX ---
+# --- HÀM CÔNG CỤ CHUYỂN ĐỔI SRT ⇄ DOCX (PURE PYTHON - KHÔNG DÙNG PYSRT) ---
 TARGET_FONT = 'Times New Roman'
 TARGET_SIZE = Pt(12)
 
@@ -149,23 +148,46 @@ def set_font_and_size(run, font_name, font_size):
 
 def process_srt_to_docx(uploaded_file, file_name_without_ext):
     srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
-    subs = pysrt.from_string(srt_content)
+    blocks = re.split(r'\n\s*\n', srt_content.strip())
     document = Document()
     document.add_heading(f"SRT Conversion: {file_name_without_ext}", level=1)
 
-    for sub in subs:
-        p_index = document.add_paragraph(f"{sub.index}")
-        set_font_and_size(p_index.runs[0], TARGET_FONT, TARGET_SIZE)
-        p_index.paragraph_format.space_after = Pt(0)
-
-        timecode_str = f"{sub.start} --> {sub.end}"
-        p_timecode = document.add_paragraph(timecode_str)
-        set_font_and_size(p_timecode.runs[0], TARGET_FONT, TARGET_SIZE)
-        p_timecode.paragraph_format.space_after = Pt(0)
+    for block in blocks:
+        lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+        if not lines: continue
         
-        p_content = document.add_paragraph(sub.text_without_tags)
-        set_font_and_size(p_content.runs[0], TARGET_FONT, TARGET_SIZE)
-        p_content.paragraph_format.space_after = Pt(12)
+        idx_str = ""
+        tc_str = ""
+        text_lines = []
+        
+        if lines[0].isdigit():
+            idx_str = lines[0]
+            if len(lines) > 1 and "-->" in lines[1]:
+                tc_str = lines[1]
+                text_lines = lines[2:]
+            else:
+                text_lines = lines[1:]
+        elif "-->" in lines[0]:
+            tc_str = lines[0]
+            text_lines = lines[1:]
+        else:
+            text_lines = lines
+
+        if idx_str:
+            p_index = document.add_paragraph(idx_str)
+            set_font_and_size(p_index.runs[0], TARGET_FONT, TARGET_SIZE)
+            p_index.paragraph_format.space_after = Pt(0)
+
+        if tc_str:
+            p_timecode = document.add_paragraph(tc_str)
+            set_font_and_size(p_timecode.runs[0], TARGET_FONT, TARGET_SIZE)
+            p_timecode.paragraph_format.space_after = Pt(0)
+            
+        if text_lines:
+            clean_text = "\n".join([re.sub(r'<[^>]*>', '', l) for l in text_lines])
+            p_content = document.add_paragraph(clean_text)
+            set_font_and_size(p_content.runs[0], TARGET_FONT, TARGET_SIZE)
+            p_content.paragraph_format.space_after = Pt(12)
 
     modified_file = io.BytesIO()
     document.save(modified_file)
@@ -198,6 +220,112 @@ def process_docx_to_srt(uploaded_file):
             i += 1
             
     return srt_content.strip().encode('utf-8')
+
+# --- SRT TO EXCEL CONVERTER MODULE ---
+EXCEL_COLOR_PALETTE = [
+    'background-color: #ADD8E6; color: #000000',
+    'background-color: #90EE90; color: #000000',
+    'background-color: #FFB6C1; color: #000000',
+    'background-color: #FFFFE0; color: #000000',
+    'background-color: #DDA0DD; color: #000000',
+    'background-color: #AFEEEE; color: #000000',
+    'background-color: #F0E68C; color: #000000',
+    'background-color: #FFA07A; color: #000000',
+    'background-color: #E0FFFF; color: #000000',
+    'background-color: #F5F5DC; color: #000000',
+    'background-color: #2F4F4F; color: #FFFFFF',
+    'background-color: #191970; color: #FFFFFF',
+    'background-color: #006400; color: #FFFFFF',
+    'background-color: #800000; color: #FFFFFF',
+    'background-color: #4B0082; color: #FFFFFF',
+    'background-color: #556B2F; color: #FFFFFF',
+    'background-color: #8B4513; color: #FFFFFF',
+    'background-color: #36454F; color: #FFFFFF',
+]
+
+def clean_dialogue_text_for_excel(text):
+    text = re.sub(r'<i[^>]*>(.*?)</i[^>]*>', r'(\1)', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<b[^>]*>(.*?)</b[^>]*>', r'(\1)', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<u[^>]*>(.*?)</u[^>]*>', r'(\1)', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<[^>]*>', '', text, flags=re.DOTALL)
+    return re.sub(r'\s+', ' ', text).strip()
+
+def parse_srt_to_dataframe(srt_content):
+    data = []
+    blocks = re.split(r'\n\s*\n', srt_content.strip())
+    last_known_speaker = "Unknown"
+
+    def append_row_and_update_state(t_start, t_end, speaker, dialogue):
+        nonlocal last_known_speaker
+        data.append([t_start, t_end, speaker, clean_dialogue_text_for_excel(dialogue)])
+        last_known_speaker = speaker 
+
+    for block in blocks:
+        lines = block.strip().split('\n')
+        if len(lines) < 3: continue
+
+        time_line = lines[1].strip()
+        time_match = re.match(r'(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})', time_line)
+        if not time_match: continue
+
+        time_start = time_match.group(1) 
+        time_end = time_match.group(2)   
+        dialogue_lines = lines[2:]
+        current_dialogue = ""
+        block_initial_speaker = last_known_speaker
+
+        for line in dialogue_lines:
+            line = line.strip()
+            if not line: continue
+            segments = re.split(r'((?:[\w\s&]+?): )', line)
+            i = 0
+            while i < len(segments):
+                segment = segments[i].strip()
+                i += 1
+                if not segment: continue
+
+                if segment.endswith(':') and len(segment) > 1:
+                    speaker_tag = segment[:-1].strip()
+                    if is_valid_speaker_name(speaker_tag):
+                        if current_dialogue:
+                            speaker_to_use = block_initial_speaker if not data or data[-1][0] != time_start else last_known_speaker
+                            append_row_and_update_state(time_start, time_end, speaker_to_use, current_dialogue)
+                            current_dialogue = ""
+                        
+                        speaker = speaker_tag
+                        dialogue_segment = segments[i].strip() if i < len(segments) else ""
+                        i += 1
+                        if dialogue_segment:
+                            append_row_and_update_state(time_start, time_end, speaker, dialogue_segment)
+                        if block_initial_speaker == last_known_speaker:
+                             block_initial_speaker = speaker
+                    else:
+                        dialogue_segment = segments[i].strip() if i < len(segments) else ""
+                        i += 1
+                        recombined_text = segment + " " + dialogue_segment
+                        current_dialogue = (current_dialogue + " " + recombined_text) if current_dialogue else recombined_text
+                else:
+                    current_dialogue = (current_dialogue + " " + segment) if current_dialogue else segment
+
+        if current_dialogue:
+            speaker_to_use = block_initial_speaker if not data or data[-1][0] != time_start else last_known_speaker
+            append_row_and_update_state(time_start, time_end, speaker_to_use, current_dialogue)
+
+    return pd.DataFrame(data, columns=['Start', 'End', 'Speaker', 'Dialogue'])
+
+def apply_excel_styles(df):
+    unique_speakers = df['Speaker'].unique()
+    color_map = {
+        speaker: EXCEL_COLOR_PALETTE[i % len(EXCEL_COLOR_PALETTE)]
+        for i, speaker in enumerate(unique_speakers)
+    }
+    def highlight_speaker(row):
+        color_style = color_map.get(row['Speaker'], 'background-color: #FFFFFF; color: #000000')
+        return [color_style] * len(row)
+    try:
+        return df.style.apply(highlight_speaker, axis=1)
+    except Exception:
+        return df
 
 # --- HÀM TẠO ÂM THANH PHÁT ÂM TIẾNG ANH CHUẨN ---
 def generate_english_audio(text_to_speak, accent='com'):
@@ -359,501 +487,6 @@ if 'dubbing_tracker' not in st.session_state: st.session_state['dubbing_tracker'
 if 'payroll_rates' not in st.session_state:
     default_rates = {"mode": "minute", "unit_rate": 30000}
     st.session_state['payroll_rates'] = load_json_db(RATES_DB_FILE, default_rates)
-
-# --- DANH SÁCH MẶC ĐỊNH ---
-DEFAULT_NON_SPEAKER_PHRASES = {
-    "AND REMEMBER", "OFFICIAL DISTANCE", "GOOD NEWS FOR THEIR TEAMMATES", 
-    "LL BE HONEST", "FIRST AND FOREMOST", "I SAID", "THE ONLY THING LEFT TO SETTLE", 
-    "QUESTION IS", "FINALISTS", "WHISPERS", "SRT CONVERSION", 
-    "WILL RED THRIVE OR WILL RED BE DEAD", "BUT REMEMBER", "THE RESULTS ARE IN", 
-    "WE CHALLENGED", "I THINK", "IN THEIR DEFENSE", "THE PEAK OF HIS LIFE WAS DOING THE SPACETHING",
-    "THE ROCKETS ARE BIGGER", "THE DISTANCE SHOULD BE FURTHER", "GET CRAFTY", "THAT WAS SO SICK",
-    "OUT OF 100 CONTESTANTS", "THE FIRST ROUND IS BRUTAL", "YOU KNOW WHICH END GOES",
-    "THE GAME IS ON", "THAT'S A GOOD THROW", "HE'S GOING FOR IT", "WE GOT THIS",
-    "LAUNCH", "OH NO", "OH", "AH", "YEP", "WAIT", "YEAH", "WOO", "OKAY", "YES", "I ANH", "O BRI", "NG", "THE ONLY PROBLEM", "NOTE", "WARNING", "THINGS", "AND ON THE WAY WE CAME ACROSS THIS", 
-    "THIS IS THE HIGHEST SWING IN EUROPE", "AND I SWEAR", "WHICH MEANT", "THE ONLY THING IS", 
-    "HERE WE GO", "NEXT UP", "STEP 1", "STEP 2", "STEP 3", "AND STEP 3", "FIRST UP", 
-    "SO THE QUESTION IS", "I WAS GROWING UP", "YOU MIGHT BE WONDERING", "UPDATE", 
-    "NASHVILLE TO MIAMI", "ALL I KNOW IS", "UNLIKE JUDY", "THE GOOD NEWS IS", 
-    "AER LINGUS SEAT", "THE TRUE TEST IS", "JUST AS I SUSPECTED", "LIKE I SAID", 
-    "STAR REVIEW AND SAID", "I TOLD THEM ALL", "AND BEST OF ALL", "THE POINT IS", 
-    "AMERICANS", "I WAS THINKING", "AND THEY GO", "FIRST OF ALL", "SECOND", 
-    "ARE YOU LIKE", "AS A REMINDER", "ROUND 2", "ROUND 1", "ROUND 3", "ROUND 4", 
-    "ROUND 5", "WELCOME TO ROUND 3", "THE QUESTION IS", "QUICK REMINDER", 
-    "IN 2ND PLACE", "COMING UP", "FIRST STOP", "NEXT STEP", "AND THAT MEANS", 
-    "HASHTAG", "SO TO BE CLEAR", "YOUR SECOND WORD", "WELCOME TO ROUND 6", 
-    "BATTLE FINALE TIME", "NUMBER 1", "NUMBER 2", "BUT THE TRUTH IS", 
-    "SCORE TO BEAT", "AND YOUR WINNER", "\"CRAFTY\" AND \"BETCHA\". COMING UP", 
-    "NEXT ONE", "KEEP IN MIND", "AND IT SAYS", "YOU COULD SAY", "WELCOME TO ROUND 2", 
-    "AND THE BEST PART", "ONTO ROUND 2", "THE RIDE WE CHOSE", "GOOD NEWS IS", 
-    "BAD NEWS", "GOOD NEWS", "HE THOUGHT", "3 TEAMS REMAIN", "QUICK UPDATE", "DISTORTED", "MY FIRST QUESTION IS", "AND THE BEST PART IS", "BUT AS GORDON RAMSAY MIGHT SAY", "BUT THE GOOD NEWS IS", "LET ME JUST SAY", "BUT THE BEST PART", "I WILL SAY THOUGH", "LL SAY IS, UPDATE", "LL SAY IS", "UPDATE", "TO ALL OF YOU WATCHING WITH ME RIGHT NOW", "THIS IS THE LIFE", "I HAVE A QUESTION", "I WILL BE HONEST", "SO I CAN UPDATE MY INSTAGRAM BIO TO SAY"
-}
-
-NON_SPEAKER_PHRASES = DEFAULT_NON_SPEAKER_PHRASES.union(st.session_state['custom_non_speakers'])
-TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$")
-ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
-RED_COLOR = RGBColor(255, 0, 0)
-
-def is_valid_speaker_name(name):
-    clean = name.strip()
-    if not clean or len(clean) > 25 or clean.isdigit() or re.match(r'^\d+[\d\s:]*$', clean): return False
-    if is_stage_direction(clean) or clean.upper() in NON_SPEAKER_PHRASES: return False
-    if any(char in clean for char in ['/', '?', '!', ',', '.', '-->', '(', ')']): return False
-    if len(clean.split()) > 4: return False
-    return True
-
-def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay, current_mode):
-    doc = Document()
-    p_title = doc.add_paragraph("MAI HAN STUDIO - PHIẾU BÁO CÁO THÙ LAO LỒNG TIẾNG")
-    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
-    p_sub = doc.add_paragraph(f"Diễn viên Lồng tiếng: {actor_name} | {week_name}")
-    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
-    
-    doc.add_paragraph()
-    table = doc.add_table(rows=1, cols=5); table.style = 'Table Grid'
-    hdr_cells = table.rows[0].cells; hdr_names = ["Stt", "Tiêu đề video", "Khối lượng", "Đơn giá áp dụng", "Thành tiền"]
-    for i, name in enumerate(hdr_names):
-        hdr_cells[i].text = name; hdr_cells[i].paragraphs[0].runs[0].font.bold = True; hdr_cells[i].paragraphs[0].runs[0].font.name = 'Times New Roman'
-        
-    for r in video_rows:
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(r["Stt"]); row_cells[1].text = str(r["Tiêu đề video"]); row_cells[2].text = str(r["Thời lượng"])
-        row_cells[3].text = str(r["Đơn giá"]); row_cells[4].text = str(r["Thành tiền"])
-        for c in row_cells:
-            for p in c.paragraphs:
-                for run in p.runs: run.font.name = 'Times New Roman'; run.font.size = Pt(11)
-
-    doc.add_paragraph()
-    p_total = doc.add_paragraph(f"👉 TỔNG THÙ LAO THANH TOÁN: {total_pay:,.0f} VNĐ")
-    p_total.runs[0].font.name = 'Times New Roman'; p_total.runs[0].font.size = Pt(13); p_total.runs[0].bold = True
-    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
-    return buf
-
-def round_seconds_to_int_minutes(total_sec):
-    if total_sec <= 0: return 1
-    mins = int(total_sec // 60); secs = int(round(total_sec % 60))
-    if secs >= 30: mins += 1
-    return max(1, mins)
-
-def calculate_duration_sec(timecode_line):
-    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
-    if not m: return 1.0, 0.0, 0.0
-    h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
-    t1 = h1 * 3600 + m1 * 60 + s1 + ms1 / 1000.0; t2 = h2 * 3600 + m2 * 60 + s2 + ms2 / 1000.0
-    dur = t2 - t1
-    return dur if dur > 0 else 0.5, t1, t2
-
-def srt_timecode_to_ass(timecode_line):
-    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
-    if not m: return None, None
-    h1, m1, s1, ms1, h2, m2, s2, ms2 = m.groups()
-    ass_start = f"{int(h1)}:{m1}:{s1}.{int(ms1)//10:02d}"
-    ass_end = f"{int(h2)}:{m2}:{s2}.{int(ms2)//10:02d}"
-    return ass_start, ass_end
-
-def rgb_to_ass_hex(rgb_obj):
-    if not rgb_obj: return "&H00FFFFFF&"
-    try:
-        r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
-        return f"&H00{b:02X}{g:02X}{r:02X}&"
-    except Exception: return "&H00FFFFFF&"
-
-def build_speaker_regex(custom_speakers):
-    base_pattern = r"[\w\s&\.\-\(\)]+"
-    if custom_speakers:
-        sorted_custom = sorted(list(custom_speakers), key=len, reverse=True)
-        custom_pattern = "|".join([re.escape(s) for s in sorted_custom])
-        pattern_str = rf"({custom_pattern}|{base_pattern}):\s*"
-    else: pattern_str = rf"({base_pattern}):\s*"
-    return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
-
-def is_stage_direction(name):
-    clean = name.strip()
-    return clean.startswith('(') or clean.endswith(')')
-
-def get_paragraph_text_with_html(paragraph):
-    text = ""
-    for run in paragraph.runs:
-        r_text = run.text
-        if not r_text: continue
-        if run.italic and not ("<i>" in r_text or "</i>" in r_text): text += f"<i>{r_text}</i>"
-        else: text += r_text
-    text = text.replace("</i><i>", "")
-    return text
-
-def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
-    cleaned_paras = []; i = 0; total = len(raw_paragraphs)
-    while i < total:
-        raw_text = get_paragraph_text_with_html(raw_paragraphs[i])
-        text = re.sub(r'\t+', ' ', raw_text).strip()
-        if not text:
-            i += 1; continue
-        spk_matches = list(speaker_regex.finditer(text))
-        valid_spk_matches = [m for m in spk_matches if is_valid_speaker_name(m.group(1))]
-        if valid_spk_matches:
-            last_match = valid_spk_matches[-1]
-            content_after = text[last_match.end():].strip()
-            real_content = re.sub(r'</?[ibuIBU]>', '', content_after).strip()
-            if not real_content:
-                next_i = i + 1
-                while next_i < total:
-                    next_raw_text = get_paragraph_text_with_html(raw_paragraphs[next_i])
-                    next_text = re.sub(r'\t+', ' ', next_raw_text).strip()
-                    if next_text: break
-                    next_i += 1
-                if next_i < total:
-                    next_raw_text = get_paragraph_text_with_html(raw_paragraphs[next_i])
-                    next_text = re.sub(r'\t+', ' ', next_raw_text).strip()
-                    is_timecode = TIMECODE_REGEX.match(next_text)
-                    is_number = re.fullmatch(r"^\s*\d+\s*$", next_text)
-                    is_srt = next_text.lower().startswith("srt conversion") or next_text.lower().startswith("vai:")
-                    next_spk_match = speaker_regex.match(next_text)
-                    is_next_speaker = False
-                    if next_spk_match:
-                        if is_valid_speaker_name(next_spk_match.group(1)): is_next_speaker = True
-                    if not (is_timecode or is_number or is_srt or is_next_speaker):
-                        text = f"{text}{next_text}" if text.endswith('>') else f"{text} {next_text}"
-                        i = next_i
-        cleaned_paras.append(text); i += 1
-    return cleaned_paras
-
-def scan_candidate_speakers(uploaded_file, speaker_regex):
-    doc = Document(io.BytesIO(uploaded_file.getvalue()))
-    processed_strings = preprocess_raw_paragraphs(doc.paragraphs, speaker_regex)
-    candidates = Counter()
-    for text in processed_strings:
-        if not text or text.lower().startswith("srt conversion"): continue
-        for match in speaker_regex.finditer(text):
-            speaker_name = match.group(1).strip()
-            if is_valid_speaker_name(speaker_name): candidates[speaker_name] += 1
-    return candidates
-
-def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
-    doc = Document(io.BytesIO(uploaded_file.getvalue()))
-    processed_strings = preprocess_raw_paragraphs(doc.paragraphs, speaker_regex)
-    eng_found = set()
-    for text in processed_strings:
-        if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text): continue
-        parts = speaker_regex.split(text); dialogue_content = ""
-        if len(parts) == 1: dialogue_content = text
-        else:
-            speaker_matches = [m for m in speaker_regex.finditer(text) if is_valid_speaker_name(m.group(1))]
-            last_idx = 0
-            for m in speaker_matches:
-                end = m.end(); dialogue_content += " " + text[last_idx:m.start()]; last_idx = end
-            dialogue_content += " " + text[last_idx:]
-
-        for match in ENGLISH_WORD_REGEX.finditer(dialogue_content):
-            word = match.group(0).strip()
-            if is_candidate_english_word(word): eng_found.add(word)
-    return sorted(list(eng_found), key=lambda x: x.upper())
-
-def extract_phrases_from_file(file_io, file_name):
-    phrases = set()
-    try:
-        if file_name.endswith('.txt'):
-            content = file_io.getvalue().decode("utf-8")
-            phrases.update([line.strip() for line in content.split('\n') if line.strip()])
-        elif file_name.endswith('.docx'):
-            doc = Document(io.BytesIO(file_io.getvalue()))
-            for p in doc.paragraphs:
-                p_text = re.sub(r'\t+', ' ', p.text).strip()
-                if p_text:
-                    parts = re.split(r'[,\n]', p_text)
-                    phrases.update([part.strip() for part in parts if part.strip()])
-        elif file_name.endswith('.xlsx'):
-            df = pd.read_excel(file_io, header=None)
-            for col in df.columns:
-                for item in df[col].dropna():
-                    parts = re.split(r'[,\n]', str(item))
-                    phrases.update([part.strip() for part in parts if part.strip()])
-    except Exception as e: st.error(f"Lỗi đọc file: {e}")
-    return phrases
-
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
-    text = re.sub(r'\t+', ' ', text).strip()
-    TAB_STOP_POSITION = Inches(1.0)
-    speaker_matches = [m for m in speaker_regex.finditer(text) if is_valid_speaker_name(m.group(1))]
-    
-    if not speaker_matches:
-        new_paragraph = document.add_paragraph()
-        new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-        new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-        new_paragraph.add_run('\t'); new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
-        apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
-        return None, text
-
-    last_processed_index = 0; ass_line_result = ""; pure_dialogue_list = []
-    for i, match in enumerate(speaker_matches):
-        speaker_name = match.group(1).strip()
-        start, end = match.span()
-        leading_content = text[last_processed_index:start].strip()
-        if leading_content:
-            continuation_paragraph = document.add_paragraph()
-            continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-            continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-            continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-            continuation_paragraph.add_run('\t'); continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
-            apply_html_and_phonetic_to_paragraph(continuation_paragraph, leading_content, enable_phonetic)
-
-        if speaker_name.upper() in NON_SPEAKER_PHRASES:
-            content_block = text[start:]
-            continuation_paragraph = document.add_paragraph()
-            continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-            continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-            continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-            continuation_paragraph.add_run('\t'); continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
-            apply_html_and_phonetic_to_paragraph(continuation_paragraph, content_block, enable_phonetic)
-            return None, content_block
-
-        stats_counter[speaker_name] += 1
-        if i + 1 < len(speaker_matches): next_match_start = speaker_matches[i+1].start()
-        else: next_match_start = len(text)
-            
-        content = re.sub(r'^\s*[\t\s]+', '', text[end:next_match_start]).strip()
-        actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-        
-        if not actor_name:
-            first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
-            if first_word and first_word in st.session_state['custom_cast_mapping'].values():
-                actor_name = first_word; st.session_state['custom_cast_mapping'][speaker_name.upper()] = actor_name
-
-        if actor_name and content.startswith(actor_name): content = content[len(actor_name):].strip()
-        if content: pure_dialogue_list.append(content)
-
-        if actor_name:
-            if actor_name not in actor_dialogue_map: actor_dialogue_map[actor_name] = []
-            actor_dialogue_map[actor_name].append({"speaker": speaker_name, "timecode": current_timecode, "text": content})
-
-        new_paragraph = document.add_paragraph()
-        new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-        new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-        
-        is_all = (speaker_name.strip().upper() == "ALL")
-        spk_text = f"{speaker_name}:"
-        spk_color = RED_COLOR if is_all else get_speaker_color(speaker_name, speaker_color_map, used_colors)
-        run_speaker = new_paragraph.add_run(spk_text); run_speaker.font.bold = True
-        
-        if is_all:
-            run_speaker.font.color.rgb = RED_COLOR; run_speaker.font.highlight_color = WD_COLOR_INDEX.YELLOW
-        elif enable_colors: run_speaker.font.color.rgb = spk_color
-            
-        is_first_time = False
-        if enable_cast and not is_all:
-            if speaker_name not in seen_speakers_first_time:
-                seen_speakers_first_time.add(speaker_name); is_first_time = True
-                if actor_name:
-                    run_actor = new_paragraph.add_run(f" {actor_name}")
-                    run_actor.font.bold = True; run_actor.font.color.rgb = RED_COLOR
-
-        new_paragraph.add_run('\t')
-        if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
-        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
-        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
-        last_processed_index = next_match_start
-    
-    remaining_content = re.sub(r'^\s*[\t\s]+', '', text[last_processed_index:]).strip()
-    if remaining_content:
-        continuation_paragraph = document.add_paragraph()
-        continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-        continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-        continuation_paragraph.add_run('\t'); continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
-        apply_html_and_phonetic_to_paragraph(continuation_paragraph, remaining_content, enable_phonetic)
-
-    pure_dialogue_text = " ".join(pure_dialogue_list)
-    return ass_line_result, pure_dialogue_text
-
-def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False):
-    speaker_color_map = {}; used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
-    random.shuffle(used_colors); stats_counter = Counter(); seen_speakers_first_time = set()
-    actor_dialogue_map = {}; qc_warnings = []        
-    
-    speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
-    original_document = Document(io.BytesIO(uploaded_file.getvalue()))
-    raw_paragraphs = [p for p in original_document.paragraphs]
-    processed_strings = preprocess_raw_paragraphs(raw_paragraphs, speaker_regex)
-    
-    first_timecode_idx = 0
-    for idx, text in enumerate(processed_strings):
-        if TIMECODE_REGEX.match(text): first_timecode_idx = idx; break
-            
-    header_zone = processed_strings[:first_timecode_idx] if first_timecode_idx > 0 else []
-    body_zone = processed_strings[first_timecode_idx:] if first_timecode_idx > 0 else processed_strings
-    
-    for h_line in header_zone:
-        if ":" in h_line and not h_line.lower().startswith("srt conversion"):
-            parts = h_line.split(":", 1)
-            spk_k = parts[0].strip().upper(); act_v = parts[1].strip().upper()
-            if is_valid_speaker_name(spk_k) and act_v and act_v not in NON_SPEAKER_PHRASES:
-                st.session_state['custom_cast_mapping'][spk_k] = act_v
-
-    document = Document()
-    title_text_raw = file_name_without_ext.upper()
-    title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace("_FINAL", "").replace(" (GỐC)", "").strip()
-    title_paragraph = document.add_paragraph(title_text)
-    title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_paragraph.runs[0].font.name = 'Times New Roman'; title_paragraph.runs[0].font.size = Pt(20); title_paragraph.runs[0].bold = True
-    
-    unique_speakers = []; assigned_actors = []; unassigned_speakers = []
-    for text in body_zone:
-        if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
-        for match in speaker_regex.finditer(text):
-            speaker_name = match.group(1).strip()
-            if is_valid_speaker_name(speaker_name) and speaker_name not in unique_speakers:
-                unique_speakers.append(speaker_name)
-                act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-                if act:
-                    if act not in assigned_actors: assigned_actors.append(act)
-                else:
-                    if speaker_name.upper() != "ALL": unassigned_speakers.append(speaker_name)
-                    
-    if unassigned_speakers: qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
-            
-    if unique_speakers:
-        if enable_cast:
-            header_vai = document.add_paragraph()
-            r_vai = header_vai.add_run("VAI: ")
-            r_vai.font.name = 'Times New Roman'; r_vai.font.size = Pt(12); r_vai.font.bold = True
-            header_vai.paragraph_format.space_before = Pt(0); header_vai.paragraph_format.space_after = Pt(0)
-
-            for spk in unique_speakers:
-                p_spk = document.add_paragraph()
-                p_spk.paragraph_format.space_before = Pt(0); p_spk.paragraph_format.space_after = Pt(0)
-                is_all = (spk.strip().upper() == "ALL")
-                spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, used_colors)
-                r_spk_name = p_spk.add_run(f"{spk}: ")
-                r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(12); r_spk_name.font.bold = True
-                
-                if is_all:
-                    r_spk_name.font.color.rgb = RED_COLOR; r_spk_name.font.highlight_color = WD_COLOR_INDEX.YELLOW
-                elif enable_colors: r_spk_name.font.color.rgb = spk_color
-                    
-                actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
-                if actor and not is_all:
-                    r_actor = p_spk.add_run(actor)
-                    r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(12); r_actor.font.bold = True
-                    r_actor.font.color.rgb = RED_COLOR
-        else:
-            speaker_list_text = "VAI: " + ", ".join(unique_speakers)
-            p = document.add_paragraph(speaker_list_text)
-            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].font.bold = True
-            p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
-    
-    document.add_paragraph()
-    start_index = len(document.paragraphs); total_paras = len(body_zone)
-    progress_bar = st.progress(0); status_text = st.empty()
-    ass_dialogues = []; srt_dialogues = []; current_timecode_line = None; srt_counter = 1; max_video_time_sec = 0.0
-
-    for idx, text in enumerate(body_zone):
-        if idx % max(1, total_paras // 10) == 0:
-            progress = int((idx / total_paras) * 100)
-            progress_bar.progress(progress)
-            status_text.text(f"Đang phân tích & xử lý {idx}/{total_paras}...")
-
-        if not text or text.upper() == title_text.upper(): continue
-        if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
-            
-        if TIMECODE_REGEX.match(text):
-            current_timecode_line = text
-            dur, t1, t2 = calculate_duration_sec(text)
-            if t2 > max_video_time_sec: max_video_time_sec = t2
-            new_paragraph = document.add_paragraph(text)
-            new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(12)
-            new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
-        else:
-            cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
-            ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
-                document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
-                speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time,
-                actor_dialogue_map, current_timecode_line
-            )
-            
-            if current_timecode_line and pure_dialogue_text:
-                dur, _, _ = calculate_duration_sec(current_timecode_line)
-                clean_chars = len(re.sub(r'</?[ibuIBU]>', '', pure_dialogue_text).strip())
-                cps = clean_chars / dur if dur > 0 else 0
-                if cps > 20 and clean_chars > 0: 
-                    qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{pure_dialogue_text[:45]}...\"")
-            
-            if current_timecode_line and ass_formatted_line:
-                start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
-                if start_ass and end_ass:
-                    ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{ass_formatted_line}")
-                    srt_dialogues.append(f"{srt_counter}\n{current_timecode_line}\n{re.sub(r'{\\.*?}', '', ass_formatted_line)}\n")
-                    srt_counter += 1
-
-    progress_bar.progress(100); status_text.text("Xử lý hoàn tất!"); time.sleep(0.5)
-    progress_bar.empty(); status_text.empty()
-            
-    for paragraph in document.paragraphs[start_index:]:
-        paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-        paragraph.paragraph_format.space_before = Pt(0); paragraph.paragraph_format.space_after = Pt(0)
-        for run in paragraph.runs:
-            run.font.name = 'Times New Roman'
-            if run.font.size is None: run.font.size = Pt(12)
-        
-    docx_file = io.BytesIO(); document.save(docx_file); docx_file.seek(0)
-    
-    ass_header = f"""[Script Info]
-Title: {title_text}
-ScriptType: v4.00+
-WrapStyle: 0
-ScaledBorderAndShadow: yes
-YCbCr Matrix: None
-PlayResX: 1920
-PlayResY: 1080
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Times New Roman,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,30,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-    ass_content = ass_header + "\n".join(ass_dialogues)
-    ass_file = io.BytesIO(ass_content.encode('utf-8'))
-    
-    srt_content = "\n".join(srt_dialogues)
-    srt_file = io.BytesIO(srt_content.encode('utf-8'))
-    
-    actor_zip_bytes = io.BytesIO()
-    with zipfile.ZipFile(actor_zip_bytes, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for act_name, dialogues in actor_dialogue_map.items():
-            act_buf = generate_actor_docx(title_text, act_name, dialogues)
-            zip_file.writestr(f"Kich_Ban_{act_name}.docx", act_buf.getvalue())
-    actor_zip_bytes.seek(0)
-    
-    actor_stats_breakdown = {}
-    for act_name, dialogues in actor_dialogue_map.items():
-        line_cnt = len(dialogues)
-        word_cnt = sum(len(re.sub(r'</?[ibuIBU]>', '', d['text']).split()) for d in dialogues)
-        actor_stats_breakdown[act_name] = {"lines": line_cnt, "words": word_cnt}
-    
-    video_duration_min = round_seconds_to_int_minutes(max_video_time_sec)
-    
-    stats = {
-        "total_speakers": len(unique_speakers),
-        "total_lines": sum(stats_counter.values()),
-        "top_speaker": stats_counter.most_common(1)[0] if stats_counter else ("Không có", 0),
-        "actors_list": assigned_actors,
-        "actor_dialogue_map": actor_dialogue_map,
-        "actor_stats_breakdown": actor_stats_breakdown,
-        "video_duration_min": video_duration_min,
-        "video_title": title_text,
-        "qc_warnings": qc_warnings
-    }
-    
-    return docx_file, ass_file, srt_file, actor_zip_bytes, stats
-
-def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
-    name_without_ext = os.path.splitext(original_filename)[0]
-    cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$|_final$)', '', name_without_ext, flags=re.IGNORECASE).strip()
-    return f"{cleaned}{tag}{ext}"
 
 # --- SIDEBAR TÙY CHỌN BẬT/TẮT TÍNH NĂNG ---
 st.sidebar.markdown("---")
@@ -1846,8 +1479,9 @@ with tab_phonetic_db:
 # TAB 6: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
 # ==========================================
 with tab_tools:
-    subtab_sub_conv, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
-        "🎬 Chuyển Đổi Kịch Bản (SRT ⇄ DOCX)",
+    subtab_sub_conv, subtab_srt_excel, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
+        "🎬 Kịch Bản Subtitle (SRT ⇄ DOCX)",
+        "📊 SRT ➔ Excel (.xlsx)",
         "💵 Tiền Tệ (Currency)",
         "📏 Khoảng Cách (Distance)",
         "🚀 Vận Tốc (Speed)",
@@ -1857,7 +1491,6 @@ with tab_tools:
     # 1. BỘ CHUYỂN ĐỔI SUBTITLE KỊCH BẢN (SRT ⇄ DOCX)
     with subtab_sub_conv:
         st.markdown("#### 🎬 Bộ Công Cụ Chuyển Đổi Subtitle Chuyên Nghiệp")
-        
         col_c1, col_c2 = st.columns(2)
         
         # Module 1: SRT -> DOCX
@@ -1883,8 +1516,7 @@ with tab_tools:
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                 use_container_width=True
                             )
-                        except Exception as e:
-                            st.error(f"Lỗi: {e}")
+                        except Exception as e: st.error(f"Lỗi: {e}")
 
         # Module 2: DOCX -> SRT (Batch)
         with col_c2:
@@ -1931,35 +1563,71 @@ with tab_tools:
                                     mime="application/zip",
                                     use_container_width=True
                                 )
-                        except Exception as e:
-                            st.error(f"Lỗi: {e}")
+                        except Exception as e: st.error(f"Lỗi: {e}")
 
-    # 2. BỘ CHUYỂN ĐỔI TIỀN TỆ (CURRENCY)
+    # 2. BỘ CHUYỂN ĐỔI SRT TO EXCEL WITH SPEAKER STYLING
+    with subtab_srt_excel:
+        st.markdown("#### 📊 Chuyển Đổi File Subtitle SRT ➔ Bảng Tính Excel (.xlsx)")
+        st.caption("Tự động nhận diện nhân vật, tô màu phân biệt người nói và xuất file Excel có cấu trúc:")
+        
+        uploaded_srt_excel = st.file_uploader("Tải file .srt của bạn vào đây:", type=['srt'], key="tool_srt_to_excel")
+        if uploaded_srt_excel is not None:
+            try:
+                try: srt_content_excel = uploaded_srt_excel.read().decode("utf-8")
+                except UnicodeDecodeError: srt_content_excel = uploaded_srt_excel.read().decode("latin-1")
+            except Exception:
+                st.error("Lỗi mã hóa file. Vui lòng đảm bảo file SRT của bạn ở chuẩn mã hóa UTF-8.")
+                srt_content_excel = None
+
+            if srt_content_excel:
+                with st.spinner('Đang phân tích dữ liệu SRT...'):
+                    df_converted_excel = parse_srt_to_dataframe(srt_content_excel)
+                
+                if df_converted_excel.empty:
+                    st.error("Không thể đọc được phụ đề nào từ file SRT này.")
+                else:
+                    st.markdown("##### 📊 Thống Kê Nhân Vật")
+                    unique_spks = df_converted_excel['Speaker'].unique()
+                    actual_spks = [s for s in unique_spks if s not in ["Unknown", ""]]
+                    
+                    st.success(f"**Tổng số Người nói được nhận dạng:** {len(actual_spks)} người.")
+                    if actual_spks:
+                        st.markdown(f"**Danh sách Người nói:** {', '.join(actual_spks)}")
+                    else:
+                        st.info("Không tìm thấy người nói rõ ràng (ngoại trừ các đoạn hội thoại không gắn tên).")
+
+                    st.markdown("##### 👁️ Xem Trước Bảng Dữ Liệu Chuyển Đổi")
+                    styled_excel_df = apply_excel_styles(df_converted_excel)
+                    st.dataframe(styled_excel_df, use_container_width=True)
+
+                    output_excel = io.BytesIO()
+                    styled_excel_df.to_excel(output_excel, index=False, engine='openpyxl')
+                    output_excel.seek(0)
+
+                    orig_base_name = uploaded_srt_excel.name.rsplit('.', 1)[0]
+                    excel_out_filename = f"{orig_base_name}.xlsx"
+                    
+                    st.download_button(
+                        label=f"💾 TẢI FILE EXCEL (.XLSX): {excel_out_filename}",
+                        data=output_excel.getvalue(),
+                        file_name=excel_out_filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+    # 3. BỘ CHUYỂN ĐỔI TIỀN TỆ (CURRENCY)
     with subtab_curr:
         st.markdown("#### 💵 Quy Đổi Tiền Tệ Đa Ngoại Tệ")
-        
         rates = {
-            "VND": 1.0,
-            "USD": 25400.0,
-            "EUR": 27500.0,
-            "GBP": 32000.0,
-            "JPY": 165.0,
-            "CNY": 3500.0,
-            "KRW": 18.5,
-            "AUD": 16800.0,
-            "CAD": 18200.0,
-            "SGD": 18900.0
+            "VND": 1.0, "USD": 25400.0, "EUR": 27500.0, "GBP": 32000.0, "JPY": 165.0,
+            "CNY": 3500.0, "KRW": 18.5, "AUD": 16800.0, "CAD": 18200.0, "SGD": 18900.0
         }
-        
         c_col1, c_col2, c_col3 = st.columns([2, 1.5, 1.5])
-        with c_col1:
-            curr_amount = st.number_input("Số lượng tiền cần đổi:", value=100.0, min_value=0.0, step=10.0)
-        with c_col2:
-            from_curr = st.selectbox("Từ đồng tiền:", options=list(rates.keys()), index=1)
-        with c_col3:
-            to_curr = st.selectbox("Sang đồng tiền:", options=list(rates.keys()), index=0)
+        with c_col1: curr_amount = st.number_input("Số lượng tiền cần đổi:", value=100.0, min_value=0.0, step=10.0)
+        with c_col2: from_curr = st.selectbox("Từ đồng tiền:", options=list(rates.keys()), index=1)
+        with c_col3: to_curr = st.selectbox("Sang đồng tiền:", options=list(rates.keys()), index=0)
             
-        # Tính toán
         amount_in_vnd = curr_amount * rates[from_curr]
         result_curr = amount_in_vnd / rates[to_curr]
         
@@ -1967,28 +1635,17 @@ with tab_tools:
         st.markdown(f"### 🎯 Kết Quả: **{curr_amount:,.2f} {from_curr}** = **{result_curr:,.2f} {to_curr}**")
         st.caption(f"Tỷ giá tham chiếu: 1 USD = {rates['USD']:,.0f} VND | 1 EUR = {rates['EUR']:,.0f} VND | 1 JPY = {rates['JPY']:,.1f} VND")
 
-    # 3. BỘ CHUYỂN ĐỔI KHOẢNG CÁCH (DISTANCE)
+    # 4. BỘ CHUYỂN ĐỔI KHOẢNG CÁCH (DISTANCE)
     with subtab_dist:
         st.markdown("#### 📏 Quy Đổi Đơn Vị Khoảng Cách")
-        
         dist_factors = {
-            "Millimet (mm)": 0.001,
-            "Centimet (cm)": 0.01,
-            "Mét (m)": 1.0,
-            "Kilômét (km)": 1000.0,
-            "Inch (in)": 0.0254,
-            "Foot (ft)": 0.3048,
-            "Yard (yd)": 0.9144,
-            "Dặm (Mile)": 1609.344
+            "Millimet (mm)": 0.001, "Centimet (cm)": 0.01, "Mét (m)": 1.0, "Kilômét (km)": 1000.0,
+            "Inch (in)": 0.0254, "Foot (ft)": 0.3048, "Yard (yd)": 0.9144, "Dặm (Mile)": 1609.344
         }
-        
         d_col1, d_col2, d_col3 = st.columns([2, 1.5, 1.5])
-        with d_col1:
-            dist_val = st.number_input("Giá trị khoảng cách:", value=1.0, min_value=0.0, step=1.0)
-        with d_col2:
-            from_dist = st.selectbox("Từ đơn vị:", options=list(dist_factors.keys()), index=3)
-        with d_col3:
-            to_dist = st.selectbox("Sang đơn vị:", options=list(dist_factors.keys()), index=2)
+        with d_col1: dist_val = st.number_input("Giá trị khoảng cách:", value=1.0, min_value=0.0, step=1.0)
+        with d_col2: from_dist = st.selectbox("Từ đơn vị:", options=list(dist_factors.keys()), index=3)
+        with d_col3: to_dist = st.selectbox("Sang đơn vị:", options=list(dist_factors.keys()), index=2)
             
         meters = dist_val * dist_factors[from_dist]
         res_dist = meters / dist_factors[to_dist]
@@ -1996,24 +1653,17 @@ with tab_tools:
         st.markdown("---")
         st.markdown(f"### 🎯 Kết Quả: **{dist_val:,.4f} {from_dist}** = **{res_dist:,.4f} {to_dist}**")
 
-    # 4. BỘ CHUYỂN ĐỔI VẬN TỐC (SPEED)
+    # 5. BỘ CHUYỂN ĐỔI VẬN TỐC (SPEED)
     with subtab_speed:
         st.markdown("#### 🚀 Quy Đổi Đơn Vị Vận Tốc")
-        
         speed_factors = {
-            "Mét/giây (m/s)": 1.0,
-            "Kilômét/giờ (km/h)": 1 / 3.6,
-            "Dặm/giờ (mph)": 0.44704,
-            "Hải lý/giờ (Knot)": 0.514444
+            "Mét/giây (m/s)": 1.0, "Kilômét/giờ (km/h)": 1 / 3.6,
+            "Dặm/giờ (mph)": 0.44704, "Hải lý/giờ (Knot)": 0.514444
         }
-        
         s_col1, s_col2, s_col3 = st.columns([2, 1.5, 1.5])
-        with s_col1:
-            speed_val = st.number_input("Giá trị vận tốc:", value=100.0, min_value=0.0, step=5.0)
-        with s_col2:
-            from_speed = st.selectbox("Từ đơn vị:", options=list(speed_factors.keys()), index=1)
-        with s_col3:
-            to_speed = st.selectbox("Sang đơn vị:", options=list(speed_factors.keys()), index=0)
+        with s_col1: speed_val = st.number_input("Giá trị vận tốc:", value=100.0, min_value=0.0, step=5.0)
+        with s_col2: from_speed = st.selectbox("Từ đơn vị:", options=list(speed_factors.keys()), index=1)
+        with s_col3: to_speed = st.selectbox("Sang đơn vị:", options=list(speed_factors.keys()), index=0)
             
         ms_val = speed_val * speed_factors[from_speed]
         res_speed = ms_val / speed_factors[to_speed]
@@ -2021,19 +1671,15 @@ with tab_tools:
         st.markdown("---")
         st.markdown(f"### 🎯 Kết Quả: **{speed_val:,.2f} {from_speed}** = **{res_speed:,.2f} {to_speed}**")
 
-    # 5. KHỐI LƯỢNG & NHIỆT ĐỘ
+    # 6. KHỐI LƯỢNG & NHIỆT ĐỘ
     with subtab_mass_temp:
         m_col1, m_col2 = st.columns(2)
-        
         with m_col1:
             with st.container(border=True):
                 st.markdown("##### ⚖️ Quy Đổi Khối Lượng")
                 mass_factors = {
-                    "Gram (g)": 0.001,
-                    "Kilôgram (kg)": 1.0,
-                    "Tấn": 1000.0,
-                    "Ounce (oz)": 0.0283495,
-                    "Pound (lb)": 0.453592
+                    "Gram (g)": 0.001, "Kilôgram (kg)": 1.0, "Tấn": 1000.0,
+                    "Ounce (oz)": 0.0283495, "Pound (lb)": 0.453592
                 }
                 m_val = st.number_input("Khối lượng:", value=1.0, min_value=0.0, key="m_val_in")
                 m_from = st.selectbox("Từ:", options=list(mass_factors.keys()), index=1, key="m_from_sel")
@@ -2050,12 +1696,10 @@ with tab_tools:
                 t_from = st.selectbox("Từ:", options=["Độ C (°C)", "Độ F (°F)", "Kelvin (K)"], index=0, key="t_from_sel")
                 t_to = st.selectbox("Sang:", options=["Độ C (°C)", "Độ F (°F)", "Kelvin (K)"], index=1, key="t_to_sel")
                 
-                # Đổi về Celsius
                 if "°C" in t_from: c_temp = temp_val
                 elif "°F" in t_from: c_temp = (temp_val - 32) * 5 / 9
                 else: c_temp = temp_val - 273.15
                 
-                # Từ Celsius sang target
                 if "°C" in t_to: res_temp = c_temp
                 elif "°F" in t_to: res_temp = (c_temp * 9 / 5) + 32
                 else: res_temp = c_temp + 273.15
