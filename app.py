@@ -347,7 +347,7 @@ if 'dubbing_tracker' not in st.session_state:
     st.session_state['dubbing_tracker'] = load_json_db(TRACKER_DB_FILE, [])
 
 if 'payroll_rates' not in st.session_state:
-    default_rates = {"mode": "minute", "unit_rate": 50000}
+    default_rates = {"mode": "minute", "unit_rate": 30000}
     st.session_state['payroll_rates'] = load_json_db(RATES_DB_FILE, default_rates)
 
 # --- DANH SÁCH MẶC ĐỊNH ---
@@ -1536,7 +1536,7 @@ with tab_resync:
                     st.session_state['r_zip_name'] = clean_file_name_for_output(r_filename, tag="_KichBan_TachVai_Final", ext=".zip")
                     st.session_state['resync_stats'] = r_stats
                     
-                    # CẬP NHẬT TỰ ĐỘNG SANG TAB "THEO DÕI & BÁO CÁO LƯƠNG" (PHASE 2 UPDATE)
+                    # CẬP NHẬT TỰ ĐỘNG SANG TAB "THEO DÕI & BÁO CÁO LƯƠNG"
                     video_title = r_stats.get("video_title", r_name_no_ext)
                     actors_list = r_stats.get("actors_list", [])
                     actors_str = ", ".join(actors_list) if actors_list else "Chưa có thông tin"
@@ -1671,48 +1671,50 @@ with tab_resync:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (PHASE 2 ENHANCED)
+# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG
 # ==========================================
 with tab_dub_tracker:
     st.subheader("📋 CÔNG CỤ QUẢN LÝ THEO DÕI & TÍNH THÙ LAO LỒNG TIẾNG")
     
     # Cấu hình Đơn giá Thù lao
     with st.expander("⚙️ CẤU HÌNH ĐƠN GIÁ THÙ LAO LỒNG TIẾNG", expanded=True):
-        c_rate1, c_rate2, c_rate3 = st.columns([2, 2, 1])
+        c_rate1, c_rate2 = st.columns([2, 3])
         
         curr_mode = st.session_state['payroll_rates'].get("mode", "minute")
         mode_idx = 0 if curr_mode == "minute" else (1 if curr_mode == "line" else 2)
         
         with c_rate1:
-            rate_mode = st.radio("Cách tính thù lao:", options=["Theo Phút video (phút)", "Theo Câu thoại (câu)", "Theo Số từ (từ)"], 
-                                 index=mode_idx)
+            rate_mode_choice = st.radio(
+                "Cách tính thù lao:", 
+                options=["Theo Phút video (phút)", "Theo Câu thoại (câu)", "Theo Số từ (từ)"], 
+                index=mode_idx,
+                key="radio_payroll_mode"
+            )
         with c_rate2:
             default_unit_rate = st.number_input(
                 "Đơn giá mặc định (VNĐ):", 
-                value=int(st.session_state['payroll_rates'].get("unit_rate", 50000)), 
-                step=5000
+                value=int(st.session_state['payroll_rates'].get("unit_rate", 30000)), 
+                step=5000,
+                key="num_payroll_unit_rate"
             )
-        with c_rate3:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("💾 Lưu Cấu Hình Đơn Giá", type="primary", use_container_width=True):
-                if "Phút" in rate_mode:
-                    m_key = "minute"
-                elif "Câu" in rate_mode:
-                    m_key = "line"
-                else:
-                    m_key = "word"
-                    
-                st.session_state['payroll_rates'] = {
-                    "mode": m_key,
-                    "unit_rate": default_unit_rate
-                }
-                save_json_db(RATES_DB_FILE, st.session_state['payroll_rates'])
-                st.success("✅ Đã lưu cấu hình đơn giá mới!")
-                time.sleep(1)
-                st.rerun()
+            
+        # TỰ ĐỘNG CẬP NHẬT TRỰC TIẾP
+        if "Phút" in rate_mode_choice:
+            new_mode = "minute"
+        elif "Câu" in rate_mode_choice:
+            new_mode = "line"
+        else:
+            new_mode = "word"
+            
+        if new_mode != st.session_state['payroll_rates'].get("mode") or default_unit_rate != st.session_state['payroll_rates'].get("unit_rate"):
+            st.session_state['payroll_rates'] = {
+                "mode": new_mode,
+                "unit_rate": default_unit_rate
+            }
+            save_json_db(RATES_DB_FILE, st.session_state['payroll_rates'])
 
     current_mode = st.session_state['payroll_rates'].get("mode", "minute")
-    current_rate = st.session_state['payroll_rates'].get("unit_rate", 50000)
+    current_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
 
     subtab_video, subtab_payroll = st.tabs(["📹 Nhật ký Theo Dõi Video", "💰 Báo Cáo Lương Diễn Viên Tổng Hợp"])
 
@@ -1737,7 +1739,6 @@ with tab_dub_tracker:
                 v_lines = item.get("total_lines", 0)
                 v_dur_min = int(item.get("video_duration_min", 1))
                 
-                # Tính toán thù lao video theo chế độ được chọn
                 if current_mode == "minute":
                     v_total_pay = v_dur_min * current_rate
                 elif current_mode == "line":
@@ -1751,10 +1752,10 @@ with tab_dub_tracker:
                     "STT": idx,
                     "Ngày render": item.get("date", "N/A"),
                     "Tiêu đề video": item['video_title'],
-                    "Thời lượng video (phút)": v_dur_min,
+                    "Thời lượng (phút)": v_dur_min,
                     "Diễn viên lồng tiếng": item['actors'],
                     "Tổng số câu": v_lines,
-                    "Dự toán Thù lao": f"{v_total_pay:,.0f} VNĐ",
+                    "Dự toán Thù lao Video": f"{v_total_pay:,.0f} VNĐ",
                     "Xóa dòng": False
                 })
 
@@ -1766,10 +1767,10 @@ with tab_dub_tracker:
                     "STT": st.column_config.NumberColumn("STT", disabled=True, width="small"),
                     "Ngày render": st.column_config.TextColumn("Ngày render", disabled=True),
                     "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video (Sửa trực tiếp)"),
-                    "Thời lượng video (phút)": st.column_config.NumberColumn("Độ dài (Phút)", disabled=True),
+                    "Thời lượng (phút)": st.column_config.NumberColumn("Độ dài (Phút)", disabled=True),
                     "Diễn viên lồng tiếng": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
                     "Tổng số câu": st.column_config.NumberColumn("Tổng số câu", disabled=True),
-                    "Dự toán Thù lao": st.column_config.TextColumn("Dự toán Thù lao", disabled=True),
+                    "Dự toán Thù lao Video": st.column_config.TextColumn("Dự toán Thù lao Video", disabled=True),
                     "Xóa dòng": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True,
@@ -1800,7 +1801,7 @@ with tab_dub_tracker:
             with col_tr2:
                 buffer_excel = io.BytesIO()
                 with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
-                    export_df = df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng video (phút)", "Diễn viên lồng tiếng", "Tổng số câu", "Dự toán Thù lao"]]
+                    export_df = df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng (phút)", "Diễn viên lồng tiếng", "Tổng số câu", "Dự toán Thù lao Video"]]
                     export_df.to_excel(writer, index=False, sheet_name="Nhat Ky Video")
                 buffer_excel.seek(0)
 
@@ -1836,6 +1837,7 @@ with tab_dub_tracker:
                 actor_payroll_map[act_name]["videos_count"] += 1
                 actor_payroll_map[act_name]["total_lines"] += a_info["lines"]
                 actor_payroll_map[act_name]["total_words"] += a_info["words"]
+                # GIỮ NGUYÊN TÍNH TRỌN VẸN PHÚT VIDEO CHO DIỄN VIÊN
                 actor_payroll_map[act_name]["total_video_mins"] += v_dur
                 actor_payroll_map[act_name]["videos_list"].append(v_title)
 
@@ -1869,8 +1871,16 @@ with tab_dub_tracker:
             
             st.metric("💰 TỔNG NGÂN SÁCH THÙ LAO TỔNG CỘNG:", f"{grand_total_pay:,.0f} VNĐ")
 
+            # CHỈ HIỂN THỊ CỘT THÔNG SỐ ĐƯỢC CHỌN ĐỂ BẢNG LUÔN GỌN GÀNG, KHÔNG RÁC THÔNG TIN
+            if current_mode == "minute":
+                display_cols = ["STT", "Diễn viên Lồng tiếng", "Số Video tham gia", "Tổng phút video", "Thành tiền Thù lao", "Danh sách Video"]
+            elif current_mode == "line":
+                display_cols = ["STT", "Diễn viên Lồng tiếng", "Số Video tham gia", "Tổng số câu", "Thành tiền Thù lao", "Danh sách Video"]
+            else: # word
+                display_cols = ["STT", "Diễn viên Lồng tiếng", "Số Video tham gia", "Tổng số từ", "Thành tiền Thù lao", "Danh sách Video"]
+
             st.dataframe(
-                df_payroll[["STT", "Diễn viên Lồng tiếng", "Số Video tham gia", "Tổng phút video", "Tổng số câu", "Tổng số từ", "Thành tiền Thù lao", "Danh sách Video"]],
+                df_payroll[display_cols],
                 hide_index=True,
                 use_container_width=True
             )
@@ -1878,11 +1888,11 @@ with tab_dub_tracker:
             st.markdown("---")
             excel_payroll_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_payroll_buffer, engine='openpyxl') as writer:
-                export_payroll = df_payroll[["STT", "Diễn viên Lồng tiếng", "Số Video tham gia", "Tổng phút video", "Tổng số câu", "Tổng số từ", "Thành tiền Thù lao", "Danh sách Video"]]
+                export_payroll = df_payroll[display_cols]
                 export_payroll.to_excel(writer, index=False, sheet_name="Bao Cao Luong Dien Vien")
                 
                 if 'df_tracker' in locals():
-                    df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng video (phút)", "Diễn viên lồng tiếng", "Tổng số câu", "Dự toán Thù lao"]].to_excel(writer, index=False, sheet_name="Chi Tiet Video")
+                    df_tracker[["STT", "Ngày render", "Tiêu đề video", "Thời lượng (phút)", "Diễn viên lồng tiếng", "Tổng số câu", "Dự toán Thù lao Video"]].to_excel(writer, index=False, sheet_name="Chi Tiet Video")
                     
             excel_payroll_buffer.seek(0)
 
