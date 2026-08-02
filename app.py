@@ -375,6 +375,18 @@ def is_valid_speaker_name(name):
     if len(clean.split()) > 4: return False
     return True
 
+def get_paragraph_text_with_html(paragraph):
+    text = ""
+    for run in paragraph.runs:
+        r_text = run.text
+        if not r_text: continue
+        if run.italic and not ("<i>" in r_text or "</i>" in r_text):
+            text += f"<i>{r_text}</i>"
+        else:
+            text += r_text
+    text = text.replace("</i><i>", "")
+    return text
+
 TARGET_FONT = 'Times New Roman'
 TARGET_SIZE = Pt(12)
 
@@ -640,6 +652,10 @@ def rgb_to_ass_hex(rgb_obj):
         r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
         return f"&H00{b:02X}{g:02X}{r:02X}&"
     except Exception: return "&H00FFFFFF&"
+
+def is_stage_direction(name):
+    clean = name.strip()
+    return clean.startswith('(') or clean.endswith(')')
 
 def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
     cleaned_paras = []; i = 0; total = len(raw_paragraphs)
