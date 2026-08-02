@@ -138,7 +138,7 @@ else:
     </style>
     """, unsafe_allow_html=True)
 
-# --- HÀM CÔNG CỤ CHUYỂN ĐỔI SRT ⇄ DOCX (PURE PYTHON - KHÔNG DÙNG PYSRT) ---
+# --- HÀM CÔNG CỤ CHUYỂN ĐỔI SRT ⇄ DOCX (PURE PYTHON) ---
 TARGET_FONT = 'Times New Roman'
 TARGET_SIZE = Pt(12)
 
@@ -156,22 +156,18 @@ def process_srt_to_docx(uploaded_file, file_name_without_ext):
         lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
         if not lines: continue
         
-        idx_str = ""
-        tc_str = ""
-        text_lines = []
+        idx_str = ""; tc_str = ""; text_lines = []
         
         if lines[0].isdigit():
             idx_str = lines[0]
             if len(lines) > 1 and "-->" in lines[1]:
                 tc_str = lines[1]
                 text_lines = lines[2:]
-            else:
-                text_lines = lines[1:]
+            else: text_lines = lines[1:]
         elif "-->" in lines[0]:
             tc_str = lines[0]
             text_lines = lines[1:]
-        else:
-            text_lines = lines
+        else: text_lines = lines
 
         if idx_str:
             p_index = document.add_paragraph(idx_str)
@@ -205,8 +201,7 @@ def process_docx_to_srt(uploaded_file):
     while i < len(lines):
         line = lines[i]
         if line.isdigit() and i + 1 < len(lines) and timecode_pattern.search(lines[i+1]):
-            if srt_content != "":
-                srt_content += "\n"
+            if srt_content != "": srt_content += "\n"
             srt_content += line + "\n"
             srt_content += lines[i+1] + "\n"
             i += 2 
@@ -216,12 +211,11 @@ def process_docx_to_srt(uploaded_file):
                 else:
                     srt_content += lines[i] + "\n"
                     i += 1
-        else:
-            i += 1
+        else: i += 1
             
     return srt_content.strip().encode('utf-8')
 
-# --- SRT TO EXCEL CONVERTER MODULE ---
+# --- SRT TO EXCEL CONVERTER MODULE (ĐỒNG BỘ 100% DATABASE CỤM TỪ STUDIO) ---
 EXCEL_COLOR_PALETTE = [
     'background-color: #ADD8E6; color: #000000',
     'background-color: #90EE90; color: #000000',
@@ -255,6 +249,8 @@ def parse_srt_to_dataframe(srt_content):
     blocks = re.split(r'\n\s*\n', srt_content.strip())
     last_known_speaker = "Unknown"
 
+    speaker_regex = build_speaker_regex(st.session_state.get('custom_speakers', set()))
+
     def append_row_and_update_state(t_start, t_end, speaker, dialogue):
         nonlocal last_known_speaker
         data.append([t_start, t_end, speaker, clean_dialogue_text_for_excel(dialogue)])
@@ -277,7 +273,7 @@ def parse_srt_to_dataframe(srt_content):
         for line in dialogue_lines:
             line = line.strip()
             if not line: continue
-            segments = re.split(r'((?:[\w\s&]+?): )', line)
+            segments = speaker_regex.split(line)
             i = 0
             while i < len(segments):
                 segment = segments[i].strip()
