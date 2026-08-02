@@ -388,7 +388,7 @@ ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 RED_COLOR = RGBColor(255, 0, 0) # Màu đỏ chuẩn cho Tên Diễn Viên Lồng Tiếng
 
 # --- HÀM TẠO PHIẾU LƯƠNG CÁ NHÂN TỰ ĐỘNG CHUẨN IN N ẤN (.DOCX) ---
-def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay, current_rate):
+def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay, current_mode):
     doc = Document()
     
     p_title = doc.add_paragraph("MAI HAN STUDIO - PHIẾU BÁO CÁO THÙ LAO LỒNG TIẾNG")
@@ -408,7 +408,7 @@ def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay
     table = doc.add_table(rows=1, cols=5)
     table.style = 'Table Grid'
     hdr_cells = table.rows[0].cells
-    hdr_names = ["Stt", "Tiêu đề video", "Thời lượng", "Đơn giá", "Thành tiền"]
+    hdr_names = ["Stt", "Tiêu đề video", "Khối lượng", "Đơn giá áp dụng", "Thành tiền"]
     for i, name in enumerate(hdr_names):
         hdr_cells[i].text = name
         hdr_cells[i].paragraphs[0].runs[0].font.bold = True
@@ -773,6 +773,7 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
 # --- BÓC TÁCH HOÀN TOÀN CỦA NÓI RA KHỎI ĐIỀU KIỆN ĐẾM CPS CHUẨN XÁC ---
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
     text = re.sub(r'\t+', ' ', text).strip()
+    parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
     speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
@@ -1242,7 +1243,7 @@ st.markdown("""
 <div class="hero-container">
     <div class="badge-pro">v2.5 Enterprise SaaS</div>
     <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
-    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao lồng tiếng thông minh.</div>
+    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -2053,7 +2054,7 @@ with tab_dub_tracker:
                 
                 col_p_btn1, col_p_btn2 = st.columns(2)
                 with col_p_btn1:
-                    actor_docx_buf = generate_actor_salary_slip_docx(selected_actor_view, selected_week_filter, a_rows, a_tot_pay, current_rate)
+                    actor_docx_buf = generate_actor_salary_slip_docx(selected_actor_view, selected_week_filter, a_rows, a_tot_pay, current_mode)
                     st.download_button(
                         label=f"🖨️ IN / TẢI PHIẾU LƯƠNG WORD CỦA {selected_actor_view} (.DOCX)",
                         data=actor_docx_buf,
@@ -2101,7 +2102,7 @@ with tab_dub_tracker:
                         "Stt": idx,
                         "Diễn viên Lồng tiếng": act_name,
                         "Số Video đã lồng": info["videos_count"],
-                        "Thời lượng": dur_disp,
+                        "Khối lượng": dur_disp,
                         "Đơn giá": f"{current_rate:,.0f} VNĐ",
                         "Thành tiền Lương": f"{tot_p:,.0f} VNĐ",
                         "Danh sách Video tham gia": ", ".join([r["Tiêu đề video"] for r in info["video_rows"]])
@@ -2111,7 +2112,7 @@ with tab_dub_tracker:
                     "Stt": "TỔNG",
                     "Diễn viên Lồng tiếng": f"TỔNG CỘNG ({len(actor_weekly_map)} Diễn viên)",
                     "Số Video đã lồng": "-",
-                    "Thời lượng": f"{grand_actor_mins} phút",
+                    "Khối lượng": f"{grand_actor_mins} phút" if current_mode == "minute" else "-",
                     "Đơn giá": "-",
                     "Thành tiền Lương": f"{grand_actor_pay:,.0f} VNĐ",
                     "Danh sách Video tham gia": "-"
@@ -2122,7 +2123,7 @@ with tab_dub_tracker:
                 st.metric(f"💰 TỔNG LƯƠNG CẦN CHI CHO DIỄN VIÊN ({selected_week_filter}):", f"{grand_actor_pay:,.0f} VNĐ")
 
                 st.dataframe(
-                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Thời lượng", "Đơn giá", "Thành tiền Lương", "Danh sách Video tham gia"]],
+                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Khối lượng", "Đơn giá", "Thành tiền Lương", "Danh sách Video tham gia"]],
                     hide_index=True,
                     use_container_width=True
                 )
