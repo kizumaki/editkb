@@ -25,7 +25,6 @@ st.set_page_config(
 # --- SIDEBAR CONTROL PANEL: CÀI ĐẶT CỦA BẠN & CHẾ ĐỘ MÀN HÌNH ---
 st.sidebar.markdown("### ⚡ Control Panel")
 
-st.sidebar.markdown("#### 🎨 Chế độ Giao diện (Theme)")
 ui_theme_choice = st.sidebar.radio(
     "Lựa chọn Skin hiển thị:",
     options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Linh hoạt)"],
@@ -1078,9 +1077,6 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             st.success(f"✅ Đã lưu {len(new_spks)} người nói!")
             time.sleep(1); st.rerun()
 
-    if len(st.session_state['custom_speakers']) > 0:
-        st.info(f"Đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
-
 with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
     manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
     upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
@@ -1099,9 +1095,6 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
             st.session_state['ns_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!")
             time.sleep(1); st.rerun()
-
-    if len(st.session_state['custom_non_speakers']) > 0:
-        st.info(f"Đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
 
 # --- HERO BANNER HEADER ---
 st.markdown(f"""
