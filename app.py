@@ -190,7 +190,7 @@ ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 RED_COLOR = RGBColor(255, 0, 0)
 
 # ==========================================
-# 3. UNIFIED SIDEBAR (KHỐI ĐỒNG NHẤT CẢM BỨC)
+# 3. UNIFIED SIDEBAR (CONTROL PANEL)
 # ==========================================
 st.sidebar.markdown("### ⚡ Control Panel")
 
@@ -462,6 +462,7 @@ def process_docx_to_srt(uploaded_file):
             
     return srt_content.strip().encode('utf-8')
 
+# --- SRT TO EXCEL CONVERTER MODULE (ĐỒNG BỘ 100% DATABASE CỤM TỪ STUDIO) ---
 EXCEL_COLOR_PALETTE = [
     'background-color: #ADD8E6; color: #000000',
     'background-color: #90EE90; color: #000000',
@@ -586,12 +587,59 @@ def apply_excel_styles(df):
     except Exception:
         return df
 
+# --- HÀM TẠO MARKER TIMELINE CHO DAW (REAPER / PRO TOOLS / EDL) ---
+def timecode_to_sec(tc):
+    m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", tc.strip())
+    if not m: return 0.0
+    h, mins, s, ms = map(int, m.groups())
+    return h * 3600 + mins * 60 + s + ms / 1000.0
+
+def sec_to_reaper_tc(sec):
+    h = int(sec // 3600); mins = int((sec % 3600) // 60); s = int(sec % 60)
+    ms = int(round((sec - int(sec)) * 1000))
+    if ms >= 1000: s += 1; ms -= 1000
+    return f"{h:02d}:{mins:02d}:{s:02d}.{ms:03d}"
+
+def sec_to_fps_tc(sec, fps=25):
+    h = int(sec // 3600); mins = int((sec % 3600) // 60); s = int(sec % 60)
+    frames = int(round((sec - int(sec)) * fps))
+    if frames >= fps: s += 1; frames -= fps
+    return f"{h:02d}:{mins:02d}:{s:02d}:{frames:02d}"
+
+def generate_reaper_region_csv(df):
+    rows = ["#,Name,Start,End,Length,Color"]
+    for idx, r in df.iterrows():
+        s_sec = timecode_to_sec(r['Start']); e_sec = timecode_to_sec(r['End'])
+        dur_sec = max(0.1, e_sec - s_sec)
+        s_tc = sec_to_reaper_tc(s_sec); e_tc = sec_to_reaper_tc(e_sec); l_tc = sec_to_reaper_tc(dur_sec)
+        name_clean = f"{r['Speaker']}: {r['Dialogue']}".replace('"', '""')
+        rows.append(f'R{idx+1},"{name_clean}",{s_tc},{e_tc},{l_tc},')
+    return "\n".join(rows)
+
+def generate_pro_tools_csv(df):
+    rows = ["Marker Name,Timecode In,Timecode Out,Comment"]
+    for idx, r in df.iterrows():
+        s_sec = timecode_to_sec(r['Start']); e_sec = timecode_to_sec(r['End'])
+        s_tc = sec_to_fps_tc(s_sec, 25); e_tc = sec_to_fps_tc(e_sec, 25)
+        spk = r['Speaker'].replace('"', '""'); diag = r['Dialogue'].replace('"', '""')
+        rows.append(f'"{spk}",{s_tc},{e_tc},"{diag}"')
+    return "\n".join(rows)
+
+def generate_cmx3600_edl(df):
+    lines = ["TITLE: SCRIPTPRO_DAW_MARKERS", "FCM: NON-DROP FRAME", ""]
+    for idx, r in df.iterrows():
+        s_sec = timecode_to_sec(r['Start']); e_sec = timecode_to_sec(r['End'])
+        s_tc = sec_to_fps_tc(s_sec, 25); e_tc = sec_to_fps_tc(e_sec, 25)
+        lines.append(f"{idx+1:03d}  AX       V     C        {s_tc} {e_tc} {s_tc} {e_tc}")
+        lines.append(f"* FROM CLIP: {r['Speaker']}")
+        lines.append(f"* COMMENT: {r['Dialogue']}")
+        lines.append("")
+    return "\n".join(lines)
+
 def generate_english_audio(text_to_speak, accent='com'):
     try:
         tts = gTTS(text=text_to_speak, lang='en', tld=accent)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
+        fp = io.BytesIO(); tts.write_to_fp(fp); fp.seek(0)
         return fp
     except Exception as e:
         st.error(f"Không thể tải âm thanh: {e}")
@@ -650,29 +698,6 @@ def round_seconds_to_int_minutes(total_sec):
     mins = int(total_sec // 60); secs = int(round(total_sec % 60))
     if secs >= 30: mins += 1
     return max(1, mins)
-
-def calculate_duration_sec(timecode_line):
-    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
-    if not m: return 1.0, 0.0, 0.0
-    h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
-    t1 = h1 * 3600 + m1 * 60 + s1 + ms1 / 1000.0; t2 = h2 * 3600 + m2 * 60 + s2 + ms2 / 1000.0
-    dur = t2 - t1
-    return dur if dur > 0 else 0.5, t1, t2
-
-def srt_timecode_to_ass(timecode_line):
-    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
-    if not m: return None, None
-    h1, m1, s1, ms1, h2, m2, s2, ms2 = m.groups()
-    ass_start = f"{int(h1)}:{m1}:{s1}.{int(ms1)//10:02d}"
-    ass_end = f"{int(h2)}:{m2}:{s2}.{int(ms2)//10:02d}"
-    return ass_start, ass_end
-
-def rgb_to_ass_hex(rgb_obj):
-    if not rgb_obj: return "&H00FFFFFF&"
-    try:
-        r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
-        return f"&H00{b:02X}{g:02X}{r:02X}&"
-    except Exception: return "&H00FFFFFF&"
 
 def is_stage_direction(name):
     clean = name.strip()
@@ -2151,9 +2176,10 @@ with tab_phonetic_db:
 # TAB 6: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
 # ==========================================
 with tab_tools:
-    subtab_sub_conv, subtab_srt_excel, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
+    subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
         "🎬 Kịch Bản Subtitle (SRT ⇄ DOCX)",
         "📊 SRT ➔ Excel (.xlsx)",
+        "🎛️ DAW Marker Timeline",
         "💵 Tiền Tệ (Currency)",
         "📏 Khoảng Cách (Distance)",
         "🚀 Vận Tốc (Speed)",
@@ -2165,17 +2191,13 @@ with tab_tools:
         st.markdown("#### 🎬 Bộ Công Cụ Chuyển Đổi Subtitle Chuyên Nghiệp")
         col_c1, col_c2 = st.columns(2)
         
-        # Module 1: SRT -> DOCX (HỖ TRỢ TẢI 1 FILE HOẶC BATCH HÀNG LOẠT)
         with col_c1:
             with st.container(border=True):
                 st.markdown("##### 📄 1. Chuyển SRT ➔ Word (.docx)")
                 st.caption("Tải 1 hoặc hàng ngàn file SRT để tự động chuyển sang Word (Times New Roman, 12pt):")
                 
                 batch_srt_files = st.file_uploader(
-                    "Tải 1 hoặc nhiều file .srt:",
-                    type=['srt'],
-                    accept_multiple_files=True,
-                    key="tool_srt_to_docx_batch"
+                    "Tải 1 hoặc nhiều file .srt:", type=['srt'], accept_multiple_files=True, key="tool_srt_to_docx_batch"
                 )
                 
                 if batch_srt_files:
@@ -2188,10 +2210,8 @@ with tab_tools:
                                 docx_buf = process_srt_to_docx(single_f, s_name_no_ext)
                                 st.success("✅ Chuyển đổi hoàn tất!")
                                 st.download_button(
-                                    label=f"⬇️ Tải {s_name_no_ext}.docx",
-                                    data=docx_buf,
-                                    file_name=f"{s_name_no_ext}.docx",
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    label=f"⬇️ Tải {s_name_no_ext}.docx", data=docx_buf,
+                                    file_name=f"{s_name_no_ext}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                     use_container_width=True
                                 )
                             else:
@@ -2204,25 +2224,18 @@ with tab_tools:
                                 zip_buf.seek(0)
                                 st.success(f"✅ Đã chuyển đổi thành công {len(batch_srt_files)} file!")
                                 st.download_button(
-                                    label="📦 Tải Trọn Bộ Word (.ZIP)",
-                                    data=zip_buf.getvalue(),
-                                    file_name="Word_Files.zip",
-                                    mime="application/zip",
-                                    use_container_width=True
+                                    label="📦 Tải Trọn Bộ Word (.ZIP)", data=zip_buf.getvalue(),
+                                    file_name="Word_Files.zip", mime="application/zip", use_container_width=True
                                 )
                         except Exception as e: st.error(f"Lỗi: {e}")
 
-        # Module 2: DOCX -> SRT (Batch)
         with col_c2:
             with st.container(border=True):
                 st.markdown("##### 📝 2. Chuyển Word (.docx) ➔ SRT (Batch hàng loạt)")
                 st.caption("Tải 1 file hoặc hàng ngàn file Word kịch bản để tự động trích xuất SRT:")
                 
                 batch_docx_files = st.file_uploader(
-                    "Tải 1 hoặc nhiều file .docx:",
-                    type=['docx'],
-                    accept_multiple_files=True,
-                    key="tool_docx_to_srt_batch"
+                    "Tải 1 hoặc nhiều file .docx:", type=['docx'], accept_multiple_files=True, key="tool_docx_to_srt_batch"
                 )
                 
                 if batch_docx_files:
@@ -2235,11 +2248,8 @@ with tab_tools:
                                 srt_bytes = process_docx_to_srt(single_f)
                                 st.success("✅ Chuyển đổi hoàn tất!")
                                 st.download_button(
-                                    label=f"⬇️ Tải {s_name_no_ext}.srt",
-                                    data=srt_bytes,
-                                    file_name=f"{s_name_no_ext}.srt",
-                                    mime="text/plain",
-                                    use_container_width=True
+                                    label=f"⬇️ Tải {s_name_no_ext}.srt", data=srt_bytes,
+                                    file_name=f"{s_name_no_ext}.srt", mime="text/plain", use_container_width=True
                                 )
                             else:
                                 zip_buf = io.BytesIO()
@@ -2251,15 +2261,12 @@ with tab_tools:
                                 zip_buf.seek(0)
                                 st.success(f"✅ Đã chuyển đổi thành công {len(batch_docx_files)} file!")
                                 st.download_button(
-                                    label="📦 Tải Trọn Bộ SRT (.ZIP)",
-                                    data=zip_buf.getvalue(),
-                                    file_name="SRT_Files.zip",
-                                    mime="application/zip",
-                                    use_container_width=True
+                                    label="📦 Tải Trọn Bộ SRT (.ZIP)", data=zip_buf.getvalue(),
+                                    file_name="SRT_Files.zip", mime="application/zip", use_container_width=True
                                 )
                         except Exception as e: st.error(f"Lỗi: {e}")
 
-    # 2. BỘ CHUYỂN ĐỔI SRT TO EXCEL WITH SPEAKER STYLING (ĐỒNG BỘ CỤM TỪ STUDIO)
+    # 2. BỘ CHUYỂN ĐỔI SRT TO EXCEL WITH SPEAKER STYLING
     with subtab_srt_excel:
         st.markdown("#### 📊 Chuyển Đổi File Subtitle SRT ➔ Bảng Tính Excel (.xlsx)")
         st.caption("Tự động nhận diện nhân vật, tô màu phân biệt người nói và xuất file Excel có cấu trúc:")
@@ -2276,15 +2283,13 @@ with tab_tools:
             if srt_content_excel:
                 speaker_regex_excel = build_speaker_regex(st.session_state['custom_speakers'])
 
-                # Scan candidate speakers in SRT content
                 srt_speaker_counts = Counter()
                 for line_s in srt_content_excel.split('\n'):
                     line_clean = line_s.strip()
                     if not line_clean or TIMECODE_REGEX.match(line_clean) or line_clean.isdigit(): continue
                     for match in speaker_regex_excel.finditer(line_clean):
                         spk_cand = match.group(1).strip()
-                        if is_valid_speaker_name(spk_cand):
-                            srt_speaker_counts[spk_cand] += 1
+                        if is_valid_speaker_name(spk_cand): srt_speaker_counts[spk_cand] += 1
 
                 detected_srt_spk_names = [name for name in srt_speaker_counts.keys() if name.upper() not in NON_SPEAKER_PHRASES]
                 detected_srt_non_spk_names = [name for name in srt_speaker_counts.keys() if name.upper() in NON_SPEAKER_PHRASES]
@@ -2292,7 +2297,6 @@ with tab_tools:
                 detected_srt_spk_disp = [f"{name} ({srt_speaker_counts[name]} lần)" for name in detected_srt_spk_names]
                 detected_srt_non_spk_disp = [f"{name} ({srt_speaker_counts[name]} lần)" for name in detected_srt_non_spk_names]
 
-                # SOÁT LỖI NHẬN DIỆN CHO SRT
                 with st.container(border=True):
                     st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói (SRT)")
                     st.caption("Kiểm tra danh sách tên người nói bóc tách từ file SRT. Chọn từ bị nhận diện sai để nạp trực tiếp vào Database:")
@@ -2301,11 +2305,7 @@ with tab_tools:
                     with tab_srt_spk:
                         if detected_srt_spk_disp:
                             st.write(", ".join([f"`{s}`" for s in detected_srt_spk_disp]))
-                            to_move_ns_srt = st.multiselect(
-                                "Phát hiện từ nào bị nhận diện sai? Chọn để LƯU VÀO DATABASE TỪ NHIỄU:",
-                                options=detected_srt_spk_names,
-                                key="select_srt_to_ns"
-                            )
+                            to_move_ns_srt = st.multiselect("Phát hiện từ nào bị nhận diện sai? Chọn để LƯU VÀO DATABASE TỪ NHIỄU:", options=detected_srt_spk_names, key="select_srt_to_ns")
                             if st.button("➡️ Đưa vào Database TỪ NHIỄU", type="secondary", key="btn_srt_to_ns"):
                                 if to_move_ns_srt:
                                     new_items = [item.upper() for item in to_move_ns_srt]
@@ -2318,17 +2318,12 @@ with tab_tools:
                     with tab_srt_non_spk:
                         if detected_srt_non_spk_disp:
                             st.write(", ".join([f"`{s}`" for s in detected_srt_non_spk_disp]))
-                            to_move_spk_srt = st.multiselect(
-                                "Từ nào thực ra là NGƯỜI NÓI? Chọn để LƯU VÀO DATABASE NGƯỜI NÓI:",
-                                options=detected_srt_non_spk_names,
-                                key="select_srt_to_spk"
-                            )
+                            to_move_spk_srt = st.multiselect("Từ nào thực ra là NGƯỜI NÓI? Chọn để LƯU VÀO DATABASE NGƯỜI NÓI:", options=detected_srt_non_spk_names, key="select_srt_to_spk")
                             if st.button("➡️ Đưa vào Database NGƯỜI NÓI", type="secondary", key="btn_srt_to_spk"):
                                 if to_move_spk_srt:
                                     st.session_state['custom_speakers'].update(to_move_spk_srt)
                                     save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                                    for item in to_move_spk_srt:
-                                        st.session_state['custom_non_speakers'].discard(item.upper())
+                                    for item in to_move_spk_srt: st.session_state['custom_non_speakers'].discard(item.upper())
                                     save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
                                     st.success(f"✅ Đã lưu {len(to_move_spk_srt)} tên vào Database Người Nói!")
                                     time.sleep(1); st.rerun()
@@ -2347,10 +2342,8 @@ with tab_tools:
                     actual_spks = [s for s in unique_spks if s not in ["Unknown", ""]]
                     
                     st.success(f"**Tổng số Người nói được nhận dạng:** {len(actual_spks)} người.")
-                    if actual_spks:
-                        st.markdown(f"**Danh sách Người nói:** {', '.join(actual_spks)}")
-                    else:
-                        st.info("Không tìm thấy người nói rõ ràng (ngoại trừ các đoạn hội thoại không gắn tên).")
+                    if actual_spks: st.markdown(f"**Danh sách Người nói:** {', '.join(actual_spks)}")
+                    else: st.info("Không tìm thấy người nói rõ ràng (ngoại trừ các đoạn hội thoại không gắn tên).")
 
                     st.markdown("##### 👁️ Xem Trước Bảng Dữ Liệu Chuyển Đổi")
                     styled_excel_df = apply_excel_styles(df_converted_excel)
@@ -2364,15 +2357,76 @@ with tab_tools:
                     excel_out_filename = f"{orig_base_name}.xlsx"
                     
                     st.download_button(
-                        label=f"💾 TẢI FILE EXCEL (.XLSX): {excel_out_filename}",
-                        data=output_excel.getvalue(),
-                        file_name=excel_out_filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary",
-                        use_container_width=True
+                        label=f"💾 TẢI FILE EXCEL (.XLSX): {excel_out_filename}", data=output_excel.getvalue(),
+                        file_name=excel_out_filename, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary", use_container_width=True
                     )
 
-    # 3. BỘ CHUYỂN ĐỔI TIỀN TỆ (CURRENCY)
+    # 3. BỘ XUẤT DAW MARKER TIMELINE (PRO TOOLS / REAPER / CMX 3600 EDL)
+    with subtab_daw_markers:
+        st.markdown("#### 🎛️ Tự Động Tạo File Marker Timeline Cho Phần Mềm Thu Âm DAW")
+        st.caption("Chuyển đổi kịch bản (.srt hoặc .docx) thành các điểm mốc Marker phủ màu sẵn cho KTV thu âm trên Pro Tools, Reaper, Premiere, Resolve:")
+
+        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt', 'docx'], key="tool_marker_uploader")
+        
+        if uploaded_marker_file is not None:
+            m_filename = uploaded_marker_file.name
+            m_base_name = os.path.splitext(m_filename)[0]
+            
+            if m_filename.endswith('.srt'):
+                try: m_srt_text = uploaded_marker_file.read().decode("utf-8")
+                except UnicodeDecodeError: m_srt_text = uploaded_marker_file.read().decode("latin-1")
+                df_markers = parse_srt_to_dataframe(m_srt_text)
+            else:
+                s_bytes = process_docx_to_srt(uploaded_marker_file)
+                m_srt_text = s_bytes.decode("utf-8", errors="ignore")
+                df_markers = parse_srt_to_dataframe(m_srt_text)
+
+            if not df_markers.empty:
+                st.success(f"✅ Đã trích xuất **{len(df_markers)}** câu thoại từ **{m_filename}**!")
+                
+                col_m1, col_m2, col_m3 = st.columns(3)
+                
+                # REAPER CSV
+                with col_m1:
+                    with st.container(border=True):
+                        st.markdown("##### 🎧 1. REAPER (Region CSV)")
+                        st.caption("Tải file .csv để import trực tiếp vào REAPER Marker Manager:")
+                        reaper_csv_str = generate_reaper_region_csv(df_markers)
+                        st.download_button(
+                            label=f"⬇️ Tải {m_base_name}_Reaper.csv",
+                            data=reaper_csv_str.encode('utf-8'),
+                            file_name=f"{m_base_name}_Reaper.csv",
+                            mime="text/csv", type="primary", use_container_width=True
+                        )
+
+                # PRO TOOLS CSV
+                with col_m2:
+                    with st.container(border=True):
+                        st.markdown("##### 🎛️ 2. PRO TOOLS (Track Markers)")
+                        st.caption("Dùng cho Pro Tools 2023.6+ Import Track Markers:")
+                        pt_csv_str = generate_pro_tools_csv(df_markers)
+                        st.download_button(
+                            label=f"⬇️ Tải {m_base_name}_ProTools.csv",
+                            data=pt_csv_str.encode('utf-8'),
+                            file_name=f"{m_base_name}_ProTools.csv",
+                            mime="text/csv", type="primary", use_container_width=True
+                        )
+
+                # CMX 3600 EDL
+                with col_m3:
+                    with st.container(border=True):
+                        st.markdown("##### 🎬 3. CMX 3600 EDL (Premiere/Resolve)")
+                        st.caption("Chuẩn EDL đa năng cho Premiere Pro, Resolve, Vegas, Nuendo:")
+                        edl_str = generate_cmx3600_edl(df_markers)
+                        st.download_button(
+                            label=f"⬇️ Tải {m_base_name}.edl",
+                            data=edl_str.encode('utf-8'),
+                            file_name=f"{m_base_name}.edl",
+                            mime="text/plain", type="primary", use_container_width=True
+                        )
+
+    # 4. BỘ CHUYỂN ĐỔI TIỀN TỆ (CURRENCY)
     with subtab_curr:
         st.markdown("#### 💵 Quy Đổi Tiền Tệ Đa Ngoại Tệ")
         rates = {
@@ -2391,7 +2445,7 @@ with tab_tools:
         st.markdown(f"### 🎯 Kết Quả: **{curr_amount:,.2f} {from_curr}** = **{result_curr:,.2f} {to_curr}**")
         st.caption(f"Tỷ giá tham chiếu: 1 USD = {rates['USD']:,.0f} VND | 1 EUR = {rates['EUR']:,.0f} VND | 1 JPY = {rates['JPY']:,.1f} VND")
 
-    # 4. BỘ CHUYỂN ĐỔI KHOẢNG CÁCH (DISTANCE)
+    # 5. BỘ CHUYỂN ĐỔI KHOẢNG CÁCH (DISTANCE)
     with subtab_dist:
         st.markdown("#### 📏 Quy Đổi Đơn Vị Khoảng Cách")
         dist_factors = {
@@ -2409,7 +2463,7 @@ with tab_tools:
         st.markdown("---")
         st.markdown(f"### 🎯 Kết Quả: **{dist_val:,.4f} {from_dist}** = **{res_dist:,.4f} {to_dist}**")
 
-    # 5. BỘ CHUYỂN ĐỔI VẬN TỐC (SPEED)
+    # 6. BỘ CHUYỂN ĐỔI VẬN TỐC (SPEED)
     with subtab_speed:
         st.markdown("#### 🚀 Quy Đổi Đơn Vị Vận Tốc")
         speed_factors = {
@@ -2427,7 +2481,7 @@ with tab_tools:
         st.markdown("---")
         st.markdown(f"### 🎯 Kết Quả: **{speed_val:,.2f} {from_speed}** = **{res_speed:,.2f} {to_speed}**")
 
-    # 6. KHỐI LƯỢNG & NHIỆT ĐỘ
+    # 7. KHỐI LƯỢNG & NHIỆT ĐỘ
     with subtab_mass_temp:
         m_col1, m_col2 = st.columns(2)
         with m_col1:
