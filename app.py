@@ -33,6 +33,8 @@ PHONETIC_DB_FILE = "custom_phonetics.json"
 CAST_DB_FILE = "custom_cast_mapping.json"
 TRACKER_DB_FILE = "dubbing_tracker.json"
 RATES_DB_FILE = "payroll_rates.json"
+PRONOUN_REL_DB_FILE = "custom_pronoun_relationships.json"
+GLOSSARY_DB_FILE = "custom_glossary_db.json"
 
 DEFAULT_CAST_MAPPING = {
     "BRI": "TRÚC", "CHASE": "THIỆN", "PRESTON": "KHÁNH", "SCOTT": "THÔNG",
@@ -141,6 +143,10 @@ DEFAULT_NON_SPEAKER_PHRASES = {
     "BAD NEWS", "GOOD NEWS", "HE THOUGHT", "3 TEAMS REMAIN", "QUICK UPDATE", "DISTORTED", "MY FIRST QUESTION IS", "AND THE BEST PART IS", "BUT AS GORDON RAMSAY MIGHT SAY", "BUT THE GOOD NEWS IS", "LET ME JUST SAY", "BUT THE BEST PART", "I WILL SAY THOUGH", "LL SAY IS, UPDATE", "LL SAY IS", "UPDATE", "TO ALL OF YOU WATCHING WITH ME RIGHT NOW", "THIS IS THE LIFE", "I HAVE A QUESTION", "I WILL BE HONEST", "SO I CAN UPDATE MY INSTAGRAM BIO TO SAY"
 }
 
+# Các đại từ Tiếng Việt thường dùng trong xưng hô phim/video
+VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
+VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
+
 def load_json_db(filepath, default_data=None):
     if os.path.exists(filepath):
         try:
@@ -164,6 +170,7 @@ if 'spk_input_key' not in st.session_state: st.session_state['spk_input_key'] = 
 if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
 if 'cast_input_key' not in st.session_state: st.session_state['cast_input_key'] = 0
+if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_key'] = 0
 
 if 'custom_non_speakers' not in st.session_state: st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
 if 'custom_speakers' not in st.session_state: st.session_state['custom_speakers'] = load_json_db(SPEAKER_DB_FILE, set())
@@ -177,6 +184,14 @@ if 'custom_cast_mapping' not in st.session_state:
     loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
     merged_cast = {**DEFAULT_CAST_MAPPING, **loaded_cast}
     st.session_state['custom_cast_mapping'] = merged_cast
+
+if 'custom_pronoun_rel' not in st.session_state:
+    default_pronouns = {
+        "TYLER|BILL": {"self": "tui", "target": "ông"},
+        "CORY|EASTON": {"self": "tui", "target": "ông"},
+        "COBY|COACH RAC": {"self": "tui", "target": "ông"}
+    }
+    st.session_state['custom_pronoun_rel'] = load_json_db(PRONOUN_REL_DB_FILE, default_pronouns)
 
 if 'dubbing_tracker' not in st.session_state: st.session_state['dubbing_tracker'] = load_json_db(TRACKER_DB_FILE, [])
 
@@ -661,7 +676,6 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
         
         is_explicit_mh = row_mh.get('Is_Explicit', False)
         
-        # 1. Tìm tất cả câu trùng timecode trong Official English File của Khách
         best_off_matches = []
         for idx_off, row_off in df_off_eng.iterrows():
             s_off = timecode_to_sec(row_off['Start'])
@@ -675,7 +689,6 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             min_off_idx = min(off_indices)
             max_off_idx = max(off_indices)
             
-            # Vùng quét mở rộng: Lấy thêm 1 câu liền trước và 1 câu liền sau trong file Khách
             prev_off_text = str(df_off_eng.iloc[min_off_idx-1]['Dialogue']) if min_off_idx > 0 and pd.notna(df_off_eng.iloc[min_off_idx-1]['Dialogue']) else ""
             next_off_text = str(df_off_eng.iloc[max_off_idx+1]['Dialogue']) if max_off_idx < len(df_off_eng)-1 and pd.notna(df_off_eng.iloc[max_off_idx+1]['Dialogue']) else ""
             
@@ -683,14 +696,12 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             off_text_combined = " ".join(off_dialogues)
             off_spk = best_off_matches[0][2]['Speaker']
             
-            # Cửa sổ quét mở rộng bao gồm cả câu trước và câu sau
             off_window_text = f"{prev_off_text} {off_text_combined} {next_off_text}".strip()
         else:
             off_text_combined = ""
             off_window_text = ""
             off_spk = ""
 
-        # 2. Tìm câu dịch Tiếng Việt tương ứng (nếu có nạp file VN)
         vn_text_combined = ""
         vn_spk = ""
         if df_vn is not None and not df_vn.empty:
@@ -707,7 +718,6 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
         else:
             vn_spk = str(row_mh['Speaker']) if pd.notna(row_mh['Speaker']) else ""
 
-        # 3. QC Audit: So sánh Tiếng Anh Mai Han vs Tiếng Anh Khách
         qc_status = "🟢 Khớp chuẩn"
         qc_details = "Nội dung Tiếng Anh khớp chuẩn nghĩa"
         
@@ -728,7 +738,6 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
                 missing_in_window = mh_words - off_window_words
                 found_ratio = (len(mh_words) - len(missing_in_window)) / len(mh_words)
                 
-                # Chỉ báo vàng nếu dưới 75% số từ của Mai Han xuất hiện trong vùng quét mở rộng
                 if found_ratio < 0.75:
                     qc_status = "🟡 Khác từ vựng Tiếng Anh"
                     qc_details = f"Thiếu các từ gốc: {', '.join(list(missing_in_window)[:5])} -> Kiểm tra lại câu Tiếng Việt!"
@@ -1488,14 +1497,15 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- MÀN HÌNH CHÍNH TÁCH 7 TABS ---
-tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_tools = st.tabs([
+# --- MÀN HÌNH CHÍNH TÁCH 8 TABS ---
+tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_tools = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
     "📋 Theo dõi & Báo cáo Lương",
     "🎭 Bảng Phân Vai Lồng Tiếng", 
     "📚 Kho Database Phiên Âm Giọng Nam",
     "🔀 Đối Chiếu 2 File Tiếng Anh & QC Dịch",
+    "🔎 Soát Bất Nhất Thuật Ngữ & Xưng Hô",
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
@@ -2424,7 +2434,7 @@ with tab_phonetic_db:
         else: st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
-# TAB 6: ĐỐI CHIẾU 2 FILE TIẾNG ANH & QC DỊCH (UPDATED FOR OPTIONAL DEFAULT SPEAKER IN EXPORTS)
+# TAB 6: ĐỐI CHIẾU 2 FILE TIẾNG ANH & QC DỊCH
 # ==========================================
 with tab_dual_align:
     st.subheader("🔀 ĐỐI CHIẾU 2 FILE TIẾNG ANH & SOÁT SỬA BẢN DỊCH VIỆT")
@@ -2450,15 +2460,15 @@ with tab_dual_align:
     col_dual1, col_dual2, col_dual3 = st.columns(3)
     with col_dual1:
         with st.container(border=True):
-            st.markdown("##### 📄 1. File Tiếng Anh Mai Han (Master Timecode)")
+            st.markdown("##### 📄 1. File Tiếng Anh - Mai Han Team (.srt/docx)")
             st.caption("File Tiếng Anh ngắt câu & kéo mốc thời gian chuẩn do Mai Han Team thực hiện:")
-            uploaded_mh_eng = st.file_uploader("Tải file Anh Mai Han (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_mh_eng")
+            uploaded_mh_eng = st.file_uploader("Tải file tiếng Anh - Mai Han Team (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_mh_eng")
 
     with col_dual2:
         with st.container(border=True):
-            st.markdown("##### 📄 2. File Tiếng Anh Gốc của Khách (Official English)")
+            st.markdown("##### 📄 2. File Tiếng Anh của Khách (.srt/docx)")
             st.caption("File Tiếng Anh gốc do khách hàng gửi sang sau đó:")
-            uploaded_off_eng = st.file_uploader("Tải file Anh Khách (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_off_eng")
+            uploaded_off_eng = st.file_uploader("Tải file tiếng Anh của Khách (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_off_eng")
 
     with col_dual3:
         with st.container(border=True):
@@ -2604,7 +2614,198 @@ with tab_dual_align:
                 )
 
 # ==========================================
-# TAB 7: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
+# TAB 7: SOÁT BẤT NHẤT THUẬT NGỮ & XƯNG HÔ (NEW!)
+# ==========================================
+with tab_consistency:
+    st.subheader("🔎 SOÁT BẤT NHẤT THUẬT NGỮ & QUAN HỆ XƯNG HÔ NHÂN VẬT")
+    st.markdown("Vùng làm việc phát hiện các câu thoại bị sượng xưng hô (lệch đại từ tui/ông, mình/bạn) hoặc bất nhất bản dịch thuật ngữ/tên món ăn giữa các đoạn trong kịch bản.")
+
+    subtab_pronoun, subtab_glossary = st.tabs([
+        "👥 Quản Lý & Soát Lỗi Xưng Hô Nhân Vật", 
+        "📚 Soát Bất Nhất Thuật Ngữ & Món Ăn/Tên Riêng"
+    ])
+
+    # 1. SUBTAB PHẦN XƯNG HÔ NHÂN VẬT
+    with subtab_pronoun:
+        st.markdown("#### 1. Bảng Thiết Lập Quan Hệ Xưng Hô (Lưu Database)")
+        st.caption("Thiết lập quy tắc xưng hô mặc định giữa các cặp nhân vật để hệ thống tự động kiểm tra kịch bản:")
+
+        col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([2, 2, 1.5, 1.5, 1.2])
+        with col_p1:
+            rel_spk_a = st.text_input("Người Nói (Speaker A):", placeholder="VD: TYLER", key=f"p_spk_a_{st.session_state['pronoun_input_key']}").strip().upper()
+        with col_p2:
+            rel_spk_b = st.text_input("Người Nghe (Speaker B):", placeholder="VD: BILL", key=f"p_spk_b_{st.session_state['pronoun_input_key']}").strip().upper()
+        with col_p3:
+            rel_self = st.text_input("Xưng (Self):", placeholder="VD: tui, tôi, mình...", key=f"p_self_{st.session_state['pronoun_input_key']}").strip().lower()
+        with col_p4:
+            rel_target = st.text_input("Gọi (Target):", placeholder="VD: ông, bạn, anh...", key=f"p_target_{st.session_state['pronoun_input_key']}").strip().lower()
+        with col_p5:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("➕ Thêm Xưng Hô", type="primary", use_container_width=True, key="btn_add_pronoun"):
+                if rel_spk_a and rel_spk_b and rel_self and rel_target:
+                    key_pair = f"{rel_spk_a}|{rel_spk_b}"
+                    st.session_state['custom_pronoun_rel'][key_pair] = {"self": rel_self, "target": rel_target}
+                    save_json_db(PRONOUN_REL_DB_FILE, st.session_state['custom_pronoun_rel'])
+                    st.session_state['pronoun_input_key'] += 1
+                    st.success(f"✅ Đã lưu: {rel_spk_a} ➔ {rel_spk_b} ({rel_self} - {rel_target})"); time.sleep(1); st.rerun()
+                else: st.warning("Vui lòng điền đủ 4 ô!")
+
+        # Bảng Data Editor cho Xưng hô
+        rel_db_dict = st.session_state['custom_pronoun_rel']
+        if rel_db_dict:
+            rel_data_table = []
+            for pair_key, val in sorted(rel_db_dict.items()):
+                spk_a, spk_b = pair_key.split("|") if "|" in pair_key else (pair_key, "ALL")
+                rel_data_table.append({
+                    "Người Nói": spk_a, "Người Nghe": spk_b,
+                    "Xưng (Self)": val.get("self", "tui"), "Gọi (Target)": val.get("target", "ông"),
+                    "Xóa": False
+                })
+
+            df_rel = pd.DataFrame(rel_data_table)
+            edited_rel_df = st.data_editor(
+                df_rel,
+                column_config={
+                    "Người Nói": st.column_config.TextColumn("Người Nói", disabled=True),
+                    "Người Nghe": st.column_config.TextColumn("Người Nghe", disabled=True),
+                    "Xưng (Self)": st.column_config.TextColumn("Đại từ Xưng (Self)"),
+                    "Gọi (Target)": st.column_config.TextColumn("Đại từ Gọi (Target)"),
+                    "Xóa": st.column_config.CheckboxColumn("Xóa?")
+                },
+                hide_index=True, use_container_width=True, key="pronoun_rel_editor_table"
+            )
+
+            if st.button("💾 LƯU BẢNG QUY TẮC XƯNG HÔ VÀO DATABASE", type="secondary", use_container_width=True):
+                new_rel_db = {}
+                for _, row in edited_rel_df.iterrows():
+                    if not row["Xóa"]:
+                        pk = f"{str(row['Người Nói']).upper()}|{str(row['Người Nghe']).upper()}"
+                        new_rel_db[pk] = {"self": str(row["Xưng (Self)"]).lower(), "target": str(row["Gọi (Target)"]).lower()}
+                st.session_state['custom_pronoun_rel'] = new_rel_db
+                save_json_db(PRONOUN_REL_DB_FILE, new_rel_db)
+                st.success("✅ Đã lưu cập nhật Bảng Xưng Hô vào Database!"); time.sleep(1); st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### 2. Công Cụ Soát Lỗi Xưng Hô Tự Động Trong Kịch Bản")
+        uploaded_pronoun_script = st.file_uploader("Tải file Kịch bản Tiếng Việt (.srt hoặc .docx) để kiểm tra xưng hô:", type=['srt', 'docx'], key="uploader_pronoun_qc")
+
+        if uploaded_pronoun_script is not None:
+            c_spks_p = st.session_state.get('custom_speakers', set())
+            c_non_spks_p = st.session_state.get('custom_non_speakers', set())
+            df_p_script = parse_any_script_file_to_df(uploaded_pronoun_script.getvalue(), uploaded_pronoun_script.name, c_spks_p, c_non_spks_p)
+
+            if not df_p_script.empty:
+                # Quét đại từ trong từng câu
+                pronoun_audit_rows = []
+                speaker_pronoun_stats = {}
+
+                for idx, r in df_p_script.iterrows():
+                    spk = str(r['Speaker']).strip()
+                    diag = str(r['Dialogue']).strip()
+                    words = [w.lower() for w in re.findall(r'\b\w+\b', diag)]
+
+                    found_self = [w for w in words if w in VN_SELF_PRONOUNS]
+                    found_target = [w for w in words if w in VN_TARGET_PRONOUNS]
+
+                    if spk not in speaker_pronoun_stats:
+                        speaker_pronoun_stats[spk] = {"self": Counter(), "target": Counter()}
+
+                    for s_w in found_self: speaker_pronoun_stats[spk]["self"][s_w] += 1
+                    for t_w in found_target: speaker_pronoun_stats[spk]["target"][t_w] += 1
+
+                # Phát hiện lỗi xưng hô lệch với đa số
+                for idx, r in df_p_script.iterrows():
+                    spk = str(r['Speaker']).strip()
+                    diag = str(r['Dialogue']).strip()
+                    words = [w.lower() for w in re.findall(r'\b\w+\b', diag)]
+
+                    found_self = [w for w in words if w in VN_SELF_PRONOUNS]
+                    found_target = [w for w in words if w in VN_TARGET_PRONOUNS]
+
+                    top_self = speaker_pronoun_stats[spk]["self"].most_common(1)[0][0] if speaker_pronoun_stats[spk]["self"] else ""
+                    top_target = speaker_pronoun_stats[spk]["target"].most_common(1)[0][0] if speaker_pronoun_stats[spk]["target"] else ""
+
+                    is_unusual = False
+                    warn_msg = []
+
+                    if found_self and top_self and any(w != top_self for w in found_self):
+                        is_unusual = True
+                        warn_msg.append(f"Xưng '{', '.join(found_self)}' (Đa số nhân vật xưng '{top_self}')")
+
+                    if found_target and top_target and any(w != top_target for w in found_target):
+                        is_unusual = True
+                        warn_msg.append(f"Gọi '{', '.join(found_target)}' (Đa số nhân vật gọi '{top_target}')")
+
+                    status_str = "🟡 Nghi vấn lệch xưng hô" if is_unusual else "🟢 Ok"
+                    pronoun_audit_rows.append({
+                        "Stt": idx + 1, "Timecode": f"{r['Start']} --> {r['End']}",
+                        "Nhân vật": spk, "Câu thoại Tiếng Việt": diag,
+                        "Trạng thái": status_str, "Chi tiết QC": "; ".join(warn_msg) if warn_msg else "Xưng hô khớp với tần suất chính"
+                    })
+
+                df_p_audit = pd.DataFrame(pronoun_audit_rows)
+                unusual_cnt = sum(1 for st_v in df_p_audit['Trạng thái'] if '🟡' in str(st_v))
+
+                col_pm1, col_pm2 = st.columns(2)
+                with col_pm1:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">💬 Tổng số câu thoại đã quét</div>
+                        <div class="metric-value">{len(df_p_audit)}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_pm2:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">🟡 Câu nghi vấn lệch xưng hô</div>
+                        <div class="metric-value" style="color:#D97706;">{unusual_cnt}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("##### 👁️ Bảng Báo Cáo Soát Lỗi Xưng Hô Chi Tiết")
+                p_filter = st.checkbox("🟡 Chỉ hiển thị các câu nghi vấn lệch xưng hô", value=True)
+                df_p_disp = df_p_audit[df_p_audit['Trạng thái'].str.contains('🟡', na=False)] if p_filter else df_p_audit
+
+                st.dataframe(df_p_disp[['Stt', 'Timecode', 'Nhân vật', 'Câu thoại Tiếng Việt', 'Trạng thái', 'Chi tiết QC']], hide_index=True, use_container_width=True)
+
+    # 2. SUBTAB THUẬT NGỮ & TÊN RIÊNG
+    with subtab_glossary:
+        st.markdown("#### 📚 Soát Bất Nhất Thuật Ngữ & Bản Dịch Tiếng Việt")
+        st.caption("Tải file kịch bản để tự động tìm các từ/cụm từ Tiếng Anh lặp lại và kiểm tra xem có bị dịch thành nhiều nghĩa khác nhau hay không:")
+
+        uploaded_glossary_script = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) để kiểm tra thuật ngữ:", type=['srt', 'docx'], key="uploader_glossary_qc")
+
+        if uploaded_glossary_script is not None:
+            c_spks_g = st.session_state.get('custom_speakers', set())
+            c_non_spks_g = st.session_state.get('custom_non_speakers', set())
+            df_g_script = parse_any_script_file_to_df(uploaded_glossary_script.getvalue(), uploaded_glossary_script.name, c_spks_g, c_non_spks_g)
+
+            if not df_g_script.empty:
+                # Quét các từ tiếng Anh và tìm ngữ cảnh bản dịch
+                all_dialogues_str = " ".join(df_g_script['Dialogue'].dropna().tolist())
+                eng_matches = ENGLISH_WORD_REGEX.findall(all_dialogues_str)
+                eng_counts = Counter([w for w in eng_matches if is_candidate_english_word(w)])
+
+                glossary_audit_rows = []
+                for word, cnt in eng_counts.most_common(20):
+                    # Tìm các câu thoại chứa từ này
+                    matching_lines = df_g_script[df_g_script['Dialogue'].str.contains(r'\b' + re.escape(word) + r'\b', case=False, na=False)]
+                    sample_texts = matching_lines['Dialogue'].head(3).tolist()
+
+                    glossary_audit_rows.append({
+                        "Thuật ngữ / Tên riêng": word,
+                        "Số lần lặp lại": cnt,
+                        "Các câu thoại chứa từ này": " | ".join(sample_texts)
+                    })
+
+                if glossary_audit_rows:
+                    df_g_audit = pd.DataFrame(glossary_audit_rows)
+                    st.markdown("##### 📑 Bảng Thống Kê Thuật Ngữ Lặp Lại Trong Kịch Bản")
+                    st.dataframe(df_g_audit, hide_index=True, use_container_width=True)
+                else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
+
+# ==========================================
+# TAB 8: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
 # ==========================================
 with tab_tools:
     subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
@@ -2799,7 +3000,7 @@ with tab_tools:
         st.markdown("#### 🎛️ Tự Động Tạo File Marker Timeline Cho Phần Mềm Thu Âm DAW")
         st.caption("Chuyển đổi kịch bản (.srt hoặc .docx) thành các điểm mốc Marker phủ màu sẵn cho KTV thu âm trên Pro Tools, Reaper, Premiere, Resolve:")
 
-        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt'], key="tool_marker_uploader")
+        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt', 'docx'], key="tool_marker_uploader")
         
         if uploaded_marker_file is not None:
             m_filename = uploaded_marker_file.name
@@ -2952,6 +3153,6 @@ with tab_tools:
 # ==========================================
 st.markdown("""
 <div class="saas-footer">
-    ScriptPro Enterprise Edition • Designed for Mai Han Team
+    Copyright © Mai Han Team. All Rights Reserved.
 </div>
 """, unsafe_allow_html=True)
