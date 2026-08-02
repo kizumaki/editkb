@@ -1722,13 +1722,13 @@ with tab_resync:
             </div>
             """, unsafe_allow_html=True)
             
-            top_name, top_count = r_stats["top_speaker"]
+            top_name, top_count = stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
         else:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG
+# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (EXACT FORMAT MATCH)
 # ==========================================
 with tab_dub_tracker:
     st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN DỰ ÁN")
@@ -1790,7 +1790,8 @@ with tab_dub_tracker:
                 v_acts = item.get("actors", "")
                 bd = item.get("actor_breakdown", {})
                 
-                num_actors = len(bd) if bd else max(1, len([a for a in v_acts.split(',') if a.strip()]))
+                raw_acts = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                num_actors = len(raw_acts) if raw_acts else 1
                 
                 if current_mode == "minute":
                     v_pay = (v_dur_min * current_rate) * num_actors
@@ -1824,8 +1825,8 @@ with tab_dub_tracker:
                     "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video (Sửa trực tiếp)"),
                     "Thời lượng": st.column_config.TextColumn("Thời lượng", disabled=True),
                     "Đơn giá": st.column_config.TextColumn("Đơn giá", disabled=True),
-                    "Thành tiền": st.column_config.TextColumn("Thành tiền", disabled=True),
-                    "Diễn viên": st.column_config.TextColumn("Diễn viên (Sửa trực tiếp)"),
+                    "Thành tiền": st.column_config.TextColumn("Thành tiền (Tự động cập nhật)", disabled=True),
+                    "Diễn viên": st.column_config.TextColumn("Diễn viên (Thêm/Sửa tự động tính lại tiền)"),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True,
@@ -1845,12 +1846,26 @@ with tab_dub_tracker:
                             orig_item = tracker_data[idx_r]
                             orig_item['project_week'] = str(row["Tuần dự án"]).strip()
                             orig_item['video_title'] = str(row["Tiêu đề video"]).strip()
-                            orig_item['actors'] = str(row["Diễn viên"]).strip()
+                            
+                            # TỰ ĐỘNG BÓC TÁCH CỘT DIỄN VIÊN NHẬP NHIỀU TÊN CÁCH NHAU BẰNG DẤU PHẨY
+                            new_acts_raw = [a.strip().upper() for a in str(row["Diễn viên"]).split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                            orig_item['actors'] = ", ".join(new_acts_raw) if new_acts_raw else "CHƯA CÓ THÔNG TIN"
+                            
+                            # ĐỒNG BỘ LẠI ACTOR BREAKDOWN ĐỂ THÀNH TIỀN VÀ TAB SUBTAB 2 CẬP NHẬT TƯƠNG ỨNG!
+                            old_bd = orig_item.get("actor_breakdown", {})
+                            new_bd = {}
+                            for act in new_acts_raw:
+                                if act in old_bd:
+                                    new_bd[act] = old_bd[act]
+                                else:
+                                    new_bd[act] = {"lines": 0, "words": 0}
+                            orig_item['actor_breakdown'] = new_bd
+                            
                             new_tracker.append(orig_item)
                             
                     st.session_state['dubbing_tracker'] = new_tracker
                     save_json_db(TRACKER_DB_FILE, new_tracker)
-                    st.success(f"✅ Đã cập nhật bảng! (Đã xóa {deleted_cnt} video)")
+                    st.success(f"✅ Đã lưu thay đổi & đồng bộ lại thành tiền + bảng lương diễn viên!")
                     time.sleep(1)
                     st.rerun()
 
@@ -1880,8 +1895,8 @@ with tab_dub_tracker:
                     v_lines = item.get("total_lines", 0)
                     v_actors = item.get("actors", "")
                     
-                    bd = item.get("actor_breakdown", {})
-                    num_actors = len(bd) if bd else max(1, len([a for a in v_actors.split(',') if a.strip()]))
+                    raw_acts = [a.strip().upper() for a in v_actors.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                    num_actors = len(raw_acts) if raw_acts else 1
                     
                     if current_mode == "minute":
                         v_pay = (v_dur_min * current_rate) * num_actors
@@ -1890,6 +1905,7 @@ with tab_dub_tracker:
                         v_pay = v_lines * current_rate
                         dur_str = f"{v_lines} câu"
                     else:
+                        bd = item.get("actor_breakdown", {})
                         tot_words = sum(a["words"] for a in bd.values()) if bd else 0
                         v_pay = tot_words * current_rate
                         dur_str = f"{tot_words} từ"
@@ -1960,7 +1976,7 @@ with tab_dub_tracker:
             else:
                 active_tracker_data = [item for item in tracker_data if item.get("project_week", "Tuần 1") == selected_week_filter]
 
-            # Gom nhóm dữ liệu diễn viên
+            # Gom nhóm dữ liệu diễn viên tự động từ chuỗi 'Diễn viên' đã qua chỉnh sửa
             actor_weekly_map = {}
             for item in active_tracker_data:
                 v_title = item['video_title']
@@ -1968,13 +1984,10 @@ with tab_dub_tracker:
                 bd = item.get("actor_breakdown", {})
                 v_lines = item.get("total_lines", 0)
                 
-                if bd:
-                    acting_actors = list(bd.keys())
-                else:
-                    acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                # Tự động trích xuất diễn viên từ chuỗi 'Diễn viên' đã sửa trực tiếp
+                acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
 
-                for act_name in acting_actors:
-                    act_name_clean = act_name.upper()
+                for act_name_clean in acting_actors:
                     if act_name_clean not in actor_weekly_map:
                         actor_weekly_map[act_name_clean] = {
                             "videos_count": 0,
@@ -2023,14 +2036,13 @@ with tab_dub_tracker:
 
             # MÀN HÌNH 1: HIỂN THỊ CHI TIẾT TỪNG DIỄN VIÊN KHI ĐƯỢC CHỌN
             if selected_actor_view != "TẤT CẢ DIỄN VIÊN":
-                a_info = actor_payroll_info = actor_weekly_map[selected_actor_view]
+                a_info = actor_weekly_map[selected_actor_view]
                 a_rows = a_info["video_rows"]
                 a_tot_pay = sum(r["Pay_Num"] for r in a_rows)
                 
                 st.subheader(f"👤 PHIẾU BÁO CÁO THÙ LAO: {selected_actor_view}")
                 st.caption(f"Dữ liệu thù lao lồng tiếng cho {selected_actor_view} ({selected_week_filter})")
                 
-                # Bảng chi tiết danh sách video diễn viên này đã lồng
                 df_single_actor = pd.DataFrame(a_rows)[["Stt", "Tiêu đề video", "Thời lượng", "Đơn giá", "Thành tiền"]]
                 
                 st.dataframe(df_single_actor, hide_index=True, use_container_width=True)
@@ -2038,7 +2050,6 @@ with tab_dub_tracker:
                 
                 col_p_btn1, col_p_btn2 = st.columns(2)
                 with col_p_btn1:
-                    # Nút Tải Phiếu Lương Word (.docx) chuẩn in ấn
                     actor_docx_buf = generate_actor_salary_slip_docx(selected_actor_view, selected_week_filter, a_rows, a_tot_pay, current_rate)
                     st.download_button(
                         label=f"🖨️ IN / TẢI PHIẾU LƯƠNG WORD CỦA {selected_actor_view} (.DOCX)",
@@ -2049,7 +2060,6 @@ with tab_dub_tracker:
                         use_container_width=True
                     )
                 with col_p_btn2:
-                    # Nút Tải Excel phiếu lương cá nhân
                     excel_single_buf = io.BytesIO()
                     with pd.ExcelWriter(excel_single_buf, engine='openpyxl') as writer:
                         df_single_actor.to_excel(writer, index=False, sheet_name="Phieu Luong")
