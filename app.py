@@ -387,6 +387,21 @@ ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 
 RED_COLOR = RGBColor(255, 0, 0) # Màu đỏ chuẩn cho Tên Diễn Viên Lồng Tiếng
 
+# --- HÀM KIỂM TRA MỘT CỤM CÓ PHẢI TÊN NGƯỜI NÓI HỢP LỆ KHÔNG ---
+def is_valid_speaker_name(name):
+    clean = name.strip()
+    if not clean or len(clean) > 25:
+        return False
+    if is_stage_direction(clean):
+        return False
+    if clean.upper() in NON_SPEAKER_PHRASES:
+        return False
+    if any(char in clean for char in ['/', '?', '!', ',', '.', '-->', '(', ')']):
+        return False
+    if len(clean.split()) > 4:
+        return False
+    return True
+
 # --- HÀM TẠO PHIẾU LƯƠNG CÁ NHÂN TỰ ĐỘNG CHUẨN IN N ẤN (.DOCX) ---
 def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay, current_mode):
     doc = Document()
@@ -519,7 +534,7 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
             continue
             
         spk_matches = list(speaker_regex.finditer(text))
-        valid_spk_matches = [m for m in spk_matches if not is_stage_direction(m.group(1))]
+        valid_spk_matches = [m for m in spk_matches if is_valid_speaker_name(m.group(1))]
         
         if valid_spk_matches:
             last_match = valid_spk_matches[-1]
@@ -545,7 +560,7 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
                     next_spk_match = speaker_regex.match(next_text)
                     is_next_speaker = False
                     if next_spk_match:
-                        if not is_stage_direction(next_spk_match.group(1)):
+                        if is_valid_speaker_name(next_spk_match.group(1)):
                             is_next_speaker = True
                     
                     if not (is_timecode or is_number or is_srt or is_next_speaker):
@@ -566,7 +581,7 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
             continue
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
-            if not is_stage_direction(speaker_name):
+            if is_valid_speaker_name(speaker_name):
                 candidates[speaker_name] += 1
     return candidates
 
@@ -585,7 +600,7 @@ def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
         if len(parts) == 1:
             dialogue_content = text
         else:
-            speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
+            speaker_matches = [m for m in speaker_regex.finditer(text) if is_valid_speaker_name(m.group(1))]
             last_idx = 0
             for m in speaker_matches:
                 end = m.end()
@@ -773,10 +788,9 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
 # --- BÓC TÁCH HOÀN TOÀN CỦA NÓI RA KHỎI ĐIỀU KIỆN ĐẾM CPS CHUẨN XÁC ---
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
     text = re.sub(r'\t+', ' ', text).strip()
-    parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
-    speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
+    speaker_matches = [m for m in speaker_regex.finditer(text) if is_valid_speaker_name(m.group(1))]
     
     if not speaker_matches:
         new_paragraph = document.add_paragraph()
@@ -830,10 +844,17 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         content = re.sub(r'^\s*[\t\s]+', '', text[end:next_match_start]).strip()
         
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-        if enable_cast and actor_name and content.startswith(actor_name):
+        
+        # Nhặt và khôi phục tên diễn viên dính trong thân kịch bản (ví dụ Kash: QUANG Yeah...)
+        if not actor_name:
+            first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
+            if first_word and first_word in st.session_state['custom_cast_mapping'].values():
+                actor_name = first_word
+                st.session_state['custom_cast_mapping'][speaker_name.upper()] = actor_name
+
+        if actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
 
-        # Thu thập thuần thoại thực sự để tính CPS (Không dính Tên người nói)
         if content:
             pure_dialogue_list.append(content)
 
@@ -968,6 +989,25 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     processed_strings = preprocess_raw_paragraphs(raw_paragraphs, speaker_regex)
     
+    # TÁCH HOÀN TOÀN BỘ HEADER VỚI BODY BẰNG TIMECODE ĐẦU TIÊN
+    first_timecode_idx = 0
+    for idx, text in enumerate(processed_strings):
+        if TIMECODE_REGEX.match(text):
+            first_timecode_idx = idx
+            break
+            
+    header_zone = processed_strings[:first_timecode_idx] if first_timecode_idx > 0 else []
+    body_zone = processed_strings[first_timecode_idx:] if first_timecode_idx > 0 else processed_strings
+    
+    # QUÉT BÓC TÁCH DIỄN VIÊN TỪ HEADER ZONE
+    for h_line in header_zone:
+        if ":" in h_line and not h_line.lower().startswith("srt conversion"):
+            parts = h_line.split(":", 1)
+            spk_k = parts[0].strip().upper()
+            act_v = parts[1].strip().upper()
+            if is_valid_speaker_name(spk_k) and act_v and act_v not in NON_SPEAKER_PHRASES:
+                st.session_state['custom_cast_mapping'][spk_k] = act_v
+
     document = Document()
     
     title_text_raw = file_name_without_ext.upper()
@@ -982,11 +1022,11 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     assigned_actors = []
     unassigned_speakers = []
     
-    for text in processed_strings:
+    for text in body_zone:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
-            if not is_stage_direction(speaker_name) and speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
+            if is_valid_speaker_name(speaker_name) and speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
                 act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
                 if act:
@@ -1040,7 +1080,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     document.add_paragraph()
     start_index = len(document.paragraphs)
 
-    total_paras = len(processed_strings)
+    total_paras = len(body_zone)
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -1050,7 +1090,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     srt_counter = 1
     max_video_time_sec = 0.0
 
-    for idx, text in enumerate(processed_strings):
+    for idx, text in enumerate(body_zone):
         if idx % max(1, total_paras // 10) == 0:
             progress = int((idx / total_paras) * 100)
             progress_bar.progress(progress)
@@ -1611,7 +1651,6 @@ with tab_resync:
                     tracker_list = st.session_state['dubbing_tracker']
                     existing_entry = next((item for item in tracker_list if item['video_title'].upper() == video_title.upper()), None)
                     
-                    # Khởi tạo custom rates cho từng diễn viên trong video
                     curr_def_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
                     custom_actor_rates = {a.upper(): curr_def_rate for a in actors_list}
                     
@@ -1737,7 +1776,7 @@ with tab_resync:
             </div>
             """, unsafe_allow_html=True)
             
-            top_name, top_count = r_stats["top_speaker"]
+            top_name, top_count = stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
         else:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
@@ -1812,7 +1851,6 @@ with tab_dub_tracker:
                 
                 raw_acts = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
                 
-                # TÍNH TỔNG TIỀN VIDEO BẰNG CÁCH CỘNG ĐƠN GIÁ CÁ NHÂN CỦA TỪNG DIỄN VIÊN
                 if current_mode == "minute":
                     v_pay = sum(v_dur_min * custom_rates.get(act, current_rate) for act in raw_acts) if raw_acts else v_dur_min * current_rate
                     dur_str = f"{v_dur_min} phút"
@@ -2068,9 +2106,6 @@ with tab_dub_tracker:
                 
                 acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
 
-                # LỌC VÀ CHỈ TÍNH THỜI LƯỢNG MỘT LẦN CHO TỪNG VIDEO
-                video_already_counted = set()
-                
                 for act_name_clean in acting_actors:
                     if act_name_clean not in actor_weekly_map:
                         actor_weekly_map[act_name_clean] = {
@@ -2078,8 +2113,7 @@ with tab_dub_tracker:
                             "total_video_mins": 0,
                             "total_lines": 0,
                             "total_words": 0,
-                            "video_rows": [],
-                            "participated_videos": set()
+                            "video_rows": []
                         }
                     
                     act_rate = custom_rates.get(act_name_clean, current_rate)
@@ -2100,7 +2134,6 @@ with tab_dub_tracker:
                     actor_weekly_map[act_name_clean]["total_video_mins"] += v_dur
                     actor_weekly_map[act_name_clean]["total_lines"] += act_lines
                     actor_weekly_map[act_name_clean]["total_words"] += act_words
-                    actor_weekly_map[act_name_clean]["participated_videos"].add(v_title)
                     
                     actor_weekly_map[act_name_clean]["video_rows"].append({
                         "Stt": len(actor_weekly_map[act_name_clean]["video_rows"]) + 1,
@@ -2165,7 +2198,7 @@ with tab_dub_tracker:
                 actor_payroll_rows = []
                 grand_actor_pay = 0
                 
-                # TÍNH LẠI TỔNG THỜI LƯỢNG (CHỈ CỘNG 1 LẦN CHO MỖI VIDEO DUY NHẤT)
+                # TÍNH CHÍNH XÁC TỔNG THỜI LƯỢNG (MỖI VIDEO CHỈ CỘNG 1 LẦN DUY NHẤT)
                 unique_video_titles = set()
                 grand_unique_mins = 0
                 for item in active_tracker_data:
@@ -2191,7 +2224,7 @@ with tab_dub_tracker:
                         "Stt": idx,
                         "Diễn viên Lồng tiếng": act_name,
                         "Số Video đã lồng": info["videos_count"],
-                        "Khối lượng": dur_disp,
+                        "Tổng phút video": dur_disp,
                         "Thành tiền Lương": f"{tot_p:,.0f} VNĐ",
                         "Danh sách Video tham gia": ", ".join([r["Tiêu đề video"] for r in info["video_rows"]])
                     })
@@ -2200,7 +2233,7 @@ with tab_dub_tracker:
                     "Stt": "TỔNG",
                     "Diễn viên Lồng tiếng": f"TỔNG CỘNG ({len(actor_weekly_map)} Diễn viên)",
                     "Số Video đã lồng": "-",
-                    "Khối lượng": f"{grand_unique_mins} phút" if current_mode == "minute" else "-",
+                    "Tổng phút video": f"{grand_unique_mins} phút" if current_mode == "minute" else "-",
                     "Thành tiền Lương": f"{grand_actor_pay:,.0f} VNĐ",
                     "Danh sách Video tham gia": "-"
                 })
@@ -2210,7 +2243,7 @@ with tab_dub_tracker:
                 st.metric(f"💰 TỔNG LƯƠNG CẦN CHI CHO DIỄN VIÊN ({selected_week_filter}):", f"{grand_actor_pay:,.0f} VNĐ")
 
                 st.dataframe(
-                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Khối lượng", "Thành tiền Lương", "Danh sách Video tham gia"]],
+                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Tổng phút video", "Thành tiền Lương", "Danh sách Video tham gia"]],
                     hide_index=True,
                     use_container_width=True
                 )
