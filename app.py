@@ -402,7 +402,7 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
         res = re.sub(r'\s*\n\s*', '\n', res)
         res = res.strip()
         
-    # 6. Viết hoa đầu câu & sau tên người nói
+    # 6. Viết hoa đầu câu & Sau tên người nói
     if capitalize_first and res:
         lines = res.split('\n')
         cap_lines = []
@@ -520,13 +520,6 @@ def get_paragraph_text_with_html(paragraph):
     text = text.replace("</i><i>", "")
     return text
 
-TARGET_FONT = 'Times New Roman'
-TARGET_SIZE = Pt(12)
-
-def set_font_and_size(run, font_name, font_size):
-    run.font.name = font_name
-    run.font.size = font_size
-
 def process_srt_to_docx(uploaded_file, file_name_without_ext):
     srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
     blocks = re.split(r'\n\s*\n', srt_content.strip())
@@ -548,19 +541,19 @@ def process_srt_to_docx(uploaded_file, file_name_without_ext):
 
         if idx_str:
             p_index = document.add_paragraph(idx_str)
-            set_font_and_size(p_index.runs[0], TARGET_FONT, TARGET_SIZE)
+            p_index.runs[0].font.name = 'Times New Roman'; p_index.runs[0].font.size = Pt(12)
             p_index.paragraph_format.space_after = Pt(0)
 
         if tc_str:
             p_timecode = document.add_paragraph(tc_str)
-            set_font_and_size(p_timecode.runs[0], TARGET_FONT, TARGET_SIZE)
+            p_timecode.runs[0].font.name = 'Times New Roman'; p_timecode.runs[0].font.size = Pt(12)
             p_timecode.paragraph_format.space_after = Pt(0)
             
         if text_lines:
             raw_text = "\n".join(text_lines)
             clean_text = clean_and_normalize_text(raw_text, strip_all_tags=True)
             p_content = document.add_paragraph(clean_text)
-            set_font_and_size(p_content.runs[0], TARGET_FONT, TARGET_SIZE)
+            p_content.runs[0].font.name = 'Times New Roman'; p_content.runs[0].font.size = Pt(12)
             p_content.paragraph_format.space_after = Pt(12)
 
     modified_file = io.BytesIO()
@@ -833,7 +826,7 @@ def generate_qc_dual_excel(df_aligned):
     out_buf.seek(0)
     return out_buf
 
-def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True, hide_default_spk=True, fallback_spk_name="Unknown"):
+def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True, hide_default_spk=True, fallback_spk_name="Unknown", font_size_pt=12):
     document = Document()
     p_title = document.add_paragraph(title_text.upper())
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -846,7 +839,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     if unique_speakers and not (hide_default_spk and len(unique_speakers) == 1 and unique_speakers[0].upper() == fallback_spk_name.upper()):
         speaker_list_text = "VAI: " + ", ".join(unique_speakers)
         p = document.add_paragraph(speaker_list_text)
-        p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].bold = True
+        p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(font_size_pt); p.runs[0].bold = True
         p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
 
     document.add_paragraph()
@@ -859,7 +852,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
         is_explicit = row.get('Is_Explicit_MH', True)
         
         p_tc = document.add_paragraph(tc_line)
-        p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(12); p_tc.runs[0].bold = True
+        p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
         p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
         
         p_line = document.add_paragraph()
@@ -873,7 +866,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
 
         if should_show_spk:
             r_spk = p_line.add_run(f"{spk}:")
-            r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(12); r_spk.font.bold = True
+            r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
             if enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
             p_line.add_run("\t")
         else:
@@ -883,7 +876,11 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
             
         p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
         
-    for p in document.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+    for p in document.paragraphs:
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        for r in p.runs:
+            r.font.name = 'Times New Roman'
+            if r.font.size is None: r.font.size = Pt(font_size_pt)
         
     buf = io.BytesIO(); document.save(buf); buf.seek(0)
     return buf
@@ -1220,7 +1217,7 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
     full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
     return full_ass_line
 
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers):
+def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
     text = re.sub(r'\t+', ' ', text).strip()
     TAB_STOP_POSITION = Inches(1.0)
     
@@ -1306,7 +1303,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     pure_dialogue_text = " ".join(pure_dialogue_list)
     return ass_line_result, pure_dialogue_text
 
-def generate_actor_docx(video_title, actor_name, dialogue_list):
+def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12):
     doc = Document()
     p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1321,7 +1318,7 @@ def generate_actor_docx(video_title, actor_name, dialogue_list):
     for item in dialogue_list:
         if item.get("timecode"):
             p_tc = doc.add_paragraph(item["timecode"])
-            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(11); p_tc.runs[0].bold = True
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
             p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
             
         p_line = doc.add_paragraph()
@@ -1330,11 +1327,11 @@ def generate_actor_docx(video_title, actor_name, dialogue_list):
         p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
         
         r_spk = p_line.add_run(f"{item['speaker']}:")
-        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(12); r_spk.font.bold = True
+        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
         r_spk.font.color.rgb = RGBColor(79, 70, 229)
         p_line.add_run("\t")
         r_text = p_line.add_run(item['text'])
-        r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(12)
+        r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(font_size_pt)
         p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
         
     for p in doc.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
@@ -1342,7 +1339,7 @@ def generate_actor_docx(video_title, actor_name, dialogue_list):
     buf = io.BytesIO(); doc.save(buf); buf.seek(0)
     return buf
 
-def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False):
+def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
     speaker_color_map = {}; used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors); stats_counter = Counter(); seen_speakers_first_time = set()
     actor_dialogue_map = {}; qc_warnings = []        
@@ -1394,7 +1391,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if enable_cast:
             header_vai = document.add_paragraph()
             r_vai = header_vai.add_run("VAI: ")
-            r_vai.font.name = 'Times New Roman'; r_vai.font.size = Pt(12); r_vai.font.bold = True
+            r_vai.font.name = 'Times New Roman'; r_vai.font.size = Pt(font_size_pt); r_vai.font.bold = True
             header_vai.paragraph_format.space_before = Pt(0); header_vai.paragraph_format.space_after = Pt(0)
 
             for spk in unique_speakers:
@@ -1403,7 +1400,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 is_all = (spk.strip().upper() == "ALL")
                 spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, used_colors)
                 r_spk_name = p_spk.add_run(f"{spk}: ")
-                r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(12); r_spk_name.font.bold = True
+                r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(font_size_pt); r_spk_name.font.bold = True
                 
                 if is_all:
                     r_spk_name.font.color.rgb = RED_COLOR; r_spk_name.font.highlight_color = WD_COLOR_INDEX.YELLOW
@@ -1412,12 +1409,12 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
                 if actor and not is_all:
                     r_actor = p_spk.add_run(actor)
-                    r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(12); r_actor.font.bold = True
+                    r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(font_size_pt); r_actor.font.bold = True
                     r_actor.font.color.rgb = RED_COLOR
         else:
             speaker_list_text = "VAI: " + ", ".join(unique_speakers)
             p = document.add_paragraph(speaker_list_text)
-            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].bold = True
+            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(font_size_pt); p.runs[0].bold = True
             p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
     
     document.add_paragraph()
@@ -1439,17 +1436,17 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             dur, t1, t2 = calculate_duration_sec(text)
             if t2 > max_video_time_sec: max_video_time_sec = t2
             new_paragraph = document.add_paragraph(text)
-            new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(12)
+            new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(font_size_pt)
             new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         else:
-            # Tự động giặt sạch ngầm văn bản trước khi xử lý
             cleaned_text = clean_and_normalize_text(text, strip_all_tags=False)
             if is_resync: cleaned_text = normalize_phonetics_in_text(cleaned_text)
             
             ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
                 document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
                 speaker_color_map, used_colors, stats_counter, seen_speakers_first_time,
-                actor_dialogue_map, current_timecode_line, custom_speakers, custom_non_speakers
+                actor_dialogue_map, current_timecode_line, custom_speakers, custom_non_speakers,
+                font_size_pt=font_size_pt
             )
             
             if current_timecode_line and pure_dialogue_text:
@@ -1474,7 +1471,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         paragraph.paragraph_format.space_before = Pt(0); paragraph.paragraph_format.space_after = Pt(0)
         for run in paragraph.runs:
             run.font.name = 'Times New Roman'
-            if run.font.size is None: run.font.size = Pt(12)
+            if run.font.size is None or is_resync: run.font.size = Pt(font_size_pt)
         
     docx_file = io.BytesIO(); document.save(docx_file); docx_file.seek(0)
     
@@ -1503,7 +1500,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     actor_zip_bytes = io.BytesIO()
     with zipfile.ZipFile(actor_zip_bytes, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         for act_name, dialogues in actor_dialogue_map.items():
-            act_buf = generate_actor_docx(title_text, act_name, dialogues)
+            act_buf = generate_actor_docx(title_text, act_name, dialogues, font_size_pt=font_size_pt)
             zip_file.writestr(f"Kich_Ban_{act_name}.docx", act_buf.getvalue())
     actor_zip_bytes.seek(0)
     
@@ -1739,7 +1736,7 @@ with tab_script:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
                 try:
-                    modified_docx, ass_f, srt_f, act_zip, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False)
+                    modified_docx, ass_f, srt_f, act_zip, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12)
                     
                     st.session_state['processed_docx'] = modified_docx
                     st.session_state['processed_ass'] = ass_f
@@ -1797,7 +1794,7 @@ with tab_script:
                     with col_act1:
                         selected_actor = st.selectbox("Chọn Diễn viên lồng tiếng để tải file riêng:", options=list(act_map.keys()))
                         if selected_actor:
-                            act_buf = generate_actor_docx(st.session_state['stats']['video_title'], selected_actor, act_map[selected_actor])
+                            act_buf = generate_actor_docx(st.session_state['stats']['video_title'], selected_actor, act_map[selected_actor], font_size_pt=12)
                             st.download_button(
                                 label=f"⬇️ TẢI FILE WORD RIÊNG CHO {selected_actor} (.DOCX)",
                                 data=act_buf,
@@ -1838,7 +1835,7 @@ with tab_script:
         else: st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
 
 # ==========================================
-# TAB 2: RE-SYNC KỊCH BẢN ĐÃ BIÊN TẬP
+# TAB 2: RE-SYNC KỊCH BẢN ĐÃ BIÊN TẬP (CỠ PHÔNG 14PT)
 # ==========================================
 with tab_resync:
     col_r1, col_r2 = st.columns([1.6, 1])
@@ -1846,7 +1843,7 @@ with tab_resync:
     with col_r1:
         with st.container(border=True):
             st.markdown("### 🔄 Tải lên file Kịch bản ĐÃ BIÊN TẬP THỦ CÔNG (.docx)")
-            st.caption("Dành riêng cho file kịch bản đã được team biên tập chỉnh sửa lời thoại. Hệ thống sẽ giữ nguyên 100% câu thoại mới và khôi phục lại màu chữ nhân vật, phân vai và tô highlight vàng phiên âm.")
+            st.caption("Dành riêng cho file kịch bản đã được team biên tập chỉnh sửa lời thoại. Tự động phục hồi màu sắc, phân vai và **xuất phông chữ 14pt cực nét** cho phòng thu.")
             
             resync_file = st.file_uploader(
                 "Kéo thả file .docx đã biên tập vào đây", 
@@ -1861,9 +1858,10 @@ with tab_resync:
             st.success(f"📄 Đã nhận file kịch bản biên tập: **{r_filename}**")
             
             st.markdown("---")
-            if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG", use_container_width=True, type="primary", key="btn_resync_start"):
+            if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG (14PT)", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
-                    r_docx, r_ass, r_srt, r_zip, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
+                    # Chú ý: font_size_pt=14 dành riêng cho Re-Sync theo yêu cầu
+                    r_docx, r_ass, r_srt, r_zip, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True, font_size_pt=14)
                     
                     st.session_state['r_processed_docx'] = r_docx
                     st.session_state['r_processed_ass'] = r_ass
@@ -1916,11 +1914,11 @@ with tab_resync:
                         for w in r_qc_warns[:10]: st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
                         if len(r_qc_warns) > 10: st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
                 
-                st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE CHUẨN HOÀN HẢO (FINAL)")
+                st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE CHUẨN HOÀN HẢO (PHÔNG 14PT)")
                 col_rdl1, col_rdl2, col_rdl3 = st.columns(3)
                 with col_rdl1:
                     st.download_button(
-                        label="📄 FILE WORD KỊCH BẢN (.DOCX)", data=st.session_state['r_processed_docx'],
+                        label="📄 FILE WORD KỊCH BẢN (14PT)", data=st.session_state['r_processed_docx'],
                         file_name=st.session_state['r_docx_name'], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         type="primary", use_container_width=True, key="btn_resync_dl_docx"
                     )
@@ -1936,7 +1934,7 @@ with tab_resync:
                     )
                     
                 st.markdown("---")
-                st.markdown("#### 🎙️ KỊCH BẢN TÁCH VAI RIÊNG CHO PHÒNG THU LỒNG TIẾNG")
+                st.markdown("#### 🎙️ KỊCH BẢN TÁCH VAI RIÊNG CHO PHÒNG THU LỒNG TIẾNG (14PT)")
                 st.caption("Mỗi diễn viên chỉ nhận đúng câu thoại của mình, giúp thu âm nhanh và không xao nhãng:")
                 
                 r_act_map = st.session_state['resync_stats'].get("actor_dialogue_map", {})
@@ -1945,9 +1943,9 @@ with tab_resync:
                     with col_ract1:
                         r_selected_actor = st.selectbox("Chọn Diễn viên lồng tiếng để tải file riêng:", options=list(r_act_map.keys()), key="resync_select_actor")
                         if r_selected_actor:
-                            r_act_buf = generate_actor_docx(st.session_state['resync_stats']['video_title'], r_selected_actor, r_act_map[r_selected_actor])
+                            r_act_buf = generate_actor_docx(st.session_state['resync_stats']['video_title'], r_selected_actor, r_act_map[r_selected_actor], font_size_pt=14)
                             st.download_button(
-                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {r_selected_actor} (.DOCX)", data=r_act_buf,
+                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {r_selected_actor} (14PT)", data=r_act_buf,
                                 file_name=f"KichBan_{r_selected_actor}_{st.session_state['resync_stats']['video_title']}_Final.docx",
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key="btn_dl_single_actor_resync"
                             )
@@ -2742,7 +2740,6 @@ with tab_consistency:
             df_p_script = parse_any_script_file_to_df(uploaded_pronoun_script.getvalue(), uploaded_pronoun_script.name, c_spks_p, c_non_spks_p)
 
             if not df_p_script.empty:
-                # Quét đại từ trong từng câu
                 pronoun_audit_rows = []
                 speaker_pronoun_stats = {}
 
@@ -2760,7 +2757,6 @@ with tab_consistency:
                     for s_w in found_self: speaker_pronoun_stats[spk]["self"][s_w] += 1
                     for t_w in found_target: speaker_pronoun_stats[spk]["target"][t_w] += 1
 
-                # Phát hiện lỗi xưng hô lệch với đa số
                 for idx, r in df_p_script.iterrows():
                     spk = str(r['Speaker']).strip()
                     diag = str(r['Dialogue']).strip()
@@ -2845,12 +2841,12 @@ with tab_consistency:
 
                 if glossary_audit_rows:
                     df_g_audit = pd.DataFrame(glossary_audit_rows)
-                    st.markdown("##### 📑 Bảng Thống Kê Thuật Ngữ Lặp Lặp Trong Kịch Bản")
+                    st.markdown("##### 📑 Bảng Thống Kê Thuật Ngữ Lặp Lại Trong Kịch Bản")
                     st.dataframe(df_g_audit, hide_index=True, use_container_width=True)
                 else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
 
 # ==========================================
-# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER & TAG STRIPPER - NEW!)
+# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (WITH ACTION BUTTON)
 # ==========================================
 with tab_cleaner:
     st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
@@ -2861,7 +2857,7 @@ with tab_cleaner:
         "📁 Dọn Dẹp & Chuẩn Hóa File Hàng Loạt (.srt / .docx)"
     ])
 
-    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP
+    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP (CÓ NÚT THỰC THI)
     with subtab_paste_clean:
         st.markdown("#### 1. Chọn Quy Tắc Giặt Sạch Văn Bản")
         col_opt1, col_opt2, col_opt3, col_opt4 = st.columns(4)
@@ -2882,13 +2878,15 @@ with tab_cleaner:
             input_raw_text = st.text_area(
                 "Nội dung cần làm sạch:",
                 value="<font color=\"red\">Cory :</font> Tránh xa  đồng đội tui ra !\n\n- <i>Garrett :</i> \" kịch tính quá \"\n\nTyler :chào bạn ,rất vui được  gặp...bạn",
-                height=280,
+                height=240,
                 key="textarea_raw_clean_input"
             )
+            
+            # NÚT THỰC THI CHÍNH THỨC THEO YÊU CẦU
+            btn_do_clean = st.button("🧹 THỰC THI DỌN DẸP VĂN BẢN", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
 
-        cleaned_result_text = ""
-        if input_raw_text:
-            cleaned_result_text = clean_and_normalize_text(
+        if btn_do_clean and input_raw_text:
+            cleaned_res = clean_and_normalize_text(
                 input_raw_text, 
                 strip_all_tags=opt_strip_html, 
                 fix_punctuation=opt_fix_punct, 
@@ -2896,21 +2894,26 @@ with tab_cleaner:
                 capitalize_first=opt_cap_first, 
                 remove_leading_dash=opt_remove_dash
             )
+            st.session_state['manual_cleaned_result'] = cleaned_res
+            st.session_state['manual_cleaned_orig_len'] = len(input_raw_text)
+            st.session_state['manual_cleaned_res_len'] = len(cleaned_res)
+
+        output_display_text = st.session_state.get('manual_cleaned_result', "")
 
         with col_text_out:
             st.markdown("##### 📤 Văn Bản Đã Làm Sạch Hoàn Hảo:")
             st.text_area(
                 "Kết quả sau khi dọn dẹp:",
-                value=cleaned_result_text,
-                height=280,
+                value=output_display_text,
+                height=240,
                 key="textarea_clean_output"
             )
 
-        if input_raw_text and cleaned_result_text:
-            orig_chars = len(input_raw_text)
-            clean_chars = len(cleaned_result_text)
-            diff_chars = orig_chars - clean_chars
-            st.success(f"✅ Đã dọn dẹp xong! Giảm **{diff_chars}** ký tự rác/khoảng trắng thừa (Từ {orig_chars} ➔ {clean_chars} ký tự).")
+        if 'manual_cleaned_result' in st.session_state and st.session_state['manual_cleaned_result']:
+            orig_c = st.session_state.get('manual_cleaned_orig_len', 0)
+            clean_c = st.session_state.get('manual_cleaned_res_len', 0)
+            diff_c = orig_c - clean_c
+            st.success(f"✅ Đã dọn dẹp xong! Giảm **{diff_c}** ký tự rác/khoảng trắng thừa (Từ {orig_c} ➔ {clean_c} ký tự).")
 
     # 2. PHÂN KHU 2: DỌN DẸP FILE HÀNG LOẠT
     with subtab_file_clean:
@@ -3230,7 +3233,7 @@ with tab_tools:
         st.markdown("#### 🎛️ Tự Động Tạo File Marker Timeline Cho Phần Mềm Thu Âm DAW")
         st.caption("Chuyển đổi kịch bản (.srt hoặc .docx) thành các điểm mốc Marker phủ màu sẵn cho KTV thu âm trên Pro Tools, Reaper, Premiere, Resolve:")
 
-        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt', 'docx'], key="tool_marker_uploader")
+        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt'], key="tool_marker_uploader")
         
         if uploaded_marker_file is not None:
             m_filename = uploaded_marker_file.name
