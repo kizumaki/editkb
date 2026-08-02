@@ -29,7 +29,7 @@ ui_theme_choice = st.sidebar.radio(
     "Lựa chọn Skin hiển thị:",
     options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Linh hoạt)"],
     index=0,
-    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện quen thuộc của team. Chế độ 'Enterprise Pro' mang lại phong cách Dashboard hiện đại gọn nhẹ khi cần xem báo cáo."
+    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện quen thuộc của team. Chế độ 'Enterprise Pro' mang lại phong cách Dark Dashboard hiện đại."
 )
 
 if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
@@ -42,38 +42,59 @@ if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, 
 
 # --- DYNAMIC CSS INJECTION THEO CHẾ ĐỘ ĐƯỢC CHỌN ---
 if "Enterprise Pro" in ui_theme_choice:
-    # SKIN PRO: MODERN SLATE & COMPACT BADGES
+    # SKIN PRO: DARK SLATE DASHBOARD HOÀN CHỈNH
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-        
-        .hero-container {
-            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-            padding: 2rem;
-            border-radius: 12px;
-            color: white;
-            margin-bottom: 1.5rem;
-            border-left: 5px solid #6366F1;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        html, body, [class*="css"], .stApp {
+            font-family: 'Inter', sans-serif;
+            background-color: #0B0F17 !important;
+            color: #F1F5F9 !important;
         }
-        .hero-title { font-size: 2.2rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; color: #F8FAFC; }
-        .hero-subtitle { font-size: 1rem; color: #94A3B8; margin-top: 0.4rem; }
+        [data-testid="stSidebar"] {
+            background-color: #111827 !important;
+            border-right: 1px solid #1F2937 !important;
+        }
+        .hero-container {
+            background: linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%) !important;
+            padding: 2rem !important; border-radius: 14px !important; color: white !important;
+            margin-bottom: 1.5rem !important; border: 1px solid #6366F1 !important;
+            box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.3) !important;
+        }
+        .hero-title { font-size: 2.2rem !important; font-weight: 800 !important; color: #F8FAFC !important; margin: 0; }
+        .hero-subtitle { font-size: 1rem !important; color: #C7D2FE !important; margin-top: 0.4rem; }
         .badge-pro {
-            background: #6366F1; color: white; padding: 3px 10px; border-radius: 6px;
-            font-size: 0.75rem; font-weight: 700; text-transform: uppercase; display: inline-block; margin-bottom: 0.5rem;
+            background: #6366F1 !important; color: white !important; padding: 4px 12px !important;
+            border-radius: 6px !important; font-size: 0.75rem !important; font-weight: 700 !important;
+            text-transform: uppercase; display: inline-block; margin-bottom: 0.5rem;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            background-color: #111827 !important;
+            border: 1px solid #1F2937 !important;
+            border-radius: 12px !important;
         }
         .metric-card {
-            background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 1rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: all 0.2s ease;
+            background: #1E293B !important; border: 1px solid #334155 !important;
+            border-radius: 10px !important; padding: 1.2rem !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
         }
-        .metric-card:hover { border-color: #6366F1; transform: translateY(-2px); }
-        .metric-label { font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase; }
-        .metric-value { font-size: 1.6rem; font-weight: 800; color: #0F172A; margin-top: 0.2rem; }
-        .stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: 2px solid #E2E8F0; }
-        .stTabs [data-baseweb="tab"] { height: 46px; border-radius: 6px 6px 0 0; font-weight: 600; padding: 0 18px; }
-        .qc-card-warning { background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 0.88rem; }
-        .saas-footer { text-align: center; padding: 2rem 0; color: #94A3B8; font-size: 0.85rem; border-top: 1px solid #E2E8F0; margin-top: 3rem; }
+        .metric-label { font-size: 0.8rem !important; color: #94A3B8 !important; font-weight: 600 !important; }
+        .metric-value { font-size: 1.7rem !important; font-weight: 800 !important; color: #38BDF8 !important; margin-top: 0.2rem; }
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: #111827 !important; padding: 6px !important;
+            border-radius: 10px !important; border: 1px solid #1F2937 !important; gap: 8px !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            color: #9CA3AF !important; border-radius: 6px !important; font-weight: 600 !important; padding: 0 16px !important;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #4338CA !important; color: #FFFFFF !important;
+        }
+        .qc-card-warning {
+            background-color: #450A0A !important; border-left: 4px solid #EF4444 !important;
+            color: #FCA5A5 !important; padding: 10px 14px !important; border-radius: 6px !important; margin-bottom: 8px;
+        }
+        .saas-footer { text-align: center; padding: 2rem 0; color: #64748B; font-size: 0.85rem; border-top: 1px solid #1F2937; margin-top: 3rem; }
     </style>
     """, unsafe_allow_html=True)
 else:
@@ -82,7 +103,6 @@ else:
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-        
         .hero-container {
             background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
             padding: 2.5rem 2rem; border-radius: 16px; color: white; margin-bottom: 2rem;
@@ -1074,8 +1094,7 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             st.session_state['custom_speakers'].update(new_spks)
             save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
             st.session_state['spk_input_key'] += 1
-            st.success(f"✅ Đã lưu {len(new_spks)} người nói!")
-            time.sleep(1); st.rerun()
+            st.success(f"✅ Đã lưu {len(new_spks)} người nói!"); time.sleep(1); st.rerun()
 
 with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
     manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
@@ -1093,8 +1112,7 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
             st.session_state['custom_non_speakers'].update(new_phrases)
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
             st.session_state['ns_input_key'] += 1
-            st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!")
-            time.sleep(1); st.rerun()
+            st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
 
 # --- HERO BANNER HEADER ---
 st.markdown(f"""
