@@ -770,9 +770,9 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
     full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
     return full_ass_line
 
+# --- BÓC TÁCH HOÀN TOÀN CỦA NÓI RA KHỎI ĐIỀU KIỆN ĐẾM CPS CHUẨN XÁC ---
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
     text = re.sub(r'\t+', ' ', text).strip()
-    parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
     speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
@@ -790,6 +790,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
 
     last_processed_index = 0
     ass_line_result = ""
+    pure_dialogue_list = []
     
     for i, match in enumerate(speaker_matches):
         speaker_name = match.group(1).strip()
@@ -830,6 +831,10 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
         if enable_cast and actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
+
+        # Thu thập thuần thoại thực sự để tính CPS (Không dính Tên người nói)
+        if content:
+            pure_dialogue_list.append(content)
 
         if actor_name:
             if actor_name not in actor_dialogue_map:
@@ -887,7 +892,8 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         continuation_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_and_phonetic_to_paragraph(continuation_paragraph, remaining_content, enable_phonetic)
 
-    return ass_line_result, text
+    pure_dialogue_text = " ".join(pure_dialogue_list)
+    return ass_line_result, pure_dialogue_text
 
 def generate_actor_docx(video_title, actor_name, dialogue_list):
     doc = Document()
@@ -1066,18 +1072,19 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
             cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
-            ass_formatted_line, plain_text_line = format_and_split_dialogue(
+            ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
                 document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
                 speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time,
                 actor_dialogue_map, current_timecode_line
             )
             
-            if current_timecode_line and plain_text_line:
+            # TÍNH CHỈ SỐ CPS CHUẨN XÁC DỰA TRÊN THUẦN LỜI THOẠI (BỎ TÊN NGƯỜI NÓI)
+            if current_timecode_line and pure_dialogue_text:
                 dur, _, _ = calculate_duration_sec(current_timecode_line)
-                clean_chars = len(re.sub(r'</?[ibuIBU]>', '', plain_text_line).strip())
+                clean_chars = len(re.sub(r'</?[ibuIBU]>', '', pure_dialogue_text).strip())
                 cps = clean_chars / dur if dur > 0 else 0
-                if cps > 20: 
-                    qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{plain_text_line[:40]}...\"")
+                if cps > 20 and clean_chars > 0: 
+                    qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{pure_dialogue_text[:45]}...\"")
             
             if current_timecode_line and ass_formatted_line:
                 start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
