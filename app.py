@@ -12,7 +12,7 @@ import pandas as pd
 import json
 from gtts import gTTS
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
 st.set_page_config(
@@ -119,19 +119,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# --- HÀM TÍNH TÊN TUẦN TỰ ĐỘNG TỪ NGÀY ---
-def get_week_label_from_date_str(date_str):
-    try:
-        dt = datetime.strptime(date_str, "%d/%m/%Y")
-    except Exception:
-        dt = datetime.now()
-    
-    start_of_week = dt - timedelta(days=dt.weekday())
-    end_of_week = start_of_week + timedelta(days=6)
-    
-    year, week_num, _ = dt.isocalendar()
-    return f"Tuần {week_num} ({start_of_week.strftime('%d/%m')} - {end_of_week.strftime('%d/%m/%Y')})"
 
 # --- HÀM TẠO ÂM THANH PHÁT ÂM TIẾNG ANH CHUẨN ---
 def generate_english_audio(text_to_speak, accent='com'):
@@ -1418,7 +1405,6 @@ with tab_script:
             if 'processed_docx' in st.session_state:
                 st.markdown("---")
                 
-                # HIỂN THỊ CẢNH BÁO QC / CPS TỰ ĐỘNG
                 qc_warns = st.session_state['stats'].get("qc_warnings", [])
                 if qc_warns:
                     with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
@@ -1529,6 +1515,9 @@ with tab_resync:
                 key=f"resync_uploader_{st.session_state['resync_uploader_key']}"
             )
             
+            # CHO PHÉP ĐẶT TÊN TUẦN DỰ ÁN CHO VIDEO NÀY
+            project_week_input = st.text_input("📌 Gán Tuần Dự Án cho video này:", value="Tuần 1", help="VD: Tuần 1, Tuần 2, Tuần 1 - Đợt Phim A...")
+            
         if resync_file is not None:
             r_filename = resync_file.name
             r_name_no_ext = os.path.splitext(r_filename)[0]
@@ -1558,7 +1547,7 @@ with tab_resync:
                     video_dur_min = r_stats.get("video_duration_min", 1)
                     
                     today_str = time.strftime("%d/%m/%Y")
-                    week_label = get_week_label_from_date_str(today_str)
+                    assigned_week = project_week_input.strip() if project_week_input else "Tuần 1"
                     
                     tracker_list = st.session_state['dubbing_tracker']
                     existing_entry = next((item for item in tracker_list if item['video_title'].upper() == video_title.upper()), None)
@@ -1570,7 +1559,7 @@ with tab_resync:
                         "total_lines": total_lines,
                         "video_duration_min": video_dur_min,
                         "date": today_str,
-                        "week_label": week_label
+                        "project_week": assigned_week
                     }
                     
                     if existing_entry:
@@ -1688,10 +1677,10 @@ with tab_resync:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (WEEKLY FORMAT)
+# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (EXACT FORMAT MATCH)
 # ==========================================
 with tab_dub_tracker:
-    st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN")
+    st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN DỰ ÁN")
     
     # Cấu hình Đơn giá Thù lao
     with st.expander("⚙️ CẤU HÌNH ĐƠN GIÁ THÙ LAO LỒNG TIẾNG", expanded=False):
@@ -1733,118 +1722,293 @@ with tab_dub_tracker:
     current_mode = st.session_state['payroll_rates'].get("mode", "minute")
     current_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
 
+    subtab_video, subtab_payroll = st.tabs(["📹 Bảng Theo Dõi Video Theo Tuần Dự Án", "💰 Báo Cáo Lương Chi Tiết Từng Diễn Viên"])
+
     tracker_data = st.session_state['dubbing_tracker']
 
-    if tracker_data:
-        # Nhóm dữ liệu video theo TUẦN
-        weeks_map = {}
-        for item in tracker_data:
-            w_lbl = item.get("week_label")
-            if not w_lbl:
-                w_lbl = get_week_label_from_date_str(item.get("date", ""))
-                item["week_label"] = w_lbl
-            if w_lbl not in weeks_map:
-                weeks_map[w_lbl] = []
-            weeks_map[w_lbl].append(item)
-
-        total_studio_money = 0
-        excel_sheets_data = {}
-
-        # Hiển thị danh sách các tuần
-        for week_title, items in sorted(weeks_map.items(), reverse=True):
-            st.markdown(f"### 📅 {week_title}")
-            
-            week_rows = []
-            week_tot_dur = 0
-            week_tot_money = 0
-            
-            for idx, item in enumerate(items, 1):
-                v_title = item['video_title']
+    # --- SUBTAB 1: BẢNG THEO DÕI VIDEO CHUẨN 6 CỘT TỪNG TUẦN DỰ ÁN ---
+    with subtab_video:
+        st.markdown("#### Bảng quản lý danh sách Video và Thù lao (Định dạng chuẩn 6 cột)")
+        
+        if tracker_data:
+            # Cho phép sửa Tuần dự án, Tiêu đề, Diễn viên trực tiếp trên bảng
+            formatted_editor_list = []
+            for idx, item in enumerate(tracker_data, 1):
+                p_week = item.get("project_week", "Tuần 1")
                 v_dur_min = int(item.get("video_duration_min", 1))
                 v_lines = item.get("total_lines", 0)
-                v_actors = item.get("actors", "")
-                
+                v_acts = item.get("actors", "")
                 bd = item.get("actor_breakdown", {})
-                if bd:
-                    num_actors = len(bd)
-                else:
-                    raw_acts = [a.strip() for a in v_actors.split(',') if a.strip() and a.strip() != "Chưa có thông tin"]
-                    num_actors = max(1, len(raw_acts))
                 
-                # Tính Thành tiền cho video
+                num_actors = len(bd) if bd else max(1, len([a for a in v_acts.split(',') if a.strip()]))
+                
                 if current_mode == "minute":
                     v_pay = (v_dur_min * current_rate) * num_actors
-                    dur_display = f"{v_dur_min} phút"
+                    dur_str = f"{v_dur_min} phút"
                 elif current_mode == "line":
                     v_pay = v_lines * current_rate
-                    dur_display = f"{v_lines} câu"
+                    dur_str = f"{v_lines} câu"
                 else:
                     tot_words = sum(a["words"] for a in bd.values()) if bd else 0
                     v_pay = tot_words * current_rate
-                    dur_display = f"{tot_words} từ"
+                    dur_str = f"{tot_words} từ"
                     
-                week_tot_dur += v_dur_min
-                week_tot_money += v_pay
-                
-                week_rows.append({
+                formatted_editor_list.append({
                     "Stt": idx,
-                    "Tiêu đề video": v_title,
-                    "Thời lượng": dur_display,
+                    "Tuần dự án": p_week,
+                    "Tiêu đề video": item['video_title'],
+                    "Thời lượng": dur_str,
                     "Đơn giá": f"{current_rate:,.0f} VNĐ",
                     "Thành tiền": f"{v_pay:,.0f} VNĐ",
-                    "Diễn viên": v_actors,
-                    "Pay_Num": v_pay,
-                    "Dur_Num": v_dur_min
+                    "Diễn viên": v_acts,
+                    "Xóa": False
                 })
 
-            total_studio_money += week_tot_money
+            df_editor_raw = pd.DataFrame(formatted_editor_list)
 
-            # THÊM HÀNG TỔNG CHO MỖI TUẦN THEO ĐÚNG YÊU CẦU
-            week_rows.append({
-                "Stt": "TỔNG",
-                "Tiêu đề video": f"TỔNG CỘNG ({len(items)} video)",
-                "Thời lượng": f"{week_tot_dur} phút",
-                "Đơn giá": "-",
-                "Thành tiền": f"{week_tot_money:,.0f} VNĐ",
-                "Diễn viên": "-",
-                "Pay_Num": week_tot_money,
-                "Dur_Num": week_tot_dur
-            })
-
-            df_week = pd.DataFrame(week_rows)
-            
-            # Bảng hiển thị chuẩn 6 cột như hình ảnh
-            display_df_week = df_week[["Stt", "Tiêu đề video", "Thời lượng", "Đơn giá", "Thành tiền", "Diễn viên"]]
-            
-            st.dataframe(
-                display_df_week,
+            edited_tracker_df = st.data_editor(
+                df_editor_raw,
+                column_config={
+                    "Stt": st.column_config.NumberColumn("Stt", disabled=True, width="small"),
+                    "Tuần dự án": st.column_config.TextColumn("Tuần dự án (Sửa trực tiếp)"),
+                    "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video (Sửa trực tiếp)"),
+                    "Thời lượng": st.column_config.TextColumn("Thời lượng", disabled=True),
+                    "Đơn giá": st.column_config.TextColumn("Đơn giá", disabled=True),
+                    "Thành tiền": st.column_config.TextColumn("Thành tiền", disabled=True),
+                    "Diễn viên": st.column_config.TextColumn("Diễn viên (Sửa trực tiếp)"),
+                    "Xóa": st.column_config.CheckboxColumn("Xóa?")
+                },
                 hide_index=True,
-                use_container_width=True
+                use_container_width=True,
+                key="dubbing_tracker_editor_main"
             )
-            
-            excel_sheets_data[week_title[:30]] = display_df_week
+
+            col_tr1, col_tr2 = st.columns([1, 1])
+            with col_tr1:
+                if st.button("💾 LƯU THAY ĐỔI TRÊN BẢNG VIDEO", type="primary", use_container_width=True):
+                    new_tracker = []
+                    deleted_cnt = 0
+                    for idx_r, row in edited_tracker_df.iterrows():
+                        if row["Xóa"]:
+                            deleted_cnt += 1
+                        else:
+                            orig_item = tracker_data[idx_r]
+                            orig_item['project_week'] = str(row["Tuần dự án"]).strip()
+                            orig_item['video_title'] = str(row["Tiêu đề video"]).strip()
+                            orig_item['actors'] = str(row["Diễn viên"]).strip()
+                            new_tracker.append(orig_item)
+                            
+                    st.session_state['dubbing_tracker'] = new_tracker
+                    save_json_db(TRACKER_DB_FILE, new_tracker)
+                    st.success(f"✅ Đã cập nhật bảng! (Đã xóa {deleted_cnt} video)")
+                    time.sleep(1)
+                    st.rerun()
+
             st.markdown("---")
+            st.markdown("#### 📑 Xem theo Bảng chia Tuần Dự Án (Có Hàng Tổng)")
 
-        st.metric("💰 TỔNG LƯƠNG SẢN XUẤT CẢ STUDIO (TOÀN BỘ CÁC TUẦN):", f"{total_studio_money:,.0f} VNĐ")
+            # Gom nhóm theo Tuần dự án
+            project_weeks_map = {}
+            for item in tracker_data:
+                pw = item.get("project_week", "Tuần 1")
+                if pw not in project_weeks_map:
+                    project_weeks_map[pw] = []
+                project_weeks_map[pw].append(item)
 
-        # NÚT XUẤT EXCEL BẢO CÁO LƯƠNG THEO TUẦN
-        excel_payroll_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_payroll_buffer, engine='openpyxl') as writer:
-            for s_name, s_df in excel_sheets_data.items():
-                s_df.to_excel(writer, index=False, sheet_name=s_name.replace(":", "_").replace("/", "_"))
+            total_studio_money = 0
+            excel_sheets_data = {}
+
+            for pw_name, items in sorted(project_weeks_map.items()):
+                st.markdown(f"##### 📅 {pw_name.upper()}")
                 
-        excel_payroll_buffer.seek(0)
+                week_rows = []
+                week_tot_dur = 0
+                week_tot_money = 0
+                
+                for idx, item in enumerate(items, 1):
+                    v_title = item['video_title']
+                    v_dur_min = int(item.get("video_duration_min", 1))
+                    v_lines = item.get("total_lines", 0)
+                    v_actors = item.get("actors", "")
+                    
+                    bd = item.get("actor_breakdown", {})
+                    num_actors = len(bd) if bd else max(1, len([a for a in v_actors.split(',') if a.strip()]))
+                    
+                    if current_mode == "minute":
+                        v_pay = (v_dur_min * current_rate) * num_actors
+                        dur_str = f"{v_dur_min} phút"
+                    elif current_mode == "line":
+                        v_pay = v_lines * current_rate
+                        dur_str = f"{v_lines} câu"
+                    else:
+                        tot_words = sum(a["words"] for a in bd.values()) if bd else 0
+                        v_pay = tot_words * current_rate
+                        dur_str = f"{tot_words} từ"
+                        
+                    week_tot_dur += v_dur_min
+                    week_tot_money += v_pay
+                    
+                    week_rows.append({
+                        "Stt": idx,
+                        "Tiêu đề video": v_title,
+                        "Thời lượng": dur_str,
+                        "Đơn giá": f"{current_rate:,.0f} VNĐ",
+                        "Thành tiền": f"{v_pay:,.0f} VNĐ",
+                        "Diễn viên": v_actors
+                    })
 
-        st.download_button(
-            label="📊 TẢI BÁO CÁO LƯƠNG THEO TUẦN (.XLSX)",
-            data=excel_payroll_buffer,
-            file_name="Bao_Cao_Luong_Theo_Tuan_MaiHan.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True
-        )
-    else:
-        st.info("Chưa có dữ liệu video nào. Hãy chạy Re-Sync ở Tab 2 để tự động ghi nhận video mới!")
+                total_studio_money += week_tot_money
+
+                # HÀNG TỔNG CHO MỖI TUẦN DỰ ÁN
+                week_rows.append({
+                    "Stt": "TỔNG",
+                    "Tiêu đề video": f"TỔNG CỘNG ({len(items)} video)",
+                    "Thời lượng": f"{week_tot_dur} phút",
+                    "Đơn giá": "-",
+                    "Thành tiền": f"{week_tot_money:,.0f} VNĐ",
+                    "Diễn viên": "-"
+                })
+
+                df_week_display = pd.DataFrame(week_rows)
+                
+                st.dataframe(
+                    df_week_display,
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                excel_sheets_data[pw_name[:30]] = df_week_display
+
+            with col_tr2:
+                excel_payroll_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_payroll_buffer, engine='openpyxl') as writer:
+                    for s_name, s_df in excel_sheets_data.items():
+                        s_df.to_excel(writer, index=False, sheet_name=s_name.replace(":", "_").replace("/", "_"))
+                excel_payroll_buffer.seek(0)
+
+                st.download_button(
+                    label="📊 XUẤT TẤT CẢ TUẦN RA EXCEL (.XLSX)",
+                    data=excel_payroll_buffer,
+                    file_name="Theo_Doi_Video_Long_Tieng_MaiHan.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("Chưa có dữ liệu video nào. Hãy chạy Re-Sync ở Tab 2 để tự động ghi nhận video mới!")
+
+    # --- SUBTAB 2: BÁO CÁO LƯƠNG RIÊNG CHO TỪNG DIỄN VIÊN THEO TUẦN DỰ ÁN ---
+    with subtab_payroll:
+        st.markdown("#### Bảng Tổng kết Thù lao Cần Trả cho Từng Diễn Viên (Theo Tuần Dự Án)")
+        
+        if tracker_data:
+            all_project_weeks = sorted(list(set(item.get("project_week", "Tuần 1") for item in tracker_data)))
+            selected_week_filter = st.selectbox("🎯 Chọn Tuần Dự Án cần xem Lương Diễn Viên:", options=["TẤT CẢ CÁC TUẦN"] + all_project_weeks)
+
+            if selected_week_filter == "TẤT CẢ CÁC TUẦN":
+                active_tracker_data = tracker_data
+            else:
+                active_tracker_data = [item for item in tracker_data if item.get("project_week", "Tuần 1") == selected_week_filter]
+
+            actor_weekly_map = {}
+            
+            for item in active_tracker_data:
+                v_title = item['video_title']
+                v_dur = int(item.get("video_duration_min", 1))
+                bd = item.get("actor_breakdown", {})
+                
+                # Nếu không có breakdown câu thì lấy từ chuỗi tên diễn viên
+                if bd:
+                    acting_actors = list(bd.keys())
+                else:
+                    acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+
+                for act_name in acting_actors:
+                    act_name_clean = act_name.upper()
+                    if act_name_clean not in actor_weekly_map:
+                        actor_weekly_map[act_name_clean] = {
+                            "videos_count": 0,
+                            "total_video_mins": 0,
+                            "total_lines": 0,
+                            "total_words": 0,
+                            "videos_list": []
+                        }
+                    
+                    actor_weekly_map[act_name_clean]["videos_count"] += 1
+                    actor_weekly_map[act_name_clean]["total_video_mins"] += v_dur
+                    if bd and act_name_clean in bd:
+                        actor_weekly_map[act_name_clean]["total_lines"] += bd[act_name_clean]["lines"]
+                        actor_weekly_map[act_name_clean]["total_words"] += bd[act_name_clean]["words"]
+                    actor_weekly_map[act_name_clean]["videos_list"].append(v_title)
+
+            if actor_weekly_map:
+                actor_payroll_rows = []
+                grand_actor_pay = 0
+                grand_actor_mins = 0
+
+                for idx, (act_name, info) in enumerate(sorted(actor_weekly_map.items()), 1):
+                    if current_mode == "minute":
+                        unit_cnt = info["total_video_mins"]
+                        dur_disp = f"{unit_cnt} phút"
+                    elif current_mode == "line":
+                        unit_cnt = info["total_lines"]
+                        dur_disp = f"{unit_cnt} câu"
+                    else:
+                        unit_cnt = info["total_words"]
+                        dur_disp = f"{unit_cnt} từ"
+
+                    tot_p = unit_cnt * current_rate
+                    grand_actor_pay += tot_p
+                    grand_actor_mins += info["total_video_mins"]
+
+                    actor_payroll_rows.append({
+                        "Stt": idx,
+                        "Diễn viên Lồng tiếng": act_name,
+                        "Số Video đã lồng": info["videos_count"],
+                        "Thời lượng": dur_disp,
+                        "Đơn giá": f"{current_rate:,.0f} VNĐ",
+                        "Thành tiền Lương": f"{tot_p:,.0f} VNĐ",
+                        "Danh sách Video tham gia": ", ".join(info["videos_list"])
+                    })
+
+                # HÀNG TỔNG CHI LƯƠNG
+                actor_payroll_rows.append({
+                    "Stt": "TỔNG",
+                    "Diễn viên Lồng tiếng": f"TỔNG CỘNG ({len(actor_weekly_map)} Diễn viên)",
+                    "Số Video đã lồng": "-",
+                    "Thời lượng": f"{grand_actor_mins} phút",
+                    "Đơn giá": "-",
+                    "Thành tiền Lương": f"{grand_actor_pay:,.0f} VNĐ",
+                    "Danh sách Video tham gia": "-"
+                })
+
+                df_act_payroll = pd.DataFrame(actor_payroll_rows)
+
+                st.metric(f"💰 TỔNG LƯƠNG CẦN CHI CHO DIỄN VIÊN ({selected_week_filter}):", f"{grand_actor_pay:,.0f} VNĐ")
+
+                st.dataframe(
+                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Thời lượng", "Đơn giá", "Thành tiền Lương", "Danh sách Video tham gia"]],
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+                # NÚT XUẤT EXCEL BẢO CÁO LƯƠNG DIỄN VIÊN
+                excel_actor_buf = io.BytesIO()
+                with pd.ExcelWriter(excel_actor_buf, engine='openpyxl') as writer:
+                    df_act_payroll.to_excel(writer, index=False, sheet_name="Luong Dien Vien")
+                excel_actor_buf.seek(0)
+
+                st.download_button(
+                    label=f"📊 TẢI BÁO CÁO LƯƠNG DIỄN VIÊN ({selected_week_filter}) EXCEL (.XLSX)",
+                    data=excel_actor_buf,
+                    file_name=f"Bao_Cao_Luong_DienVien_{selected_week_filter}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+            else:
+                st.info("Không có dữ liệu diễn viên cho tuần được chọn.")
+        else:
+            st.info("Chưa có dữ liệu lồng tiếng để lập báo cáo lương.")
 
 # ==========================================
 # TAB 4: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
