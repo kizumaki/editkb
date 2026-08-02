@@ -567,6 +567,7 @@ def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None,
     data = []
     blocks = re.split(r'\n\s*\n', srt_content.strip())
     last_known_speaker = fallback_spk
+    last_is_explicit = False
 
     for block in blocks:
         lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
@@ -591,24 +592,27 @@ def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None,
 
         if not speaker_tags:
             clean_text = clean_dialogue_text_for_excel(block_text)
-            if clean_text: data.append([time_start, time_end, last_known_speaker, clean_text])
+            if clean_text: data.append([time_start, time_end, last_known_speaker, clean_text, last_is_explicit])
         else:
             last_idx = 0
             for i, (start_pos, end_pos, spk_name, raw_m) in enumerate(speaker_tags):
                 leading_text = block_text[last_idx:start_pos].strip()
                 clean_leading = clean_dialogue_text_for_excel(leading_text)
-                if clean_leading: data.append([time_start, time_end, last_known_speaker, clean_leading])
+                if clean_leading: data.append([time_start, time_end, last_known_speaker, clean_leading, last_is_explicit])
 
                 next_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(block_text)
                 segment_text = block_text[end_pos:next_start]
                 clean_seg = clean_dialogue_text_for_excel(segment_text)
                 if clean_seg:
-                    data.append([time_start, time_end, spk_name, clean_seg])
+                    data.append([time_start, time_end, spk_name, clean_seg, True])
                     last_known_speaker = spk_name
-                else: last_known_speaker = spk_name
+                    last_is_explicit = True
+                else:
+                    last_known_speaker = spk_name
+                    last_is_explicit = True
                 last_idx = next_start
 
-    return pd.DataFrame(data, columns=['Start', 'End', 'Speaker', 'Dialogue'])
+    return pd.DataFrame(data, columns=['Start', 'End', 'Speaker', 'Dialogue', 'Is_Explicit'])
 
 def apply_excel_styles(df):
     unique_speakers = df['Speaker'].unique()
@@ -644,7 +648,7 @@ def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_
             else: i += 1
         content_str = "\n".join(srt_lines)
         return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers, default_speaker)
-    return pd.DataFrame(columns=['Start', 'End', 'Speaker', 'Dialogue'])
+    return pd.DataFrame(columns=['Start', 'End', 'Speaker', 'Dialogue', 'Is_Explicit'])
 
 def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default_speaker="Unknown"):
     aligned_rows = []
@@ -654,6 +658,8 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
         s_mh = timecode_to_sec(row_mh['Start'])
         e_mh = timecode_to_sec(row_mh['End'])
         dur_mh = max(0.5, e_mh - s_mh)
+        
+        is_explicit_mh = row_mh.get('Is_Explicit', False)
         
         # 1. Tìm tất cả câu trùng timecode trong Official English File của Khách
         best_off_matches = []
@@ -748,6 +754,7 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             "Tiếng Anh Khách (Official)": f"{spk_display_off}: {off_text_combined}" if spk_display_off else off_text_combined,
             "Dịch Tiếng Việt (Cần Sửa)": f"{spk_display_vn}: {vn_text_combined}" if spk_display_vn else vn_text_combined,
             "Speaker_MH": spk_display_mh,
+            "Is_Explicit_MH": is_explicit_mh,
             "Speaker_Off": spk_display_off,
             "Speaker_VN": spk_display_vn,
             "Dialogue_MH": row_mh['Dialogue'],
@@ -774,7 +781,7 @@ def generate_qc_dual_excel(df_aligned):
     out_buf.seek(0)
     return out_buf
 
-def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True):
+def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True, hide_default_spk=True, fallback_spk_name="Unknown"):
     document = Document()
     p_title = document.add_paragraph(title_text.upper())
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -784,7 +791,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     for spk in df_aligned['Speaker_MH']:
         if spk and spk not in unique_speakers and spk != "Unknown": unique_speakers.append(spk)
             
-    if unique_speakers:
+    if unique_speakers and not (hide_default_spk and len(unique_speakers) == 1 and unique_speakers[0].upper() == fallback_spk_name.upper()):
         speaker_list_text = "VAI: " + ", ".join(unique_speakers)
         p = document.add_paragraph(speaker_list_text)
         p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].bold = True
@@ -797,6 +804,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
         tc_line = row['Timecode']
         spk = row['Speaker_MH'] if row['Speaker_MH'] else "Unknown"
         diag = row['Dialogue_VN'] if row['Dialogue_VN'] else ""
+        is_explicit = row.get('Is_Explicit_MH', True)
         
         p_tc = document.add_paragraph(tc_line)
         p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(12); p_tc.runs[0].bold = True
@@ -807,11 +815,18 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
         p_line.paragraph_format.first_line_indent = Inches(-1.0)
         p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
         
-        r_spk = p_line.add_run(f"{spk}:")
-        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(12); r_spk.font.bold = True
-        if enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
-            
-        p_line.add_run("\t")
+        should_show_spk = True
+        if hide_default_spk and (not is_explicit or spk.upper() == fallback_spk_name.upper() or spk.upper() == "UNKNOWN"):
+            should_show_spk = False
+
+        if should_show_spk:
+            r_spk = p_line.add_run(f"{spk}:")
+            r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(12); r_spk.font.bold = True
+            if enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
+            p_line.add_run("\t")
+        else:
+            p_line.add_run("\t")
+
         if diag: apply_html_and_phonetic_to_paragraph(p_line, diag, enable_phonetic)
             
         p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
@@ -1254,7 +1269,7 @@ def generate_actor_docx(video_title, actor_name, dialogue_list):
     for item in dialogue_list:
         if item.get("timecode"):
             p_tc = doc.add_paragraph(item["timecode"])
-            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(11); p_tc.runs[0].font.bold = True
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(11); p_tc.runs[0].bold = True
             p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
             
         p_line = doc.add_paragraph()
@@ -2409,19 +2424,27 @@ with tab_phonetic_db:
         else: st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
-# TAB 6: ĐỐI CHIẾU 2 FILE TIẾNG ANH & QC DỊCH (UPDATED WITH DEFAULT SPEAKER & SCANNING WINDOW)
+# TAB 6: ĐỐI CHIẾU 2 FILE TIẾNG ANH & QC DỊCH (UPDATED FOR OPTIONAL DEFAULT SPEAKER IN EXPORTS)
 # ==========================================
 with tab_dual_align:
     st.subheader("🔀 ĐỐI CHIẾU 2 FILE TIẾNG ANH & SOÁT SỬA BẢN DỊCH VIỆT")
     st.markdown("So sánh file Tiếng Anh do Mai Han Team nghe (giữ 100% Timecode chuẩn Subtitle Edit) với file Tiếng Anh Gốc do Khách gửi trễ. Tự động quét vùng mở rộng 3 câu để không bị báo nhầm khi chỉnh timecode và hỗ trợ gán Tên người nói mặc định!")
 
-    col_spk_fb1, col_spk_fb2 = st.columns([2, 1])
+    col_spk_fb1, col_spk_fb2 = st.columns([1.8, 1.2])
     with col_spk_fb1:
         default_spk_input = st.text_input(
-            "🎭 Tên người nói mặc định (nếu kịch bản gốc không ghi tên):", 
+            "🎭 Tên người nói mặc định (dùng cho Báo cáo QC):", 
             placeholder="VD: Nick, Narrator, MC...", 
             value="", 
-            help="Nếu video chỉ có 1 người nói và kịch bản không ghi nhãn tên ở đầu câu, hãy điền tên ở đây để tránh bị hiển thị 'Unknown:'"
+            help="Điền tên ở đây để Báo cáo QC Excel hiển thị 'Nick' rõ ràng thay vì 'Unknown:'. Tên này sẽ KHÔNG in vào file kịch bản xuất ra (Word/SRT) nếu bật tùy chọn bên phải."
+        )
+
+    with col_spk_fb2:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        hide_default_spk_export = st.checkbox(
+            "🚫 Không in Tên mặc định vào Kịch bản xuất ra (Word/SRT)", 
+            value=True,
+            help="Tên người nói mặc định (VD: Nick) chỉ dùng để hiện trên Báo cáo QC Excel. File Word và SRT xuất ra sẽ giữ nguyên văn bản gọn gàng không có chữ 'Nick:' ở từng câu."
         )
 
     col_dual1, col_dual2, col_dual3 = st.columns(3)
@@ -2541,7 +2564,10 @@ with tab_dual_align:
                 )
 
             with col_ex2:
-                aligned_docx_buf = generate_aligned_docx_file(df_aligned, base_out_name, enable_colors, enable_phonetic, enable_cast)
+                aligned_docx_buf = generate_aligned_docx_file(
+                    df_aligned, base_out_name, enable_colors, enable_phonetic, enable_cast,
+                    hide_default_spk=hide_default_spk_export, fallback_spk_name=fallback_spk_name
+                )
                 st.download_button(
                     label="📄 TẢI WORD VIỆT HOÀN CHỈNH (.DOCX)",
                     data=aligned_docx_buf,
@@ -2551,10 +2577,21 @@ with tab_dual_align:
                 )
 
             with col_ex3:
-                # Generate SRT
+                # Generate SRT (Ẩn tên mặc định nếu bật tùy chọn hide_default_spk_export)
                 srt_out_lines = []
                 for idx_s, r_s in df_aligned.iterrows():
-                    spk_text = f"{r_s['Speaker_MH']}: {r_s['Dialogue_VN']}" if r_s['Speaker_MH'] else r_s['Dialogue_VN']
+                    spk_val = r_s['Speaker_MH']
+                    is_explicit = r_s.get('Is_Explicit_MH', True)
+                    
+                    should_show_spk = True
+                    if hide_default_spk_export and (not is_explicit or spk_val.upper() == fallback_spk_name.upper() or spk_val.upper() == "UNKNOWN"):
+                        should_show_spk = False
+
+                    if should_show_spk and spk_val:
+                        spk_text = f"{spk_val}: {r_s['Dialogue_VN']}"
+                    else:
+                        spk_text = r_s['Dialogue_VN']
+
                     srt_out_lines.append(f"{idx_s+1}\n{r_s['Timecode']}\n{spk_text}\n")
                 srt_out_bytes = "\n".join(srt_out_lines).encode('utf-8-sig')
 
@@ -2762,7 +2799,7 @@ with tab_tools:
         st.markdown("#### 🎛️ Tự Động Tạo File Marker Timeline Cho Phần Mềm Thu Âm DAW")
         st.caption("Chuyển đổi kịch bản (.srt hoặc .docx) thành các điểm mốc Marker phủ màu sẵn cho KTV thu âm trên Pro Tools, Reaper, Premiere, Resolve:")
 
-        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt', 'docx'], key="tool_marker_uploader")
+        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt'], key="tool_marker_uploader")
         
         if uploaded_marker_file is not None:
             m_filename = uploaded_marker_file.name
