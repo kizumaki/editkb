@@ -150,7 +150,6 @@ def process_srt_to_docx(uploaded_file, file_name_without_ext):
     srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
     blocks = re.split(r'\n\s*\n', srt_content.strip())
     document = Document()
-    document.add_heading(f"SRT Conversion: {file_name_without_ext}", level=1)
 
     for block in blocks:
         lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
@@ -414,7 +413,7 @@ VN_SYLLABLES = {
     "trang", "trao", "trap", "trat", "trau", "tray", "tre", "tren", "treo", "tri", "tria", "triem", "trien", 
     "triet", "trieu", "trinh", "tro", "troc", "troi", "tron", "trong", "trot", "tru", "trua", "truc", "trui", 
     "trum", "trung", "truoc", "truoi", "truon", "truong", "tu", "tua", "tuc", "tui", "tum", "tung", "tuoc", 
-    "tuoi", "tuon", "tuong", "tuong", "tuot", "va", "vac", "vai", "vam", "van", "vang", "vao", "vap", "vat", "vau", 
+    "tuoi", "tuon", "tuong", "tuot", "va", "vac", "vai", "vam", "van", "vang", "vao", "vap", "vat", "vau", 
     "vay", "ve", "ven", "veo", "vi", "via", "viem", "vien", "viet", "vieu", "vinh", "vo", "voc", "voi", "von", 
     "vong", "vot", "vu", "vua", "vuc", "vui", "vum", "vung", "vuoc", "vuoi", "vuon", "vuong", "xa", "xac", 
     "xai", "xam", "xan", "xang", "xao", "xap", "xat", "xau", "xay", "xe", "xen", "xeo", "xi", "xia", "xiem", 
@@ -1489,7 +1488,7 @@ with tab_tools:
         st.markdown("#### 🎬 Bộ Công Cụ Chuyển Đổi Subtitle Chuyên Nghiệp")
         col_c1, col_c2 = st.columns(2)
         
-        # Module 1: SRT -> DOCX (HỖ TRỢ TẢI 1 FILE HOẶC BATCH HÀNG CẶP FILE)
+        # Module 1: SRT -> DOCX (HỖ TRỢ TẢI 1 FILE HOẶC BATCH HÀNG LOẠT)
         with col_c1:
             with st.container(border=True):
                 st.markdown("##### 📄 1. Chuyển SRT ➔ Word (.docx)")
@@ -1512,9 +1511,9 @@ with tab_tools:
                                 docx_buf = process_srt_to_docx(single_f, s_name_no_ext)
                                 st.success("✅ Chuyển đổi hoàn tất!")
                                 st.download_button(
-                                    label=f"⬇️ Tải CONVERTED_{s_name_no_ext}.docx",
+                                    label=f"⬇️ Tải {s_name_no_ext}.docx",
                                     data=docx_buf,
-                                    file_name=f"CONVERTED_{s_name_no_ext}.docx",
+                                    file_name=f"{s_name_no_ext}.docx",
                                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                     use_container_width=True
                                 )
@@ -1524,13 +1523,13 @@ with tab_tools:
                                     for srt_f in batch_srt_files:
                                         s_name_no_ext = os.path.splitext(srt_f.name)[0]
                                         docx_buf = process_srt_to_docx(srt_f, s_name_no_ext)
-                                        zf.writestr(f"CONVERTED_{s_name_no_ext}.docx", docx_buf.getvalue())
+                                        zf.writestr(f"{s_name_no_ext}.docx", docx_buf.getvalue())
                                 zip_buf.seek(0)
                                 st.success(f"✅ Đã chuyển đổi thành công {len(batch_srt_files)} file!")
                                 st.download_button(
                                     label="📦 Tải Trọn Bộ Word (.ZIP)",
                                     data=zip_buf.getvalue(),
-                                    file_name="Converted_Word_Files.zip",
+                                    file_name="Word_Files.zip",
                                     mime="application/zip",
                                     use_container_width=True
                                 )
@@ -1577,7 +1576,7 @@ with tab_tools:
                                 st.download_button(
                                     label="📦 Tải Trọn Bộ SRT (.ZIP)",
                                     data=zip_buf.getvalue(),
-                                    file_name="Converted_SRT_Files.zip",
+                                    file_name="SRT_Files.zip",
                                     mime="application/zip",
                                     use_container_width=True
                                 )
