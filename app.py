@@ -773,6 +773,7 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
 # --- BÓC TÁCH HOÀN TOÀN CỦA NÓI RA KHỎI ĐIỀU KIỆN ĐẾM CPS CHUẨN XÁC ---
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
     text = re.sub(r'\t+', ' ', text).strip()
+    parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
     
     speaker_matches = [m for m in speaker_regex.finditer(text) if not is_stage_direction(m.group(1))]
@@ -1736,13 +1737,13 @@ with tab_resync:
             </div>
             """, unsafe_allow_html=True)
             
-            top_name, top_count = stats["top_speaker"]
+            top_name, top_count = r_stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
         else:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
-# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG (CÓ CHỈNH ĐƠN GIÁ CÁ NHÂN)
+# TAB 3: THEO DÕI & BÁO CÁO LƯƠNG
 # ==========================================
 with tab_dub_tracker:
     st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN DỰ ÁN")
@@ -1945,7 +1946,7 @@ with tab_dub_tracker:
                 week_rows.append({
                     "Stt": "TỔNG",
                     "Tiêu đề video": f"TỔNG CỘNG ({len(items)} video)",
-                    "Thời lượng": f"{week_tot_dur} phút",
+                    "Thời lượng": f"{week_tot_dur} phút" if current_mode == "minute" else "-",
                     "Thành tiền": f"{week_tot_money:,.0f} VNĐ",
                     "Diễn viên": "-"
                 })
@@ -1999,6 +2000,7 @@ with tab_dub_tracker:
                         "v_idx": v_idx,
                         "Tuần dự án": pw,
                         "Tiêu đề video": v_title,
+                        "Thời lượng (Phút)": v_dur,
                         "Diễn viên": act,
                         "Đơn giá cá nhân (VNĐ)": int(act_rate)
                     })
@@ -2007,12 +2009,13 @@ with tab_dub_tracker:
                 df_custom_rates = pd.DataFrame(rate_editor_rows)
                 
                 edited_custom_rates_df = st.data_editor(
-                    df_custom_rates[["Tuần dự án", "Tiêu đề video", "Diễn viên", "Đơn giá cá nhân (VNĐ)"]],
+                    df_custom_rates[["Tuần dự án", "Tiêu đề video", "Thời lượng (Phút)", "Diễn viên", "Đơn giá cá nhân (VNĐ)"]],
                     column_config={
                         "Tuần dự án": st.column_config.TextColumn("Tuần", disabled=True),
                         "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video", disabled=True),
+                        "Thời lượng (Phút)": st.column_config.NumberColumn("Độ dài (Phút)", disabled=True),
                         "Diễn viên": st.column_config.TextColumn("Diễn viên", disabled=True),
-                        "Đơn giá cá nhân (VNĐ)": st.column_config.NumberColumn("Đơn giá riêng (Gõ để sửa)", step=1000)
+                        "Đơn giá cá nhân (VNĐ)": st.column_config.NumberColumn("Đơn giá riêng (Gõ để sửa)", format="%d", step=1000)
                     },
                     hide_index=True,
                     use_container_width=True,
@@ -2065,6 +2068,9 @@ with tab_dub_tracker:
                 
                 acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
 
+                # LỌC VÀ CHỈ TÍNH THỜI LƯỢNG MỘT LẦN CHO TỪNG VIDEO
+                video_already_counted = set()
+                
                 for act_name_clean in acting_actors:
                     if act_name_clean not in actor_weekly_map:
                         actor_weekly_map[act_name_clean] = {
@@ -2072,7 +2078,8 @@ with tab_dub_tracker:
                             "total_video_mins": 0,
                             "total_lines": 0,
                             "total_words": 0,
-                            "video_rows": []
+                            "video_rows": [],
+                            "participated_videos": set()
                         }
                     
                     act_rate = custom_rates.get(act_name_clean, current_rate)
@@ -2093,6 +2100,7 @@ with tab_dub_tracker:
                     actor_weekly_map[act_name_clean]["total_video_mins"] += v_dur
                     actor_weekly_map[act_name_clean]["total_lines"] += act_lines
                     actor_weekly_map[act_name_clean]["total_words"] += act_words
+                    actor_weekly_map[act_name_clean]["participated_videos"].add(v_title)
                     
                     actor_weekly_map[act_name_clean]["video_rows"].append({
                         "Stt": len(actor_weekly_map[act_name_clean]["video_rows"]) + 1,
@@ -2156,18 +2164,34 @@ with tab_dub_tracker:
             else:
                 actor_payroll_rows = []
                 grand_actor_pay = 0
-                grand_actor_mins = 0
+                
+                # TÍNH LẠI TỔNG THỜI LƯỢNG (CHỈ CỘNG 1 LẦN CHO MỖI VIDEO DUY NHẤT)
+                unique_video_titles = set()
+                grand_unique_mins = 0
+                for item in active_tracker_data:
+                    if item['video_title'] not in unique_video_titles:
+                        unique_video_titles.add(item['video_title'])
+                        grand_unique_mins += int(item.get("video_duration_min", 1))
 
                 for idx, (act_name, info) in enumerate(sorted(actor_weekly_map.items()), 1):
+                    if current_mode == "minute":
+                        unit_cnt = info["total_video_mins"]
+                        dur_disp = f"{unit_cnt} phút"
+                    elif current_mode == "line":
+                        unit_cnt = info["total_lines"]
+                        dur_disp = f"{unit_cnt} câu"
+                    else:
+                        unit_cnt = info["total_words"]
+                        dur_disp = f"{unit_cnt} từ"
+
                     tot_p = sum(r["Pay_Num"] for r in info["video_rows"])
                     grand_actor_pay += tot_p
-                    grand_actor_mins += info["total_video_mins"]
 
                     actor_payroll_rows.append({
                         "Stt": idx,
                         "Diễn viên Lồng tiếng": act_name,
                         "Số Video đã lồng": info["videos_count"],
-                        "Tổng phút video": f"{info['total_video_mins']} phút",
+                        "Khối lượng": dur_disp,
                         "Thành tiền Lương": f"{tot_p:,.0f} VNĐ",
                         "Danh sách Video tham gia": ", ".join([r["Tiêu đề video"] for r in info["video_rows"]])
                     })
@@ -2176,7 +2200,7 @@ with tab_dub_tracker:
                     "Stt": "TỔNG",
                     "Diễn viên Lồng tiếng": f"TỔNG CỘNG ({len(actor_weekly_map)} Diễn viên)",
                     "Số Video đã lồng": "-",
-                    "Tổng phút video": f"{grand_actor_mins} phút",
+                    "Khối lượng": f"{grand_unique_mins} phút" if current_mode == "minute" else "-",
                     "Thành tiền Lương": f"{grand_actor_pay:,.0f} VNĐ",
                     "Danh sách Video tham gia": "-"
                 })
@@ -2186,7 +2210,7 @@ with tab_dub_tracker:
                 st.metric(f"💰 TỔNG LƯƠNG CẦN CHI CHO DIỄN VIÊN ({selected_week_filter}):", f"{grand_actor_pay:,.0f} VNĐ")
 
                 st.dataframe(
-                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Tổng phút video", "Thành tiền Lương", "Danh sách Video tham gia"]],
+                    df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Khối lượng", "Thành tiền Lương", "Danh sách Video tham gia"]],
                     hide_index=True,
                     use_container_width=True
                 )
