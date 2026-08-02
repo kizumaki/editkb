@@ -490,12 +490,25 @@ def clean_dialogue_text_for_excel(text):
     text = re.sub(r'<[^>]*>', '', text, flags=re.DOTALL)
     return re.sub(r'\s+', ' ', text).strip()
 
-def parse_srt_to_dataframe(srt_content):
+def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None):
+    if custom_speakers is None:
+        custom_speakers = st.session_state.get('custom_speakers', set())
+    if non_speakers is None:
+        non_speakers = st.session_state.get('custom_non_speakers', set())
+    non_speakers_upper = {s.upper() for s in non_speakers}.union({s.upper() for s in DEFAULT_NON_SPEAKER_PHRASES})
+
+    if custom_speakers:
+        sorted_custom = sorted(list(custom_speakers), key=len, reverse=True)
+        custom_pattern = "|".join([re.escape(s) for s in sorted_custom])
+        pattern_str = rf"(?:^|[\n\r]|[\.\!\?]\s+|\s{{2,}})({custom_pattern}|[A-ZÀ-Ỹ][A-Za-z0-9À-ỹ \t&\-\(\)\.]{{0,24}}):\s*"
+    else:
+        pattern_str = r"(?:^|[\n\r]|[\.\!\?]\s+|\s{2,})([A-ZÀ-Ỹ][A-Za-z0-9À-ỹ \t&\-\(\)\.]{0,24}):\s*"
+
+    speaker_regex = re.compile(pattern_str, re.UNICODE)
+
     data = []
     blocks = re.split(r'\n\s*\n', srt_content.strip())
     last_known_speaker = "Unknown"
-
-    speaker_regex = build_speaker_regex(st.session_state.get('custom_speakers', set()))
 
     for block in blocks:
         lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
@@ -521,7 +534,15 @@ def parse_srt_to_dataframe(srt_content):
         if not dialogue_lines: continue
 
         block_text = "\n".join(dialogue_lines)
-        speaker_matches = [m for m in speaker_regex.finditer(block_text) if is_valid_speaker_name(m.group(1))]
+        
+        speaker_matches = []
+        for m in speaker_regex.finditer(block_text):
+            spk_candidate = m.group(1).strip()
+            if spk_candidate and len(spk_candidate) <= 25 and not spk_candidate.isdigit():
+                if not (spk_candidate.startswith('(') or spk_candidate.endswith(')')):
+                    if spk_candidate.upper() not in non_speakers_upper:
+                        if len(spk_candidate.split()) <= 4:
+                            speaker_matches.append(m)
 
         if not speaker_matches:
             clean_text = clean_dialogue_text_for_excel(block_text)
