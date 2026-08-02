@@ -236,9 +236,6 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             st.session_state['spk_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_spks)} người nói!"); time.sleep(1); st.rerun()
 
-    if len(st.session_state['custom_speakers']) > 0:
-        st.info(f"Đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
-
 with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
     manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
     upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
@@ -256,9 +253,6 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
             st.session_state['ns_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
-
-    if len(st.session_state['custom_non_speakers']) > 0:
-        st.info(f"Đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
 
 # ==========================================
 # 4. DYNAMIC CSS INJECTION THEO CHẾ ĐỘ SKIN
@@ -646,20 +640,6 @@ def rgb_to_ass_hex(rgb_obj):
         r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
         return f"&H00{b:02X}{g:02X}{r:02X}&"
     except Exception: return "&H00FFFFFF&"
-
-def is_stage_direction(name):
-    clean = name.strip()
-    return clean.startswith('(') or clean.endswith(')')
-
-def get_paragraph_text_with_html(paragraph):
-    text = ""
-    for run in paragraph.runs:
-        r_text = run.text
-        if not r_text: continue
-        if run.italic and not ("<i>" in r_text or "</i>" in r_text): text += f"<i>{r_text}</i>"
-        else: text += r_text
-    text = text.replace("</i><i>", "")
-    return text
 
 def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
     cleaned_paras = []; i = 0; total = len(raw_paragraphs)
@@ -2242,7 +2222,7 @@ with tab_tools:
                                 )
                         except Exception as e: st.error(f"Lỗi: {e}")
 
-    # 2. BỘ CHUYỂN ĐỔI SRT TO EXCEL WITH SPEAKER STYLING
+    # 2. BỘ CHUYỂN ĐỔI SRT TO EXCEL WITH SPEAKER STYLING (ĐỒNG BỘ CỤM TỪ STUDIO)
     with subtab_srt_excel:
         st.markdown("#### 📊 Chuyển Đổi File Subtitle SRT ➔ Bảng Tính Excel (.xlsx)")
         st.caption("Tự động nhận diện nhân vật, tô màu phân biệt người nói và xuất file Excel có cấu trúc:")
@@ -2257,13 +2237,75 @@ with tab_tools:
                 srt_content_excel = None
 
             if srt_content_excel:
+                speaker_regex_excel = build_speaker_regex(st.session_state['custom_speakers'])
+
+                # Scan candidate speakers in SRT content
+                srt_speaker_counts = Counter()
+                for line_s in srt_content_excel.split('\n'):
+                    line_clean = line_s.strip()
+                    if not line_clean or TIMECODE_REGEX.match(line_clean) or line_clean.isdigit(): continue
+                    for match in speaker_regex_excel.finditer(line_clean):
+                        spk_cand = match.group(1).strip()
+                        if is_valid_speaker_name(spk_cand):
+                            srt_speaker_counts[spk_cand] += 1
+
+                detected_srt_spk_names = [name for name in srt_speaker_counts.keys() if name.upper() not in NON_SPEAKER_PHRASES]
+                detected_srt_non_spk_names = [name for name in srt_speaker_counts.keys() if name.upper() in NON_SPEAKER_PHRASES]
+
+                detected_srt_spk_disp = [f"{name} ({srt_speaker_counts[name]} lần)" for name in detected_srt_spk_names]
+                detected_srt_non_spk_disp = [f"{name} ({srt_speaker_counts[name]} lần)" for name in detected_srt_non_spk_names]
+
+                # SOÁT LỖI NHẬN DIỆN CHO SRT
+                with st.container(border=True):
+                    st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói (SRT)")
+                    st.caption("Kiểm tra danh sách tên người nói bóc tách từ file SRT. Chọn từ bị nhận diện sai để nạp trực tiếp vào Database:")
+                    tab_srt_spk, tab_srt_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
+
+                    with tab_srt_spk:
+                        if detected_srt_spk_disp:
+                            st.write(", ".join([f"`{s}`" for s in detected_srt_spk_disp]))
+                            to_move_ns_srt = st.multiselect(
+                                "Phát hiện từ nào bị nhận diện sai? Chọn để LƯU VÀO DATABASE TỪ NHIỄU:",
+                                options=detected_srt_spk_names,
+                                key="select_srt_to_ns"
+                            )
+                            if st.button("➡️ Đưa vào Database TỪ NHIỄU", type="secondary", key="btn_srt_to_ns"):
+                                if to_move_ns_srt:
+                                    new_items = [item.upper() for item in to_move_ns_srt]
+                                    st.session_state['custom_non_speakers'].update(new_items)
+                                    save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                                    st.success(f"✅ Đã lưu {len(new_items)} từ vào Database Từ Nhiễu!")
+                                    time.sleep(1); st.rerun()
+                        else: st.info("Chưa tìm thấy cụm từ người nói nào trong file SRT.")
+
+                    with tab_srt_non_spk:
+                        if detected_srt_non_spk_disp:
+                            st.write(", ".join([f"`{s}`" for s in detected_srt_non_spk_disp]))
+                            to_move_spk_srt = st.multiselect(
+                                "Từ nào thực ra là NGƯỜI NÓI? Chọn để LƯU VÀO DATABASE NGƯỜI NÓI:",
+                                options=detected_srt_non_spk_names,
+                                key="select_srt_to_spk"
+                            )
+                            if st.button("➡️ Đưa vào Database NGƯỜI NÓI", type="secondary", key="btn_srt_to_spk"):
+                                if to_move_spk_srt:
+                                    st.session_state['custom_speakers'].update(to_move_spk_srt)
+                                    save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
+                                    for item in to_move_spk_srt:
+                                        st.session_state['custom_non_speakers'].discard(item.upper())
+                                    save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+                                    st.success(f"✅ Đã lưu {len(to_move_spk_srt)} tên vào Database Người Nói!")
+                                    time.sleep(1); st.rerun()
+                        else: st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
+
+                st.markdown("---")
+
                 with st.spinner('Đang phân tích dữ liệu SRT...'):
                     df_converted_excel = parse_srt_to_dataframe(srt_content_excel)
                 
                 if df_converted_excel.empty:
                     st.error("Không thể đọc được phụ đề nào từ file SRT này.")
                 else:
-                    st.markdown("##### 📊 Thống Kê Nhân Vật")
+                    st.markdown("##### 📊 Thống Kê Nhân Vật Trong File Excel")
                     unique_spks = df_converted_excel['Speaker'].unique()
                     actual_spks = [s for s in unique_spks if s not in ["Unknown", ""]]
                     
