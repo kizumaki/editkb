@@ -366,6 +366,18 @@ def calculate_duration_sec(timecode_line):
     dur = t2 - t1
     return dur if dur > 0 else 0.5, t1, t2
 
+def timecode_to_sec(tc):
+    m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", tc.strip())
+    if not m: return 0.0
+    h, mins, s, ms = map(int, m.groups())
+    return h * 3600 + mins * 60 + s + ms / 1000.0
+
+def calculate_time_overlap(s1, e1, s2, e2):
+    latest_start = max(s1, s2)
+    earliest_end = min(e1, e2)
+    overlap = max(0.0, earliest_end - latest_start)
+    return overlap
+
 def is_valid_speaker_boundary(prefix, start_idx):
     if start_idx == 0: return True
     prev_char = prefix[start_idx - 1]
@@ -606,13 +618,155 @@ def apply_excel_styles(df):
     try: return df.style.apply(highlight_speaker, axis=1)
     except Exception: return df
 
-# --- HÀM TẠO MARKER TIMELINE CHO DAW ---
-def timecode_to_sec(tc):
-    m = re.match(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})", tc.strip())
-    if not m: return 0.0
-    h, mins, s, ms = map(int, m.groups())
-    return h * 3600 + mins * 60 + s + ms / 1000.0
+# --- DUAL LANGUAGE ALIGNMENT HELPERS ---
+def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_speakers=None):
+    if filename.lower().endswith('.srt'):
+        try: content_str = file_bytes.decode('utf-8')
+        except UnicodeDecodeError: content_str = file_bytes.decode('latin-1')
+        return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers)
+    elif filename.lower().endswith('.docx'):
+        doc = Document(io.BytesIO(file_bytes))
+        paragraphs_text = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
+        timecode_pattern = re.compile(r'\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}')
+        
+        srt_lines = []
+        i = 0
+        while i < len(paragraphs_text):
+            line = paragraphs_text[i]
+            if line.isdigit() and i + 1 < len(paragraphs_text) and timecode_pattern.search(paragraphs_text[i+1]):
+                srt_lines.append(line)
+                srt_lines.append(paragraphs_text[i+1])
+                i += 2
+                while i < len(paragraphs_text):
+                    if paragraphs_text[i].isdigit() and i + 1 < len(paragraphs_text) and timecode_pattern.search(paragraphs_text[i+1]): break
+                    else: srt_lines.append(paragraphs_text[i]); i += 1
+            else: i += 1
+        content_str = "\n".join(srt_lines)
+        return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers)
+    return pd.DataFrame(columns=['Start', 'End', 'Speaker', 'Dialogue'])
 
+def align_dual_language_scripts(df_off, df_vn):
+    aligned_rows = []
+    for idx_off, row_off in df_off.iterrows():
+        s_off = timecode_to_sec(row_off['Start'])
+        e_off = timecode_to_sec(row_off['End'])
+        dur_off = max(0.5, e_off - s_off)
+        
+        best_matches = []
+        for idx_vn, row_vn in df_vn.iterrows():
+            s_vn = timecode_to_sec(row_vn['Start'])
+            e_vn = timecode_to_sec(row_vn['End'])
+            overlap = calculate_time_overlap(s_off, e_off, s_vn, e_vn)
+            if overlap > 0.1: best_matches.append((overlap, row_vn))
+                
+        if best_matches:
+            vn_dialogues = [m[1]['Dialogue'] for m in best_matches]
+            vn_text_combined = " ".join(vn_dialogues)
+            vn_spk = best_matches[0][1]['Speaker']
+        else:
+            vn_text_combined = ""
+            vn_spk = ""
+            
+        qc_status = "🟢 Khớp chuẩn"
+        qc_details = "Nội dung & Timecode trùng khớp"
+        
+        if not vn_text_combined:
+            qc_status = "🔴 Thiếu dịch"
+            qc_details = "Câu gốc có thoại nhưng bản Việt bị thiếu/chưa dịch"
+        else:
+            if row_off['Speaker'].upper() != vn_spk.upper() and vn_spk.upper() != "UNKNOWN":
+                qc_status = "🔵 Lệch vai"
+                qc_details = f"Khách: {row_off['Speaker']} vs Việt: {vn_spk}"
+                
+            vn_chars = len(vn_text_combined)
+            cps_vn = vn_chars / dur_off
+            eng_words = len(row_off['Dialogue'].split())
+            vn_words = len(vn_text_combined.split())
+            
+            if cps_vn > 18 or (eng_words > 0 and vn_words / eng_words > 1.8):
+                qc_status = "🟡 Thoại quá dài"
+                qc_details = f"Mật độ thoại cao ({cps_vn:.1f} ký tự/s) - Dễ bị tràn mồm khi lồng tiếng"
+
+        aligned_rows.append({
+            "Stt": idx_off + 1,
+            "Timecode": f"{row_off['Start']} --> {row_off['End']}",
+            "Start": row_off['Start'],
+            "End": row_off['End'],
+            "Khách (English)": f"{row_off['Speaker']}: {row_off['Dialogue']}",
+            "Việt (Dịch)": f"{vn_spk}: {vn_text_combined}" if vn_spk else vn_text_combined,
+            "Speaker_Off": row_off['Speaker'],
+            "Speaker_VN": vn_spk,
+            "Dialogue_Off": row_off['Dialogue'],
+            "Dialogue_VN": vn_text_combined,
+            "Trạng thái QC": qc_status,
+            "Ghi chú QC": qc_details
+        })
+
+    return pd.DataFrame(aligned_rows)
+
+def generate_qc_dual_excel(df_aligned):
+    out_buf = io.BytesIO()
+    def highlight_qc_rows(row):
+        st_val = str(row['Trạng thái QC'])
+        if '🔴' in st_val: return ['background-color: #FEE2E2; color: #991B1B'] * len(row)
+        elif '🟡' in st_val: return ['background-color: #FEF3C7; color: #92400E'] * len(row)
+        elif '🔵' in st_val: return ['background-color: #E0F2FE; color: #075985'] * len(row)
+        return ['background-color: #FFFFFF; color: #000000'] * len(row)
+
+    styled_df = df_aligned.style.apply(highlight_qc_rows, axis=1)
+    with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
+        styled_df.to_excel(writer, index=False, sheet_name="Doi_Chieu_Song_Ngu")
+    out_buf.seek(0)
+    return out_buf
+
+def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True):
+    document = Document()
+    p_title = document.add_paragraph(title_text.upper())
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(20); p_title.runs[0].bold = True
+    
+    unique_speakers = []
+    for spk in df_aligned['Speaker_Off']:
+        if spk and spk not in unique_speakers and spk != "Unknown": unique_speakers.append(spk)
+            
+    if unique_speakers:
+        speaker_list_text = "VAI: " + ", ".join(unique_speakers)
+        p = document.add_paragraph(speaker_list_text)
+        p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].bold = True
+        p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
+
+    document.add_paragraph()
+    TAB_STOP = Inches(1.0)
+    
+    for idx, row in df_aligned.iterrows():
+        tc_line = row['Timecode']
+        spk = row['Speaker_Off'] if row['Speaker_Off'] else "Unknown"
+        diag = row['Dialogue_VN'] if row['Dialogue_VN'] else ""
+        
+        p_tc = document.add_paragraph(tc_line)
+        p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(12); p_tc.runs[0].bold = True
+        p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+        
+        p_line = document.add_paragraph()
+        p_line.paragraph_format.left_indent = TAB_STOP
+        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        
+        r_spk = p_line.add_run(f"{spk}:")
+        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(12); r_spk.font.bold = True
+        if enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
+            
+        p_line.add_run("\t")
+        if diag: apply_html_and_phonetic_to_paragraph(p_line, diag, enable_phonetic)
+            
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
+        
+    for p in document.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        
+    buf = io.BytesIO(); document.save(buf); buf.seek(0)
+    return buf
+
+# --- HÀM TẠO MARKER TIMELINE CHO DAW ---
 def sec_to_reaper_tc(sec):
     h = int(sec // 3600); mins = int((sec % 3600) // 60); s = int(sec % 60)
     ms = int(round((sec - int(sec)) * 1000))
@@ -1045,7 +1199,7 @@ def generate_actor_docx(video_title, actor_name, dialogue_list):
     for item in dialogue_list:
         if item.get("timecode"):
             p_tc = doc.add_paragraph(item["timecode"])
-            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(11); p_tc.runs[0].font.bold = True
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(11); p_tc.runs[0].bold = True
             p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
             
         p_line = doc.add_paragraph()
@@ -1141,7 +1295,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         else:
             speaker_list_text = "VAI: " + ", ".join(unique_speakers)
             p = document.add_paragraph(speaker_list_text)
-            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].font.bold = True
+            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].bold = True
             p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
     
     document.add_paragraph()
@@ -1264,13 +1418,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- MÀN HÌNH CHÍNH TÁCH 6 TABS ---
-tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_tools = st.tabs([
+# --- MÀN HÌNH CHÍNH TÁCH 7 TABS ---
+tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_tools = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
     "📋 Theo dõi & Báo cáo Lương",
     "🎭 Bảng Phân Vai Lồng Tiếng", 
     "📚 Kho Database Phiên Âm Giọng Nam",
+    "🔀 Đối Chiếu Kịch Bản Song Ngữ",
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
@@ -2199,7 +2354,145 @@ with tab_phonetic_db:
         else: st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
-# TAB 6: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
+# TAB 6: ĐỐI CHIẾU KỊCH BẢN SONG NGỮ (NEW)
+# ==========================================
+with tab_dual_align:
+    st.subheader("🔀 ĐỐI CHIẾU SONG NGỮ & ĐỒNG BỘ FILE GỐC KHÁCH GỬI TRỄ")
+    st.markdown("Workspace soi kịch bản song ngữ 2 cột thông minh dành cho BTV. Tự động tìm câu đối chiếu, cảnh báo bỏ sót thoại, thoại dài và đồng bộ Timecode chuẩn từ Khách hàng.")
+
+    col_dual1, col_dual2 = st.columns(2)
+    with col_dual1:
+        with st.container(border=True):
+            st.markdown("##### 📄 1. File Tiếng Anh Gốc từ Khách (Official English Script)")
+            st.caption("File chuẩn mốc thời gian khách hàng gửi (Gửi đầu hoặc gửi trễ):")
+            uploaded_official = st.file_uploader("Tải file Khách (.srt hoặc .docx):", type=['srt', 'docx'], key="uploader_dual_official")
+
+    with col_dual2:
+        with st.container(border=True):
+            st.markdown("##### 📄 2. File Tiếng Việt Dịch Hiện Tại (Vietnamese Script)")
+            st.caption("File kịch bản Tiếng Việt đã dịch trước (dù dịch từ bản AI nghe hoặc từ kịch bản cũ):")
+            uploaded_translated = st.file_uploader("Tải file Tiếng Việt (.srt hoặc .docx):", type=['srt', 'docx'], key="uploader_dual_translated")
+
+    if uploaded_official is not None and uploaded_translated is not None:
+        c_spks = st.session_state.get('custom_speakers', set())
+        c_non_spks = st.session_state.get('custom_non_speakers', set())
+
+        df_off = parse_any_script_file_to_df(uploaded_official.getvalue(), uploaded_official.name, c_spks, c_non_spks)
+        df_vn = parse_any_script_file_to_df(uploaded_translated.getvalue(), uploaded_translated.name, c_spks, c_non_spks)
+
+        if not df_off.empty and not df_vn.empty:
+            df_aligned = align_dual_language_scripts(df_off, df_vn)
+
+            # Analytics Summary
+            tot_rows = len(df_aligned)
+            missing_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🔴' in str(st_v))
+            long_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🟡' in str(st_v))
+            mismatch_cnt = sum(1 for st_v in df_aligned['Trạng thái QC'] if '🔵' in str(st_v))
+
+            st.markdown("---")
+            st.markdown("#### 📊 Báo Cáo Soát Lỗi Tự Động (QC Audit Summary)")
+
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            with col_m1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">💬 Tổng số câu thoại</div>
+                    <div class="metric-value">{tot_rows}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_m2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">🔴 Câu thiếu dịch</div>
+                    <div class="metric-value" style="color:#DC2626;">{missing_cnt}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_m3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">🟡 Thoại quá dài (CPS)</div>
+                    <div class="metric-value" style="color:#D97706;">{long_cnt}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_m4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">🔵 Lệch người nói</div>
+                    <div class="metric-value" style="color:#2563EB;">{mismatch_cnt}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("---")
+            st.markdown("#### 👁️ Workspace Bảng Đối Chiếu Song Ngữ 2 Cột (Chỉnh Sửa Trực Tiếp)")
+            st.caption("Gõ chỉnh sửa câu Tiếng Việt ngay trong bảng nếu phát hiện lỗi. Sau đó bấm nút xuất file bên dưới:")
+
+            qc_filter = st.selectbox("🔍 Lọc danh sách câu theo Trạng thái QC:", options=["TẤT CẢ CÁC CÂU", "🔴 Chỉ xem câu THIẾU DỊCH", "🟡 Chỉ xem câu THOẠI QUÁ DÀI", "🔵 Chỉ xem câu LỆCH VAI"])
+
+            if "🔴" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🔴', na=False)]
+            elif "🟡" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🟡', na=False)]
+            elif "🔵" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🔵', na=False)]
+            else: df_display = df_aligned
+
+            edited_aligned_df = st.data_editor(
+                df_display[['Stt', 'Timecode', 'Khách (English)', 'Việt (Dịch)', 'Trạng thái QC', 'Ghi chú QC']],
+                column_config={
+                    "Stt": st.column_config.NumberColumn("Stt", disabled=True, width="small"),
+                    "Timecode": st.column_config.TextColumn("Mốc Timecode Khách", disabled=True),
+                    "Khách (English)": st.column_config.TextColumn("Kịch bản Gốc (Khách gửi)", disabled=True),
+                    "Việt (Dịch)": st.column_config.TextColumn("Kịch bản Việt (Sửa trực tiếp tại đây)"),
+                    "Trạng thái QC": st.column_config.TextColumn("Trạng thái", disabled=True),
+                    "Ghi chú QC": st.column_config.TextColumn("Ghi chú QC", disabled=True)
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="dual_language_editor_table"
+            )
+
+            st.markdown("---")
+            st.markdown("#### ⬇️ Xuất File Đã Đồng Bộ Chuẩn Theo Timecode Khách Hàng")
+
+            col_ex1, col_ex2, col_ex3 = st.columns(3)
+
+            base_out_name = os.path.splitext(uploaded_official.name)[0]
+
+            with col_ex1:
+                qc_excel_buf = generate_qc_dual_excel(df_aligned)
+                st.download_button(
+                    label="📊 TẢI BÁO CÁO SOI SONG NGỮ (.XLSX)",
+                    data=qc_excel_buf,
+                    file_name=f"{base_out_name}_DoiChieu_SongNgu.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary", use_container_width=True
+                )
+
+            with col_ex2:
+                aligned_docx_buf = generate_aligned_docx_file(df_aligned, base_out_name, enable_colors, enable_phonetic, enable_cast)
+                st.download_button(
+                    label="📄 TẢI WORD VIỆT ĐÃ ĐỒNG BỘ KHÁCH (.DOCX)",
+                    data=aligned_docx_buf,
+                    file_name=f"{base_out_name}_VI_DongBoKhach.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary", use_container_width=True
+                )
+
+            with col_ex3:
+                # Generate SRT
+                srt_out_lines = []
+                for idx_s, r_s in df_aligned.iterrows():
+                    spk_text = f"{r_s['Speaker_Off']}: {r_s['Dialogue_VN']}" if r_s['Speaker_Off'] else r_s['Dialogue_VN']
+                    srt_out_lines.append(f"{idx_s+1}\n{r_s['Timecode']}\n{spk_text}\n")
+                srt_out_bytes = "\n".join(srt_out_lines).encode('utf-8-sig')
+
+                st.download_button(
+                    label="📝 TẢI SUBTITLE SRT ĐÃ ĐỒNG BỘ (.SRT)",
+                    data=srt_out_bytes,
+                    file_name=f"{base_out_name}_VI_DongBoKhach.srt",
+                    mime="text/plain",
+                    type="primary", use_container_width=True
+                )
+
+# ==========================================
+# TAB 7: BỘ CÔNG CỤ CHUYỂN ĐỔI (CONVERTER SUITE)
 # ==========================================
 with tab_tools:
     subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
@@ -2498,7 +2791,7 @@ with tab_tools:
         }
         s_col1, s_col2, s_col3 = st.columns([2, 1.5, 1.5])
         with s_col1: speed_val = st.number_input("Giá trị vận tốc:", value=100.0, min_value=0.0, step=5.0)
-        with s_col2: from_speed = st.selectbox("Từ đơn vị:", options=list(speed_factors.keys()), index=1)
+        with s_col2: from_speed = st.selectbox("Từ đồng tiền:", options=list(speed_factors.keys()), index=1)
         with s_col3: to_speed = st.selectbox("Sang đồng tiền:", options=list(speed_factors.keys()), index=0)
             
         ms_val = speed_val * speed_factors[from_speed]
