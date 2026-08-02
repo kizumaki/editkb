@@ -11,6 +11,7 @@ import time
 import pandas as pd
 import json
 from gtts import gTTS
+import zipfile
 
 # --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
 st.set_page_config(
@@ -96,6 +97,15 @@ st.markdown("""
         border-radius: 8px 8px 0 0;
         font-weight: 600;
         padding: 0 20px;
+    }
+    
+    .qc-card-warning {
+        background-color: #FEF2F2;
+        border-left: 4px solid #EF4444;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        font-size: 0.9rem;
     }
     
     .saas-footer {
@@ -370,6 +380,17 @@ TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}
 ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 
 RED_COLOR = RGBColor(255, 0, 0) # Màu đỏ chuẩn cho Tên Diễn Viên Lồng Tiếng
+
+# --- HÀM HỖ TRỢ BỘ QC / TÍNH TỐC ĐỘ ĐỌC CPS ---
+def calculate_duration_sec(timecode_line):
+    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
+    if not m:
+        return 1.0
+    h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
+    t1 = h1 * 3600 + m1 * 60 + s1 + ms1 / 1000.0
+    t2 = h2 * 3600 + m2 * 60 + s2 + ms2 / 1000.0
+    dur = t2 - t1
+    return dur if dur > 0 else 0.5
 
 # --- HÀM HỖ TRỢ XUẤT FILE PHỤ ĐỀ ASS / SRT ---
 def srt_timecode_to_ass(timecode_line):
@@ -650,17 +671,14 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
         add_text_run_with_html(paragraph, current_text)
 
 def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
-    # Dọn dẹp tab rác
     text = re.sub(r'\t+', ' ', text).strip()
     
-    # 1. Chuyển đổi thẻ HTML thành ASS Override Tags
     ass_text = re.sub(r'</?[bB]>', '', text)
     ass_text = re.sub(r'<i>', r'{\\i1}', ass_text, flags=re.IGNORECASE)
     ass_text = re.sub(r'</i>', r'{\\i0}', ass_text, flags=re.IGNORECASE)
     ass_text = re.sub(r'<u>', r'{\\u1}', ass_text, flags=re.IGNORECASE)
     ass_text = re.sub(r'</u>', r'{\\u0}', ass_text, flags=re.IGNORECASE)
     
-    # 2. Xử lý Phiên âm Tiếng Anh trong ASS
     phonetic_db = st.session_state['custom_phonetics']
     if enable_phonetic:
         sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
@@ -671,23 +689,20 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
             def replace_eng(m):
                 orig = m.group(0)
                 pho = phonetic_db.get(orig.upper(), orig)
-                # Màu vàng cho Phiên âm trong ASS: &H00FFFF&
                 return f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
                 
             ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
 
-    # 3. Tạo Tiền tố Người nói trong ASS
     spk_hex = rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&"
     prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
     
     if enable_cast and is_first_time and actor_name:
-        # Màu đỏ cho Diễn viên trong ASS: &H0000FF&
         prefix_ass += f"{{\\c&H0000FF&}}{{\\b1}} {actor_name}{{\\b0}}"
         
     full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
     return full_ass_line
 
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
+def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time, actor_dialogue_map, current_timecode):
     text = re.sub(r'\t+', ' ', text).strip()
     parts = speaker_regex.split(text)
     TAB_STOP_POSITION = Inches(1.0)
@@ -748,6 +763,16 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if enable_cast and actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
 
+        # Lưu thông tin thoại cho Kịch bản Tách vai theo Diễn viên
+        if actor_name:
+            if actor_name not in actor_dialogue_map:
+                actor_dialogue_map[actor_name] = []
+            actor_dialogue_map[actor_name].append({
+                "speaker": speaker_name,
+                "timecode": current_timecode,
+                "text": content
+            })
+
         new_paragraph = document.add_paragraph()
         new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
@@ -781,7 +806,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.space_before = Pt(0)
         new_paragraph.paragraph_format.space_after = Pt(0)
         
-        # Định dạng dòng chữ cho ASS
         ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
         last_processed_index = next_match_start
     
@@ -798,13 +822,72 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
 
     return ass_line_result, text
 
-# --- MAIN PROCESSING & RE-SYNC (XUẤT ĐỒNG THỜI DOCX, ASS, SRT) ---
+# --- HÀM TẠO FILE KỊCH BẢN TÁCH VAI CHO MỖI DIỄN VIÊN ---
+def generate_actor_docx(video_title, actor_name, dialogue_list):
+    doc = Document()
+    
+    # Title
+    p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'
+    p_title.runs[0].font.size = Pt(16)
+    p_title.runs[0].bold = True
+    
+    p_sub = doc.add_paragraph(f"Video: {video_title}")
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.runs[0].font.name = 'Times New Roman'
+    p_sub.runs[0].font.size = Pt(12)
+    p_sub.runs[0].font.italic = True
+    
+    doc.add_paragraph()
+    
+    TAB_STOP = Inches(1.0)
+    for item in dialogue_list:
+        if item.get("timecode"):
+            p_tc = doc.add_paragraph(item["timecode"])
+            p_tc.runs[0].font.name = 'Times New Roman'
+            p_tc.runs[0].font.size = Pt(11)
+            p_tc.runs[0].font.bold = True
+            p_tc.paragraph_format.space_before = Pt(0)
+            p_tc.paragraph_format.space_after = Pt(0)
+            
+        p_line = doc.add_paragraph()
+        p_line.paragraph_format.left_indent = TAB_STOP
+        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        
+        r_spk = p_line.add_run(f"{item['speaker']}:")
+        r_spk.font.name = 'Times New Roman'
+        r_spk.font.size = Pt(12)
+        r_spk.font.bold = True
+        r_spk.font.color.rgb = RGBColor(79, 70, 229)
+        
+        p_line.add_run("\t")
+        
+        r_text = p_line.add_run(item['text'])
+        r_text.font.name = 'Times New Roman'
+        r_text.font.size = Pt(12)
+        
+        p_line.paragraph_format.space_before = Pt(0)
+        p_line.paragraph_format.space_after = Pt(4)
+        
+    for p in doc.paragraphs:
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+# --- MAIN PROCESSING & RE-SYNC ---
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False):
     speaker_color_map = {}
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors)
     stats_counter = Counter()
     seen_speakers_first_time = set()
+    actor_dialogue_map = {} # Chứa thoại riêng cho từng diễn viên
+    qc_warnings = []        # Chứa danh sách cảnh báo QC & CPS
     
     speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
     
@@ -825,6 +908,8 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     unique_speakers = []
     assigned_actors = []
+    unassigned_speakers = []
+    
     for text in processed_strings:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
         for match in speaker_regex.finditer(text):
@@ -832,8 +917,15 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             if not is_stage_direction(speaker_name) and speaker_name.upper() not in NON_SPEAKER_PHRASES and speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
                 act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-                if act and act not in assigned_actors:
-                    assigned_actors.append(act)
+                if act:
+                    if act not in assigned_actors:
+                        assigned_actors.append(act)
+                else:
+                    unassigned_speakers.append(speaker_name)
+                    
+    # Cảnh báo QC Phân vai
+    if unassigned_speakers:
+        qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
             
     if unique_speakers:
         if enable_cast:
@@ -907,10 +999,18 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
             ass_formatted_line, plain_text_line = format_and_split_dialogue(
                 document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
-                speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time
+                speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time,
+                actor_dialogue_map, current_timecode_line
             )
             
-            # Ghi nhận vào danh sách Phụ đề ASS & SRT
+            # Cảnh báo CPS (Tốc độ đọc khẩu hình)
+            if current_timecode_line and plain_text_line:
+                dur = calculate_duration_sec(current_timecode_line)
+                clean_chars = len(re.sub(r'</?[ibuIBU]>', '', plain_text_line).strip())
+                cps = clean_chars / dur if dur > 0 else 0
+                if cps > 20: # CPS lớn hơn 20 ký tự/giây là quá nhanh đối với lồng tiếng Việt
+                    qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{plain_text_line[:40]}...\"")
+            
             if current_timecode_line and ass_formatted_line:
                 start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
                 if start_ass and end_ass:
@@ -933,12 +1033,12 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             if run.font.size is None:
                 run.font.size = Pt(12)
         
-    # 1. File Word
+    # 1. File Word Kịch Bản Tổng
     docx_file = io.BytesIO()
     document.save(docx_file)
     docx_file.seek(0)
     
-    # 2. File Phụ đề Cao cấp ASS
+    # 2. File Phụ đề ASS
     ass_header = f"""[Script Info]
 Title: {title_text}
 ScriptType: v4.00+
@@ -958,19 +1058,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     ass_content = ass_header + "\n".join(ass_dialogues)
     ass_file = io.BytesIO(ass_content.encode('utf-8'))
     
-    # 3. File Phụ đề Standard SRT
+    # 3. File Phụ đề SRT
     srt_content = "\n".join(srt_dialogues)
     srt_file = io.BytesIO(srt_content.encode('utf-8'))
+    
+    # 4. Đóng gói ZIP Kịch Bản Tách Vai
+    actor_zip_bytes = io.BytesIO()
+    with zipfile.ZipFile(actor_zip_bytes, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for act_name, dialogues in actor_dialogue_map.items():
+            act_buf = generate_actor_docx(title_text, act_name, dialogues)
+            zip_file.writestr(f"Kich_Ban_{act_name}.docx", act_buf.getvalue())
+    actor_zip_bytes.seek(0)
     
     stats = {
         "total_speakers": len(unique_speakers),
         "total_lines": sum(stats_counter.values()),
         "top_speaker": stats_counter.most_common(1)[0] if stats_counter else ("Không có", 0),
         "actors_list": assigned_actors,
-        "video_title": title_text
+        "actor_dialogue_map": actor_dialogue_map,
+        "video_title": title_text,
+        "qc_warnings": qc_warnings
     }
     
-    return docx_file, ass_file, srt_file, stats
+    return docx_file, ass_file, srt_file, actor_zip_bytes, stats
 
 def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
     name_without_ext = os.path.splitext(original_filename)[0]
@@ -981,7 +1091,7 @@ def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
 st.sidebar.markdown("### ⚡ Control Panel")
 
 if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
-    for key in ['processed_file', 'new_filename', 'stats', 'resync_processed_file', 'resync_new_filename', 'resync_stats']:
+    for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
         if key in st.session_state:
             del st.session_state[key]
     st.session_state['uploader_key'] += 1
@@ -1252,14 +1362,16 @@ with tab_script:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
                 try:
-                    modified_docx, ass_f, srt_f, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False)
+                    modified_docx, ass_f, srt_f, act_zip, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False)
                     
                     st.session_state['processed_docx'] = modified_docx
                     st.session_state['processed_ass'] = ass_f
                     st.session_state['processed_srt'] = srt_f
+                    st.session_state['actor_zip'] = act_zip
                     st.session_state['docx_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".docx")
                     st.session_state['ass_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".ass")
                     st.session_state['srt_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".srt")
+                    st.session_state['zip_name'] = clean_file_name_for_output(original_filename, tag="_KichBan_TachVai", ext=".zip")
                     st.session_state['stats'] = stats
                     
                 except Exception as e:
@@ -1267,6 +1379,17 @@ with tab_script:
 
             if 'processed_docx' in st.session_state:
                 st.markdown("---")
+                
+                # HIỂN THỊ CẢNH BÁO QC / CPS TỰ ĐỘNG
+                qc_warns = st.session_state['stats'].get("qc_warnings", [])
+                if qc_warns:
+                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
+                        st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
+                        for w in qc_warns[:10]:
+                            st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
+                        if len(qc_warns) > 10:
+                            st.info(f"...và thêm {len(qc_warns)-10} cảnh báo khác.")
+                
                 st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE ĐÃ XỬ LÝ HOÀN HẢO")
                 
                 col_dl1, col_dl2, col_dl3 = st.columns(3)
@@ -1295,6 +1418,36 @@ with tab_script:
                         mime="text/plain",
                         use_container_width=True
                     )
+                    
+                # KHU VỰC TẢI KỊCH BẢN TÁCH VAI CHO DIỄN VIÊN
+                st.markdown("---")
+                st.markdown("#### 🎙️ KỊCH BẢN TÁCH VAI RIÊNG CHO PHÒNG THU LỒNG TIẾNG")
+                st.caption("Mỗi diễn viên chỉ nhận đúng câu thoại của mình, giúp thu âm nhanh và không xao nhãng:")
+                
+                act_map = st.session_state['stats'].get("actor_dialogue_map", {})
+                if act_map:
+                    col_act1, col_act2 = st.columns([2, 1])
+                    with col_act1:
+                        selected_actor = st.selectbox("Chọn Diễn viên lồng tiếng để tải file riêng:", options=list(act_map.keys()))
+                        if selected_actor:
+                            act_buf = generate_actor_docx(st.session_state['stats']['video_title'], selected_actor, act_map[selected_actor])
+                            st.download_button(
+                                label=f"⬇️ TẢI FILE WORD RÊU CHO {selected_actor} (.DOCX)",
+                                data=act_buf,
+                                file_name=f"KichBan_{selected_actor}_{st.session_state['stats']['video_title']}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True
+                            )
+                    with col_act2:
+                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                        st.download_button(
+                            label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)",
+                            data=st.session_state['actor_zip'],
+                            file_name=st.session_state['zip_name'],
+                            mime="application/zip",
+                            type="secondary",
+                            use_container_width=True
+                        )
                 st.balloons()
 
     with col2:
@@ -1343,14 +1496,16 @@ with tab_resync:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
-                    r_docx, r_ass, r_srt, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
+                    r_docx, r_ass, r_srt, r_zip, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
                     
                     st.session_state['r_processed_docx'] = r_docx
                     st.session_state['r_processed_ass'] = r_ass
                     st.session_state['r_processed_srt'] = r_srt
+                    st.session_state['r_actor_zip'] = r_zip
                     st.session_state['r_docx_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".docx")
                     st.session_state['r_ass_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".ass")
                     st.session_state['r_srt_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".srt")
+                    st.session_state['r_zip_name'] = clean_file_name_for_output(r_filename, tag="_KichBan_TachVai_Final", ext=".zip")
                     st.session_state['resync_stats'] = r_stats
                     
                     # CẬP NHẬT TỰ ĐỘNG SANG TAB "THEO DÕI LỒNG TIẾNG"
@@ -1377,6 +1532,17 @@ with tab_resync:
                     
             if 'r_processed_docx' in st.session_state:
                 st.markdown("---")
+                
+                # HIỂN THỊ CẢNH BÁO QC / CPS TỰ ĐỘNG
+                r_qc_warns = st.session_state['resync_stats'].get("qc_warnings", [])
+                if r_qc_warns:
+                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
+                        st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
+                        for w in r_qc_warns[:10]:
+                            st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
+                        if len(r_qc_warns) > 10:
+                            st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
+                
                 st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE CHUẨN HOÀN HẢO (FINAL)")
                 
                 col_rdl1, col_rdl2, col_rdl3 = st.columns(3)
@@ -1408,6 +1574,38 @@ with tab_resync:
                         use_container_width=True,
                         key="btn_resync_dl_srt"
                     )
+                    
+                # KHU VỰC TẢI KỊCH BẢN TÁCH VAI CHO DIỄN VIÊN
+                st.markdown("---")
+                st.markdown("#### 🎙️ KỊCH BẢN TÁCH VAI RIÊNG CHO PHÒNG THU LỒNG TIẾNG")
+                st.caption("Mỗi diễn viên chỉ nhận đúng câu thoại của mình, giúp thu âm nhanh và không xao nhãng:")
+                
+                r_act_map = st.session_state['resync_stats'].get("actor_dialogue_map", {})
+                if r_act_map:
+                    col_ract1, col_ract2 = st.columns([2, 1])
+                    with col_ract1:
+                        r_selected_actor = st.selectbox("Chọn Diễn viên lồng tiếng để tải file riêng:", options=list(r_act_map.keys()), key="resync_select_actor")
+                        if r_selected_actor:
+                            r_act_buf = generate_actor_docx(st.session_state['resync_stats']['video_title'], r_selected_actor, r_act_map[r_selected_actor])
+                            st.download_button(
+                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {r_selected_actor} (.DOCX)",
+                                data=r_act_buf,
+                                file_name=f"KichBan_{r_selected_actor}_{st.session_state['resync_stats']['video_title']}_Final.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                                key="btn_dl_single_actor_resync"
+                            )
+                    with col_ract2:
+                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                        st.download_button(
+                            label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)",
+                            data=st.session_state['r_actor_zip'],
+                            file_name=st.session_state['r_zip_name'],
+                            mime="application/zip",
+                            type="secondary",
+                            use_container_width=True,
+                            key="btn_dl_zip_actor_resync"
+                        )
                 st.balloons()
         else:
             st.info("📌 **Hãy tải file kịch bản đã qua chỉnh sửa thủ công để hệ thống phục hồi lại định dạng chuẩn.**")
