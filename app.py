@@ -845,7 +845,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
         
-        # Nhặt và khôi phục tên diễn viên dính trong thân kịch bản (ví dụ Kash: QUANG Yeah...)
+        # Nhặt và khôi phục tên diễn viên dính trong thân kịch bản
         if not actor_name:
             first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
             if first_word and first_word in st.session_state['custom_cast_mapping'].values():
@@ -1776,7 +1776,7 @@ with tab_resync:
             </div>
             """, unsafe_allow_html=True)
             
-            top_name, top_count = stats["top_speaker"]
+            top_name, top_count = r_stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
         else:
             st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
