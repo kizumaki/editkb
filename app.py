@@ -14,7 +14,7 @@ from gtts import gTTS
 import zipfile
 from datetime import datetime
 
-# --- CẤU HÌNH TRANG CHỦ STREAMLIT (SaaS LAYOUT) ---
+# --- CẤU HÌNH TRANG CHỦ STREAMLIT ---
 st.set_page_config(
     page_title="ScriptPro Enterprise - Subtitle & Script Editor",
     page_icon="🎬",
@@ -22,103 +22,93 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- TIÊM CUSTOM CSS CHUẨN SAAS CAO CẤP ---
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .hero-container {
-        background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
-        padding: 2.5rem 2rem;
-        border-radius: 16px;
-        color: white;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
-    }
-    .hero-title {
-        font-size: 2.4rem;
-        font-weight: 800;
-        margin: 0;
-        letter-spacing: -0.02em;
-    }
-    .hero-subtitle {
-        font-size: 1.05rem;
-        opacity: 0.9;
-        margin-top: 0.5rem;
-    }
-    .badge-pro {
-        background-color: rgba(255, 255, 255, 0.2);
-        backdrop-filter: blur(8px);
-        padding: 4px 12px;
-        border-radius: 9999px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        display: inline-block;
-        margin-bottom: 0.8rem;
-    }
-    
-    .metric-card {
-        background: white;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 1.25rem;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-    }
-    .metric-label {
-        font-size: 0.85rem;
-        color: #64748B;
-        font-weight: 500;
-        text-transform: uppercase;
-    }
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #0F172A;
-        margin-top: 0.25rem;
-    }
+# --- SIDEBAR CONTROL PANEL: CÀI ĐẶT CỦA BẠN & CHẾ ĐỘ MÀN HÌNH ---
+st.sidebar.markdown("### ⚡ Control Panel")
 
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        border-bottom: 2px solid #E2E8F0;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        border-radius: 8px 8px 0 0;
-        font-weight: 600;
-        padding: 0 20px;
-    }
-    
-    .qc-card-warning {
-        background-color: #FEF2F2;
-        border-left: 4px solid #EF4444;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        font-size: 0.9rem;
-    }
-    
-    .saas-footer {
-        text-align: center;
-        padding: 2rem 0 1rem 0;
-        color: #94A3B8;
-        font-size: 0.85rem;
-        border-top: 1px solid #E2E8F0;
-        margin-top: 3rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.sidebar.markdown("#### 🎨 Chế độ Giao diện (Theme)")
+ui_theme_choice = st.sidebar.radio(
+    "Lựa chọn Skin hiển thị:",
+    options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Linh hoạt)"],
+    index=0,
+    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện quen thuộc của team. Chế độ 'Enterprise Pro' mang lại phong cách Dashboard hiện đại gọn nhẹ khi cần xem báo cáo."
+)
+
+if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
+    for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.session_state['uploader_key'] += 1
+    st.session_state['resync_uploader_key'] += 1
+    st.rerun()
+
+# --- DYNAMIC CSS INJECTION THEO CHẾ ĐỘ ĐƯỢC CHỌN ---
+if "Enterprise Pro" in ui_theme_choice:
+    # SKIN PRO: MODERN SLATE & COMPACT BADGES
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        
+        .hero-container {
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            padding: 2rem;
+            border-radius: 12px;
+            color: white;
+            margin-bottom: 1.5rem;
+            border-left: 5px solid #6366F1;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+        .hero-title { font-size: 2.2rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; color: #F8FAFC; }
+        .hero-subtitle { font-size: 1rem; color: #94A3B8; margin-top: 0.4rem; }
+        .badge-pro {
+            background: #6366F1; color: white; padding: 3px 10px; border-radius: 6px;
+            font-size: 0.75rem; font-weight: 700; text-transform: uppercase; display: inline-block; margin-bottom: 0.5rem;
+        }
+        .metric-card {
+            background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: all 0.2s ease;
+        }
+        .metric-card:hover { border-color: #6366F1; transform: translateY(-2px); }
+        .metric-label { font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase; }
+        .metric-value { font-size: 1.6rem; font-weight: 800; color: #0F172A; margin-top: 0.2rem; }
+        .stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: 2px solid #E2E8F0; }
+        .stTabs [data-baseweb="tab"] { height: 46px; border-radius: 6px 6px 0 0; font-weight: 600; padding: 0 18px; }
+        .qc-card-warning { background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 0.88rem; }
+        .saas-footer { text-align: center; padding: 2rem 0; color: #94A3B8; font-size: 0.85rem; border-top: 1px solid #E2E8F0; margin-top: 3rem; }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    # SKIN MAI HAN STANDARD (MẶC ĐỊNH KHÔNG ĐỔI)
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        
+        .hero-container {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            padding: 2.5rem 2rem; border-radius: 16px; color: white; margin-bottom: 2rem;
+            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
+        }
+        .hero-title { font-size: 2.4rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
+        .hero-subtitle { font-size: 1.05rem; opacity: 0.9; margin-top: 0.5rem; }
+        .badge-pro {
+            background-color: rgba(255, 255, 255, 0.2); backdrop-filter: blur(8px);
+            padding: 4px 12px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; margin-bottom: 0.8rem;
+        }
+        .metric-card {
+            background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 1.25rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .metric-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+        .metric-label { font-size: 0.85rem; color: #64748B; font-weight: 500; text-transform: uppercase; }
+        .metric-value { font-size: 1.8rem; font-weight: 700; color: #0F172A; margin-top: 0.25rem; }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; border-bottom: 2px solid #E2E8F0; }
+        .stTabs [data-baseweb="tab"] { height: 50px; border-radius: 8px 8px 0 0; font-weight: 600; padding: 0 20px; }
+        .qc-card-warning { background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; font-size: 0.9rem; }
+        .saas-footer { text-align: center; padding: 2rem 0 1rem 0; color: #94A3B8; font-size: 0.85rem; border-top: 1px solid #E2E8F0; margin-top: 3rem; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- HÀM TẠO ÂM THANH PHÁT ÂM TIẾNG ANH CHUẨN ---
 def generate_english_audio(text_to_speak, accent='com'):
@@ -141,68 +131,24 @@ TRACKER_DB_FILE = "dubbing_tracker.json"
 RATES_DB_FILE = "payroll_rates.json"
 
 DEFAULT_CAST_MAPPING = {
-    "BRI": "TRÚC",
-    "CHASE": "THIỆN",
-    "PRESTON": "KHÁNH",
-    "SCOTT": "THÔNG",
-    "KEELEY": "TÚ",
-    "DAKA": "QUANG",
-    "STEPHEN": "QUANG",
-    "VINCE": "QUANG",
-    "JOSH": "THÔNG",
-    "YOMI": "TÚ",
-    "LARRY": "A.TRUNG",
-    "CHLOE": "TÚ",
-    "STEVEN": "QUANG (HOẶC THÔNG)",
-    "LOGAN": "THÔNG",
-    "NATHAN": "A.TRUNG",
-    "RILEY": "PHỤNG",
-    "ZHONG": "THÔNG",
-    "MICHELLE (YOUTUBER)": "TÚ",
-    "BEN AZELART": "QUANG",
-    "ZONG": "THÔNG",
-    "BA BRI": "THÔNG",
-    "TYLER": "PHÁT",
-    "COBY": "THIỆN",
-    "CORY": "KHÁNH",
-    "SPARKY": "A.TRUNG",
-    "GARRETT": "C.DŨNG",
-    "CODY": "CƯỜNG",
-    "BETHANY": "TRÚC",
-    "KRISTIN": "PHỤNG",
-    "AMY": "TÚ",
-    "ALLISON": "TÚ",
-    "AUBREY": "PHỤNG",
-    "TY JACKSON": "THÔNG",
-    "HLV": "CƯỜNG",
-    "JACKSON OLSON": "THÔNG",
-    "DANNY": "QUANG",
-    "KYLE": "QUANG",
-    "BILL": "HITA",
-    "TIM": "HITA"
+    "BRI": "TRÚC", "CHASE": "THIỆN", "PRESTON": "KHÁNH", "SCOTT": "THÔNG",
+    "KEELEY": "TÚ", "DAKA": "QUANG", "STEPHEN": "QUANG", "VINCE": "QUANG",
+    "JOSH": "THÔNG", "YOMI": "TÚ", "LARRY": "A.TRUNG", "CHLOE": "TÚ",
+    "STEVEN": "QUANG (HOẶC THÔNG)", "LOGAN": "THÔNG", "NATHAN": "A.TRUNG",
+    "RILEY": "PHỤNG", "ZHONG": "THÔNG", "MICHELLE (YOUTUBER)": "TÚ",
+    "BEN AZELART": "QUANG", "ZONG": "THÔNG", "BA BRI": "THÔNG", "TYLER": "PHÁT",
+    "COBY": "THIỆN", "CORY": "KHÁNH", "SPARKY": "A.TRUNG", "GARRETT": "C.DŨNG",
+    "CODY": "CƯỜNG", "BETHANY": "TRÚC", "KRISTIN": "PHỤNG", "AMY": "TÚ",
+    "ALLISON": "TÚ", "AUBREY": "PHỤNG", "TY JACKSON": "THÔNG", "HLV": "CƯỜNG",
+    "JACKSON OLSON": "THÔNG", "DANNY": "QUANG", "KYLE": "QUANG", "BILL": "HITA", "TIM": "HITA"
 }
 
 DEFAULT_SOUTH_VIETNAM_PHONETICS = {
-    "MCDONALD": "Mắc-đô-nồ",
-    "MCDONALD'S": "Mắc-đô-nồ",
-    "LONDON": "Luân Đôn",
-    "TNT": "Ti-èn-ti",
-    "NOOB": "Núp",
-    "GOLEM": "Gô-lùm",
-    "GOOGLE": "Gú-gồ",
-    "FACEBOOK": "Phây-sbúc",
-    "KFC": "Ke-ép-xi",
-    "STARBUCKS": "Xì-ta-bắc",
-    "APPLE": "Ép-pồ",
-    "BURGER": "Bơ-gơ",
-    "PARIS": "Ba Lê",
-    "WASHINGTON": "Hoa Thịnh Đốn",
-    "CALIFORNIA": "Cả-li",
-    "PRO": "Prồ",
-    "LAG": "Lác",
-    "BUFF": "Bớp",
-    "VIP": "Vi-ai-pi",
-    "FBI": "Ép-bi-ai"
+    "MCDONALD": "Mắc-đô-nồ", "MCDONALD'S": "Mắc-đô-nồ", "LONDON": "Luân Đôn", "TNT": "Ti-èn-ti",
+    "NOOB": "Núp", "GOLEM": "Gô-lùm", "GOOGLE": "Gú-gồ", "FACEBOOK": "Phây-sbúc",
+    "KFC": "Ke-ép-xi", "STARBUCKS": "Xì-ta-bắc", "APPLE": "Ép-pồ", "BURGER": "Bơ-gơ",
+    "PARIS": "Ba Lê", "WASHINGTON": "Hoa Thịnh Đốn", "CALIFORNIA": "Cả-li", "PRO": "Prồ",
+    "LAG": "Lác", "BUFF": "Bớp", "VIP": "Vi-ai-pi", "FBI": "Ép-bi-ai"
 }
 
 VN_SYLLABLES = {
@@ -315,18 +261,12 @@ def save_json_db(filepath, data_container):
         st.error(f"Không thể lưu vào Database: {e}")
 
 # Khởi tạo Session State
-if 'uploader_key' not in st.session_state:
-    st.session_state['uploader_key'] = 0
-if 'resync_uploader_key' not in st.session_state:
-    st.session_state['resync_uploader_key'] = 0
-if 'spk_input_key' not in st.session_state:
-    st.session_state['spk_input_key'] = 0
-if 'ns_input_key' not in st.session_state:
-    st.session_state['ns_input_key'] = 0
-if 'pho_input_key' not in st.session_state:
-    st.session_state['pho_input_key'] = 0
-if 'cast_input_key' not in st.session_state:
-    st.session_state['cast_input_key'] = 0
+if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
+if 'resync_uploader_key' not in st.session_state: st.session_state['resync_uploader_key'] = 0
+if 'spk_input_key' not in st.session_state: st.session_state['spk_input_key'] = 0
+if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
+if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
+if 'cast_input_key' not in st.session_state: st.session_state['cast_input_key'] = 0
 
 if 'custom_non_speakers' not in st.session_state:
     st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
@@ -458,19 +398,16 @@ def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay
 
 # --- HÀM HỖ TRỢ LÀM TRÒN THỜI LƯỢNG NGUYÊN PHÚT (QUY TẮC 30 GIÂY) ---
 def round_seconds_to_int_minutes(total_sec):
-    if total_sec <= 0:
-        return 1
+    if total_sec <= 0: return 1
     mins = int(total_sec // 60)
     secs = int(round(total_sec % 60))
-    if secs >= 30:
-        mins += 1
+    if secs >= 30: mins += 1
     return max(1, mins)
 
 # --- HÀM HỖ TRỢ BỘ QC / TÍNH TỐC ĐỘ ĐỌC CPS ---
 def calculate_duration_sec(timecode_line):
     m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
-    if not m:
-        return 1.0, 0.0, 0.0
+    if not m: return 1.0, 0.0, 0.0
     h1, m1, s1, ms1, h2, m2, s2, ms2 = map(int, m.groups())
     t1 = h1 * 3600 + m1 * 60 + s1 + ms1 / 1000.0
     t2 = h2 * 3600 + m2 * 60 + s2 + ms2 / 1000.0
@@ -480,21 +417,18 @@ def calculate_duration_sec(timecode_line):
 # --- HÀM HỖ TRỢ XUẤT FILE PHỤ ĐỀ ASS / SRT ---
 def srt_timecode_to_ass(timecode_line):
     m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
-    if not m:
-        return None, None
+    if not m: return None, None
     h1, m1, s1, ms1, h2, m2, s2, ms2 = m.groups()
     ass_start = f"{int(h1)}:{m1}:{s1}.{int(ms1)//10:02d}"
     ass_end = f"{int(h2)}:{m2}:{s2}.{int(ms2)//10:02d}"
     return ass_start, ass_end
 
 def rgb_to_ass_hex(rgb_obj):
-    if not rgb_obj:
-        return "&H00FFFFFF&"
+    if not rgb_obj: return "&H00FFFFFF&"
     try:
         r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
         return f"&H00{b:02X}{g:02X}{r:02X}&"
-    except Exception:
-        return "&H00FFFFFF&"
+    except Exception: return "&H00FFFFFF&"
 
 def build_speaker_regex(custom_speakers):
     base_pattern = r"[\w\s&\.\-\(\)]+"
@@ -502,8 +436,7 @@ def build_speaker_regex(custom_speakers):
         sorted_custom = sorted(list(custom_speakers), key=len, reverse=True)
         custom_pattern = "|".join([re.escape(s) for s in sorted_custom])
         pattern_str = rf"({custom_pattern}|{base_pattern}):\s*"
-    else:
-        pattern_str = rf"({base_pattern}):\s*"
+    else: pattern_str = rf"({base_pattern}):\s*"
     return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
 
 def is_stage_direction(name):
@@ -514,12 +447,10 @@ def get_paragraph_text_with_html(paragraph):
     text = ""
     for run in paragraph.runs:
         r_text = run.text
-        if not r_text:
-            continue
+        if not r_text: continue
         if run.italic and not ("<i>" in r_text or "</i>" in r_text):
             text += f"<i>{r_text}</i>"
-        else:
-            text += r_text
+        else: text += r_text
     text = text.replace("</i><i>", "")
     return text
 
@@ -548,8 +479,7 @@ def preprocess_raw_paragraphs(raw_paragraphs, speaker_regex):
                 while next_i < total:
                     next_raw_text = get_paragraph_text_with_html(raw_paragraphs[next_i])
                     next_text = re.sub(r'\t+', ' ', next_raw_text).strip()
-                    if next_text:
-                        break
+                    if next_text: break
                     next_i += 1
                 
                 if next_i < total:
@@ -579,8 +509,7 @@ def scan_candidate_speakers(uploaded_file, speaker_regex):
     processed_strings = preprocess_raw_paragraphs(doc.paragraphs, speaker_regex)
     candidates = Counter()
     for text in processed_strings:
-        if not text or text.lower().startswith("srt conversion"): 
-            continue
+        if not text or text.lower().startswith("srt conversion"): continue
         for match in speaker_regex.finditer(text):
             speaker_name = match.group(1).strip()
             if is_valid_speaker_name(speaker_name):
@@ -593,8 +522,7 @@ def scan_english_words_in_dialogue(uploaded_file, speaker_regex):
     eng_found = set()
     
     for text in processed_strings:
-        if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text):
-            continue
+        if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text): continue
         
         parts = speaker_regex.split(text)
         dialogue_content = ""
@@ -636,15 +564,13 @@ def extract_phrases_from_file(file_io, file_name):
                 for item in df[col].dropna():
                     parts = re.split(r'[,\n]', str(item))
                     phrases.update([part.strip() for part in parts if part.strip()])
-    except Exception as e:
-        st.error(f"Lỗi đọc file: {e}")
+    except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return phrases
 
 def generate_vibrant_rgb_colors(count=200):
     colors = set()
     while len(colors) < count:
-        h = random.random()
-        s = 0.9; v = 0.8
+        h = random.random(); s = 0.9; v = 0.8
         if s == 0.0: r = g = b = v
         else:
             i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
@@ -683,41 +609,27 @@ def normalize_phonetics_in_text(text):
     return re.sub(r'\s+', ' ', cleaned_text).strip()
 
 def add_text_run_with_html(paragraph, text, highlight=None):
-    if not text:
-        return
+    if not text: return
     tag_regex = re.compile(r'(</?[ibuIBU]>)')
     parts = tag_regex.split(text)
     
-    is_italic = False
-    is_bold = False
-    is_underline = False
+    is_italic = False; is_bold = False; is_underline = False
     
     for part in parts:
-        if not part:
-            continue
+        if not part: continue
         lower_part = part.lower()
-        if lower_part == '<i>':
-            is_italic = True
-        elif lower_part == '</i>':
-            is_italic = False
-        elif lower_part == '<b>':
-            is_bold = True
-        elif lower_part == '</b>':
-            is_bold = False
-        elif lower_part == '<u>':
-            is_underline = True
-        elif lower_part == '</u>':
-            is_underline = False
+        if lower_part == '<i>': is_italic = True
+        elif lower_part == '</i>': is_italic = False
+        elif lower_part == '<b>': is_bold = True
+        elif lower_part == '</b>': is_bold = False
+        elif lower_part == '<u>': is_underline = True
+        elif lower_part == '</u>': is_underline = False
         else:
             run = paragraph.add_run(part)
-            if is_italic:
-                run.font.italic = True
-            if is_bold:
-                run.font.bold = True
-            if is_underline:
-                run.font.underline = True
-            if highlight:
-                run.font.highlight_color = highlight
+            if is_italic: run.font.italic = True
+            if is_bold: run.font.bold = True
+            if is_underline: run.font.underline = True
+            if highlight: run.font.highlight_color = highlight
 
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
     current_text = re.sub(r'\t+', ' ', current_text).strip()
@@ -733,8 +645,7 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     if sorted_eng_keys:
         pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
         eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
-    else:
-        eng_phonetic_regex = None
+    else: eng_phonetic_regex = None
 
     if eng_phonetic_regex:
         matches = list(eng_phonetic_regex.finditer(current_text))
@@ -743,24 +654,19 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
             eng_word_original = match.group(0)
             start, end = match.span()
             
-            if start > last_end:
-                add_text_run_with_html(paragraph, current_text[last_end:start])
+            if start > last_end: add_text_run_with_html(paragraph, current_text[last_end:start])
                 
             pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
             
             add_text_run_with_html(paragraph, f"{pho_text} ", highlight=WD_COLOR_INDEX.YELLOW)
             add_text_run_with_html(paragraph, f"({eng_word_original})", highlight=WD_COLOR_INDEX.YELLOW)
-            
             last_end = end
             
-        if last_end < len(current_text):
-            add_text_run_with_html(paragraph, current_text[last_end:])
-    else:
-        add_text_run_with_html(paragraph, current_text)
+        if last_end < len(current_text): add_text_run_with_html(paragraph, current_text[last_end:])
+    else: add_text_run_with_html(paragraph, current_text)
 
 def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
-    
     ass_text = re.sub(r'</?[bB]>', '', text)
     ass_text = re.sub(r'<i>', r'{\\i1}', ass_text, flags=re.IGNORECASE)
     ass_text = re.sub(r'</i>', r'{\\i0}', ass_text, flags=re.IGNORECASE)
@@ -773,12 +679,9 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
         if sorted_eng_keys:
             pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
             eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
-            
             def replace_eng(m):
-                orig = m.group(0)
-                pho = phonetic_db.get(orig.upper(), orig)
+                orig = m.group(0); pho = phonetic_db.get(orig.upper(), orig)
                 return f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
-                
             ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
 
     is_all = (speaker_name.strip().upper() == "ALL")
@@ -804,8 +707,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         new_paragraph.add_run('\t')
-        new_paragraph.paragraph_format.space_before = Pt(0)
-        new_paragraph.paragraph_format.space_after = Pt(0)
+        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
         return None, text
 
@@ -824,8 +726,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
             continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
             continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
             continuation_paragraph.add_run('\t')
-            continuation_paragraph.paragraph_format.space_before = Pt(0)
-            continuation_paragraph.paragraph_format.space_after = Pt(0)
+            continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
             apply_html_and_phonetic_to_paragraph(continuation_paragraph, leading_content, enable_phonetic)
 
         if speaker_name.upper() in NON_SPEAKER_PHRASES:
@@ -835,20 +736,16 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
             continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
             continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
             continuation_paragraph.add_run('\t')
-            continuation_paragraph.paragraph_format.space_before = Pt(0)
-            continuation_paragraph.paragraph_format.space_after = Pt(0)
+            continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
             apply_html_and_phonetic_to_paragraph(continuation_paragraph, content_block, enable_phonetic)
             return None, content_block
 
         stats_counter[speaker_name] += 1
 
-        if i + 1 < len(speaker_matches):
-            next_match_start = speaker_matches[i+1].start()
-        else:
-            next_match_start = len(text)
+        if i + 1 < len(speaker_matches): next_match_start = speaker_matches[i+1].start()
+        else: next_match_start = len(text)
             
         content = re.sub(r'^\s*[\t\s]+', '', text[end:next_match_start]).strip()
-        
         actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
         
         if not actor_name:
@@ -860,16 +757,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
 
-        if content:
-            pure_dialogue_list.append(content)
+        if content: pure_dialogue_list.append(content)
 
         if actor_name:
-            if actor_name not in actor_dialogue_map:
-                actor_dialogue_map[actor_name] = []
+            if actor_name not in actor_dialogue_map: actor_dialogue_map[actor_name] = []
             actor_dialogue_map[actor_name].append({
-                "speaker": speaker_name,
-                "timecode": current_timecode,
-                "text": content
+                "speaker": speaker_name, "timecode": current_timecode, "text": content
             })
 
         new_paragraph = document.add_paragraph()
@@ -897,14 +790,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                 is_first_time = True
                 if actor_name:
                     run_actor = new_paragraph.add_run(f" {actor_name}")
-                    run_actor.font.bold = True
-                    run_actor.font.color.rgb = RED_COLOR
+                    run_actor.font.bold = True; run_actor.font.color.rgb = RED_COLOR
 
         new_paragraph.add_run('\t')
 
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
-        new_paragraph.paragraph_format.space_before = Pt(0)
-        new_paragraph.paragraph_format.space_after = Pt(0)
+        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         
         ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
         last_processed_index = next_match_start
@@ -916,8 +807,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
         continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
         continuation_paragraph.add_run('\t')
-        continuation_paragraph.paragraph_format.space_before = Pt(0)
-        continuation_paragraph.paragraph_format.space_after = Pt(0)
+        continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_and_phonetic_to_paragraph(continuation_paragraph, remaining_content, enable_phonetic)
 
     pure_dialogue_text = " ".join(pure_dialogue_list)
@@ -925,30 +815,21 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
 
 def generate_actor_docx(video_title, actor_name, dialogue_list):
     doc = Document()
-    
     p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_title.runs[0].font.name = 'Times New Roman'
-    p_title.runs[0].font.size = Pt(16)
-    p_title.runs[0].bold = True
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
     
     p_sub = doc.add_paragraph(f"Video: {video_title}")
     p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_sub.runs[0].font.name = 'Times New Roman'
-    p_sub.runs[0].font.size = Pt(12)
-    p_sub.runs[0].font.italic = True
+    p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
     
     doc.add_paragraph()
-    
     TAB_STOP = Inches(1.0)
     for item in dialogue_list:
         if item.get("timecode"):
             p_tc = doc.add_paragraph(item["timecode"])
-            p_tc.runs[0].font.name = 'Times New Roman'
-            p_tc.runs[0].font.size = Pt(11)
-            p_tc.runs[0].font.bold = True
-            p_tc.paragraph_format.space_before = Pt(0)
-            p_tc.paragraph_format.space_after = Pt(0)
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(11); p_tc.runs[0].font.bold = True
+            p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
             
         p_line = doc.add_paragraph()
         p_line.paragraph_format.left_indent = TAB_STOP
@@ -956,26 +837,17 @@ def generate_actor_docx(video_title, actor_name, dialogue_list):
         p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
         
         r_spk = p_line.add_run(f"{item['speaker']}:")
-        r_spk.font.name = 'Times New Roman'
-        r_spk.font.size = Pt(12)
-        r_spk.font.bold = True
+        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(12); r_spk.font.bold = True
         r_spk.font.color.rgb = RGBColor(79, 70, 229)
-        
         p_line.add_run("\t")
-        
         r_text = p_line.add_run(item['text'])
-        r_text.font.name = 'Times New Roman'
-        r_text.font.size = Pt(12)
+        r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(12)
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
         
-        p_line.paragraph_format.space_before = Pt(0)
-        p_line.paragraph_format.space_after = Pt(4)
-        
-    for p in doc.paragraphs:
-        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+    for p in doc.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         
     buf = io.BytesIO()
-    doc.save(buf)
-    buf.seek(0)
+    doc.save(buf); buf.seek(0)
     return buf
 
 # --- MAIN PROCESSING & RE-SYNC ---
@@ -983,19 +855,15 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     speaker_color_map = {}
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors)
-    stats_counter = Counter()
-    seen_speakers_first_time = set()
-    actor_dialogue_map = {} 
-    qc_warnings = []        
+    stats_counter = Counter(); seen_speakers_first_time = set()
+    actor_dialogue_map = {}; qc_warnings = []        
     
     speaker_regex = build_speaker_regex(st.session_state['custom_speakers'])
     
     original_document = Document(io.BytesIO(uploaded_file.getvalue()))
     raw_paragraphs = [p for p in original_document.paragraphs]
-    
     processed_strings = preprocess_raw_paragraphs(raw_paragraphs, speaker_regex)
     
-    # TÁCH HOÀN TOÀN BỘ HEADER VỚI BODY BẰNG TIMECODE ĐẦU TIÊN
     first_timecode_idx = 0
     for idx, text in enumerate(processed_strings):
         if TIMECODE_REGEX.match(text):
@@ -1008,24 +876,18 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     for h_line in header_zone:
         if ":" in h_line and not h_line.lower().startswith("srt conversion"):
             parts = h_line.split(":", 1)
-            spk_k = parts[0].strip().upper()
-            act_v = parts[1].strip().upper()
+            spk_k = parts[0].strip().upper(); act_v = parts[1].strip().upper()
             if is_valid_speaker_name(spk_k) and act_v and act_v not in NON_SPEAKER_PHRASES:
                 st.session_state['custom_cast_mapping'][spk_k] = act_v
 
     document = Document()
-    
     title_text_raw = file_name_without_ext.upper()
     title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace("_FINAL", "").replace(" (GỐC)", "").strip()
     title_paragraph = document.add_paragraph(title_text)
     title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_paragraph.runs[0].font.name = 'Times New Roman'
-    title_paragraph.runs[0].font.size = Pt(20)
-    title_paragraph.runs[0].bold = True
+    title_paragraph.runs[0].font.name = 'Times New Roman'; title_paragraph.runs[0].font.size = Pt(20); title_paragraph.runs[0].bold = True
     
-    unique_speakers = []
-    assigned_actors = []
-    unassigned_speakers = []
+    unique_speakers = []; assigned_actors = []; unassigned_speakers = []
     
     for text in body_zone:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
@@ -1035,72 +897,49 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 unique_speakers.append(speaker_name)
                 act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
                 if act:
-                    if act not in assigned_actors:
-                        assigned_actors.append(act)
+                    if act not in assigned_actors: assigned_actors.append(act)
                 else:
-                    if speaker_name.upper() != "ALL":
-                        unassigned_speakers.append(speaker_name)
+                    if speaker_name.upper() != "ALL": unassigned_speakers.append(speaker_name)
                     
-    if unassigned_speakers:
-        qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
+    if unassigned_speakers: qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
             
     if unique_speakers:
         if enable_cast:
             header_vai = document.add_paragraph()
             r_vai = header_vai.add_run("VAI: ")
-            r_vai.font.name = 'Times New Roman'
-            r_vai.font.size = Pt(12)
-            r_vai.font.bold = True
-            header_vai.paragraph_format.space_before = Pt(0)
-            header_vai.paragraph_format.space_after = Pt(0)
+            r_vai.font.name = 'Times New Roman'; r_vai.font.size = Pt(12); r_vai.font.bold = True
+            header_vai.paragraph_format.space_before = Pt(0); header_vai.paragraph_format.space_after = Pt(0)
 
             for spk in unique_speakers:
                 p_spk = document.add_paragraph()
-                p_spk.paragraph_format.space_before = Pt(0)
-                p_spk.paragraph_format.space_after = Pt(0)
-                
+                p_spk.paragraph_format.space_before = Pt(0); p_spk.paragraph_format.space_after = Pt(0)
                 is_all = (spk.strip().upper() == "ALL")
                 spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, used_colors)
                 
                 r_spk_name = p_spk.add_run(f"{spk}: ")
-                r_spk_name.font.name = 'Times New Roman'
-                r_spk_name.font.size = Pt(12)
-                r_spk_name.font.bold = True
+                r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(12); r_spk_name.font.bold = True
                 
                 if is_all:
-                    r_spk_name.font.color.rgb = RED_COLOR
-                    r_spk_name.font.highlight_color = WD_COLOR_INDEX.YELLOW
-                elif enable_colors:
-                    r_spk_name.font.color.rgb = spk_color
+                    r_spk_name.font.color.rgb = RED_COLOR; r_spk_name.font.highlight_color = WD_COLOR_INDEX.YELLOW
+                elif enable_colors: r_spk_name.font.color.rgb = spk_color
                     
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
                 if actor and not is_all:
                     r_actor = p_spk.add_run(actor)
-                    r_actor.font.name = 'Times New Roman'
-                    r_actor.font.size = Pt(12)
-                    r_actor.font.bold = True
+                    r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(12); r_actor.font.bold = True
                     r_actor.font.color.rgb = RED_COLOR
         else:
             speaker_list_text = "VAI: " + ", ".join(unique_speakers)
             p = document.add_paragraph(speaker_list_text)
-            p.runs[0].font.name = 'Times New Roman'
-            p.runs[0].font.size = Pt(12)
-            p.runs[0].font.bold = True
-            p.paragraph_format.space_before = Pt(0)
-            p.paragraph_format.space_after = Pt(6)
+            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(12); p.runs[0].font.bold = True
+            p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
     
     document.add_paragraph()
-    start_index = len(document.paragraphs)
-
-    total_paras = len(body_zone)
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    start_index = len(document.paragraphs); total_paras = len(body_zone)
+    progress_bar = st.progress(0); status_text = st.empty()
     
-    ass_dialogues = []
-    srt_dialogues = []
-    current_timecode_line = None
-    srt_counter = 1
-    max_video_time_sec = 0.0
+    ass_dialogues = []; srt_dialogues = []
+    current_timecode_line = None; srt_counter = 1; max_video_time_sec = 0.0
 
     for idx, text in enumerate(body_zone):
         if idx % max(1, total_paras // 10) == 0:
@@ -1114,15 +953,11 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if TIMECODE_REGEX.match(text):
             current_timecode_line = text
             dur, t1, t2 = calculate_duration_sec(text)
-            if t2 > max_video_time_sec:
-                max_video_time_sec = t2
+            if t2 > max_video_time_sec: max_video_time_sec = t2
                 
             new_paragraph = document.add_paragraph(text)
-            new_paragraph.runs[0].font.bold = True
-            new_paragraph.runs[0].font.name = 'Times New Roman'
-            new_paragraph.runs[0].font.size = Pt(12)
-            new_paragraph.paragraph_format.space_before = Pt(0)
-            new_paragraph.paragraph_format.space_after = Pt(0)
+            new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(12)
+            new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         else:
             cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
             ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
@@ -1145,24 +980,18 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     srt_dialogues.append(f"{srt_counter}\n{current_timecode_line}\n{re.sub(r'{\\.*?}', '', ass_formatted_line)}\n")
                     srt_counter += 1
 
-    progress_bar.progress(100)
-    status_text.text("Xử lý hoàn tất!")
-    time.sleep(0.5)
-    progress_bar.empty()
-    status_text.empty()
+    progress_bar.progress(100); status_text.text("Xử lý hoàn tất!"); time.sleep(0.5)
+    progress_bar.empty(); status_text.empty()
             
     for paragraph in document.paragraphs[start_index:]:
         paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-        paragraph.paragraph_format.space_before = Pt(0)
-        paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.space_before = Pt(0); paragraph.paragraph_format.space_after = Pt(0)
         for run in paragraph.runs:
             run.font.name = 'Times New Roman'
-            if run.font.size is None:
-                run.font.size = Pt(12)
+            if run.font.size is None: run.font.size = Pt(12)
         
     docx_file = io.BytesIO()
-    document.save(docx_file)
-    docx_file.seek(0)
+    document.save(docx_file); docx_file.seek(0)
     
     ass_header = f"""[Script Info]
 Title: {title_text}
@@ -1197,10 +1026,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for act_name, dialogues in actor_dialogue_map.items():
         line_cnt = len(dialogues)
         word_cnt = sum(len(re.sub(r'</?[ibuIBU]>', '', d['text']).split()) for d in dialogues)
-        actor_stats_breakdown[act_name] = {
-            "lines": line_cnt,
-            "words": word_cnt
-        }
+        actor_stats_breakdown[act_name] = {"lines": line_cnt, "words": word_cnt}
     
     video_duration_min = round_seconds_to_int_minutes(max_video_time_sec)
     
@@ -1223,17 +1049,7 @@ def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
     cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$|_final$)', '', name_without_ext, flags=re.IGNORECASE).strip()
     return f"{cleaned}{tag}{ext}"
 
-# --- SIDEBAR (THANH ĐIỀU HƯỚNG SAAS) ---
-st.sidebar.markdown("### ⚡ Control Panel")
-
-if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
-    for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.session_state['uploader_key'] += 1
-    st.session_state['resync_uploader_key'] += 1
-    st.rerun()
-
+# --- SIDEBAR TÙY CHỌN BẬT/TẮT TÍNH NĂNG ---
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 🎛️ Bật/Tắt Tính năng")
 enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
@@ -1260,8 +1076,7 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
             st.session_state['spk_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_spks)} người nói!")
-            time.sleep(1)
-            st.rerun()
+            time.sleep(1); st.rerun()
 
     if len(st.session_state['custom_speakers']) > 0:
         st.info(f"Đã lưu: **{len(st.session_state['custom_speakers'])}** người nói.")
@@ -1283,16 +1098,15 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
             st.session_state['ns_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!")
-            time.sleep(1)
-            st.rerun()
+            time.sleep(1); st.rerun()
 
     if len(st.session_state['custom_non_speakers']) > 0:
         st.info(f"Đã lưu: **{len(st.session_state['custom_non_speakers'])}** từ nhiễu.")
 
-# --- HERO BANNER HEADER (SaaS STYLING) ---
-st.markdown("""
+# --- HERO BANNER HEADER ---
+st.markdown(f"""
 <div class="hero-container">
-    <div class="badge-pro">v2.5 Enterprise SaaS</div>
+    <div class="badge-pro">{ui_theme_choice}</div>
     <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
     <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
 </div>
@@ -1338,7 +1152,6 @@ with tab_script:
             detected_speakers = [f"{name} ({candidates[name]} lần)" for name in detected_speakers_names]
             detected_non_speakers = [f"{name} ({candidates[name]} lần)" for name in detected_non_speakers_names]
 
-            # --- QUẢN LÝ PHÂN VAI TRỰC TIẾP CHO KỊCH BẢN HIỆN TẠI ---
             with st.container(border=True):
                 st.markdown("### 🎭 Phân Vai Lồng Tiếng Cho Kịch Bản Hiện Tại")
                 st.caption("Xem và gán người lồng tiếng Việt cho từng nhân vật trong file kịch bản này:")
@@ -1379,8 +1192,7 @@ with tab_script:
                                     updated_cast_count += 1
                         save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
                         st.success(f"✅ Đã lưu phân vai cho {updated_cast_count} nhân vật vào Database!")
-                        time.sleep(1)
-                        st.rerun()
+                        time.sleep(1); st.rerun()
 
             with st.container(border=True):
                 st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói")
@@ -1400,10 +1212,8 @@ with tab_script:
                                 st.session_state['custom_non_speakers'].update(new_items)
                                 save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
                                 st.success(f"✅ Đã lưu {len(new_items)} từ vào Database Từ Nhiễu!")
-                                time.sleep(1)
-                                st.rerun()
-                    else:
-                        st.info("Chưa tìm thấy cụm từ người nói nào.")
+                                time.sleep(1); st.rerun()
+                    else: st.info("Chưa tìm thấy cụm từ người nói nào.")
 
                 with tab_non_spk:
                     if detected_non_speakers:
@@ -1420,12 +1230,9 @@ with tab_script:
                                 for item in to_move_to_spk: st.session_state['custom_non_speakers'].discard(item.upper())
                                 save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
                                 st.success(f"✅ Đã lưu {len(to_move_to_spk)} tên vào Database Người Nói!")
-                                time.sleep(1)
-                                st.rerun()
-                    else:
-                        st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
+                                time.sleep(1); st.rerun()
+                    else: st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
 
-            # --- QUẢN LÝ PHIÊN ÂM & TRÌNH NGHE PHÁT ÂM TRONG KỊCH BẢN HIỆN TẠI ---
             with st.container(border=True):
                 st.markdown("### 🗣️ Từ Tiếng Anh Xuất Hiện Trong Kịch Bản")
                 st.caption("Quét và điều chỉnh phiên âm riêng cho kịch bản này (Đã qua bộ lọc thông minh):")
@@ -1447,8 +1254,7 @@ with tab_script:
                     if listen_btn and word_to_listen:
                         tld = 'com' if "Mỹ" in accent_choice else 'co.uk'
                         audio_fp = generate_english_audio(word_to_listen, accent=tld)
-                        if audio_fp:
-                            st.audio(audio_fp, format="audio/mp3", autoplay=True)
+                        if audio_fp: st.audio(audio_fp, format="audio/mp3", autoplay=True)
 
                     st.markdown("---")
                     
@@ -1490,10 +1296,8 @@ with tab_script:
                         
                         save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
                         st.success(f"✅ Đã cập nhật {updated_count} từ phiên âm vào Database!")
-                        time.sleep(1)
-                        st.rerun()
-                else:
-                    st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")
+                        time.sleep(1); st.rerun()
+                else: st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")
 
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
@@ -1510,23 +1314,18 @@ with tab_script:
                     st.session_state['zip_name'] = clean_file_name_for_output(original_filename, tag="_KichBan_TachVai", ext=".zip")
                     st.session_state['stats'] = stats
                     
-                except Exception as e:
-                    st.error(f"Đã có lỗi xảy ra: {e}")
+                except Exception as e: st.error(f"Đã có lỗi xảy ra: {e}")
 
             if 'processed_docx' in st.session_state:
                 st.markdown("---")
-                
                 qc_warns = st.session_state['stats'].get("qc_warnings", [])
                 if qc_warns:
                     with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
                         st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
-                        for w in qc_warns[:10]:
-                            st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
-                        if len(qc_warns) > 10:
-                            st.info(f"...và thêm {len(qc_warns)-10} cảnh báo khác.")
+                        for w in qc_warns[:10]: st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
+                        if len(qc_warns) > 10: st.info(f"...và thêm {len(qc_warns)-10} cảnh báo khác.")
                 
                 st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE ĐÃ XỬ LÝ HOÀN HẢO")
-                
                 col_dl1, col_dl2, col_dl3 = st.columns(3)
                 with col_dl1:
                     st.download_button(
@@ -1534,24 +1333,21 @@ with tab_script:
                         data=st.session_state['processed_docx'],
                         file_name=st.session_state['docx_name'],
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        type="primary",
-                        use_container_width=True
+                        type="primary", use_container_width=True
                     )
                 with col_dl2:
                     st.download_button(
                         label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)",
                         data=st.session_state['processed_ass'],
                         file_name=st.session_state['ass_name'],
-                        mime="text/plain",
-                        use_container_width=True
+                        mime="text/plain", use_container_width=True
                     )
                 with col_dl3:
                     st.download_button(
                         label="📝 PHỤ ĐỀ CHUẨN (.SRT)",
                         data=st.session_state['processed_srt'],
                         file_name=st.session_state['srt_name'],
-                        mime="text/plain",
-                        use_container_width=True
+                        mime="text/plain", use_container_width=True
                     )
                     
                 st.markdown("---")
@@ -1578,9 +1374,7 @@ with tab_script:
                             label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)",
                             data=st.session_state['actor_zip'],
                             file_name=st.session_state['zip_name'],
-                            mime="application/zip",
-                            type="secondary",
-                            use_container_width=True
+                            mime="application/zip", type="secondary", use_container_width=True
                         )
                 st.balloons()
 
@@ -1588,7 +1382,6 @@ with tab_script:
         st.markdown("### 📊 SaaS Analytics")
         if 'stats' in st.session_state:
             stats = st.session_state['stats']
-            
             st.markdown(f"""
             <div class="metric-card" style="margin-bottom: 12px;">
                 <div class="metric-label">🎭 Tổng số Nhân vật</div>
@@ -1603,11 +1396,9 @@ with tab_script:
                 <div class="metric-value">{stats["video_duration_min"]} phút</div>
             </div>
             """, unsafe_allow_html=True)
-            
             top_name, top_count = stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
-        else:
-            st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
+        else: st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
 
 # ==========================================
 # TAB 2: RE-SYNC KỊCH BẢN ĐÃ BIÊN TẬP
@@ -1625,7 +1416,6 @@ with tab_resync:
                 type=['docx'], 
                 key=f"resync_uploader_{st.session_state['resync_uploader_key']}"
             )
-            
             project_week_input = st.text_input("📌 Gán Tuần Dự Án cho video này:", value="Tuần 1", help="VD: Tuần 1, Tuần 2, Tuần 1 - Đợt Phim A...")
             
         if resync_file is not None:
@@ -1648,7 +1438,6 @@ with tab_resync:
                     st.session_state['r_zip_name'] = clean_file_name_for_output(r_filename, tag="_KichBan_TachVai_Final", ext=".zip")
                     st.session_state['resync_stats'] = r_stats
                     
-                    # CẬP NHẬT TỰ ĐỘNG SANG TAB "THEO DÕI & BÁO CÁO LƯƠNG"
                     video_title = r_stats.get("video_title", r_name_no_ext)
                     actors_list = r_stats.get("actors_list", [])
                     actors_str = ", ".join(actors_list) if actors_list else "Chưa có thông tin"
@@ -1666,71 +1455,47 @@ with tab_resync:
                     custom_actor_rates = {a.upper(): curr_def_rate for a in actors_list}
                     
                     entry_data = {
-                        "video_title": video_title,
-                        "actors": actors_str,
-                        "actor_breakdown": actor_breakdown,
-                        "total_lines": total_lines,
-                        "video_duration_min": video_dur_min,
-                        "date": today_str,
-                        "project_week": assigned_week,
-                        "custom_actor_rates": custom_actor_rates
+                        "video_title": video_title, "actors": actors_str, "actor_breakdown": actor_breakdown,
+                        "total_lines": total_lines, "video_duration_min": video_dur_min, "date": today_str,
+                        "project_week": assigned_week, "custom_actor_rates": custom_actor_rates
                     }
                     
                     if existing_entry:
-                        if "custom_actor_rates" in existing_entry:
-                            entry_data["custom_actor_rates"] = existing_entry["custom_actor_rates"]
+                        if "custom_actor_rates" in existing_entry: entry_data["custom_actor_rates"] = existing_entry["custom_actor_rates"]
                         existing_entry.update(entry_data)
-                    else:
-                        tracker_list.append(entry_data)
+                    else: tracker_list.append(entry_data)
                     
                     st.session_state['dubbing_tracker'] = tracker_list
                     save_json_db(TRACKER_DB_FILE, tracker_list)
                     
-                except Exception as e:
-                    st.error(f"Lỗi xảy ra khi Re-Sync: {e}")
+                except Exception as e: st.error(f"Lỗi xảy ra khi Re-Sync: {e}")
                     
             if 'r_processed_docx' in st.session_state:
                 st.markdown("---")
-                
                 r_qc_warns = st.session_state['resync_stats'].get("qc_warnings", [])
                 if r_qc_warns:
                     with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
                         st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
-                        for w in r_qc_warns[:10]:
-                            st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
-                        if len(r_qc_warns) > 10:
-                            st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
+                        for w in r_qc_warns[:10]: st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
+                        if len(r_qc_warns) > 10: st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
                 
                 st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE CHUẨN HOÀN HẢO (FINAL)")
-                
                 col_rdl1, col_rdl2, col_rdl3 = st.columns(3)
                 with col_rdl1:
                     st.download_button(
-                        label="📄 FILE WORD KỊCH BẢN (.DOCX)",
-                        data=st.session_state['r_processed_docx'],
-                        file_name=st.session_state['r_docx_name'],
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        type="primary",
-                        use_container_width=True,
-                        key="btn_resync_dl_docx"
+                        label="📄 FILE WORD KỊCH BẢN (.DOCX)", data=st.session_state['r_processed_docx'],
+                        file_name=st.session_state['r_docx_name'], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        type="primary", use_container_width=True, key="btn_resync_dl_docx"
                     )
                 with col_rdl2:
                     st.download_button(
-                        label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)",
-                        data=st.session_state['r_processed_ass'],
-                        file_name=st.session_state['r_ass_name'],
-                        mime="text/plain",
-                        use_container_width=True,
-                        key="btn_resync_dl_ass"
+                        label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)", data=st.session_state['r_processed_ass'],
+                        file_name=st.session_state['r_ass_name'], mime="text/plain", use_container_width=True, key="btn_resync_dl_ass"
                     )
                 with col_rdl3:
                     st.download_button(
-                        label="📝 PHỤ ĐỀ CHUẨN (.SRT)",
-                        data=st.session_state['r_processed_srt'],
-                        file_name=st.session_state['r_srt_name'],
-                        mime="text/plain",
-                        use_container_width=True,
-                        key="btn_resync_dl_srt"
+                        label="📝 PHỤ ĐỀ CHUẨN (.SRT)", data=st.session_state['r_processed_srt'],
+                        file_name=st.session_state['r_srt_name'], mime="text/plain", use_container_width=True, key="btn_resync_dl_srt"
                     )
                     
                 st.markdown("---")
@@ -1745,33 +1510,23 @@ with tab_resync:
                         if r_selected_actor:
                             r_act_buf = generate_actor_docx(st.session_state['resync_stats']['video_title'], r_selected_actor, r_act_map[r_selected_actor])
                             st.download_button(
-                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {r_selected_actor} (.DOCX)",
-                                data=r_act_buf,
+                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {r_selected_actor} (.DOCX)", data=r_act_buf,
                                 file_name=f"KichBan_{r_selected_actor}_{st.session_state['resync_stats']['video_title']}_Final.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True,
-                                key="btn_dl_single_actor_resync"
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key="btn_dl_single_actor_resync"
                             )
                     with col_ract2:
                         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                         st.download_button(
-                            label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)",
-                            data=st.session_state['r_actor_zip'],
-                            file_name=st.session_state['r_zip_name'],
-                            mime="application/zip",
-                            type="secondary",
-                            use_container_width=True,
-                            key="btn_dl_zip_actor_resync"
+                            label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)", data=st.session_state['r_actor_zip'],
+                            file_name=st.session_state['r_zip_name'], mime="application/zip", type="secondary", use_container_width=True, key="btn_dl_zip_actor_resync"
                         )
                 st.balloons()
-        else:
-            st.info("📌 **Hãy tải file kịch bản đã qua chỉnh sửa thủ công để hệ thống phục hồi lại định dạng chuẩn.**")
+        else: st.info("📌 **Hãy tải file kịch bản đã qua chỉnh sửa thủ công để hệ thống phục hồi lại định dạng chuẩn.**")
 
     with col_r2:
         st.markdown("### 📊 Re-Sync Analytics")
         if 'resync_stats' in st.session_state:
             r_stats = st.session_state['resync_stats']
-            
             st.markdown(f"""
             <div class="metric-card" style="margin-bottom: 12px;">
                 <div class="metric-label">🎭 Tổng số Nhân vật</div>
@@ -1786,11 +1541,9 @@ with tab_resync:
                 <div class="metric-value">{r_stats["video_duration_min"]} phút</div>
             </div>
             """, unsafe_allow_html=True)
-            
             top_name, top_count = r_stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
-        else:
-            st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
+        else: st.info("Thống kê file Re-Sync sẽ xuất hiện tại đây sau khi hoàn tất.")
 
 # ==========================================
 # TAB 3: THEO DÕI & BÁO CÁO LƯƠNG
@@ -1798,7 +1551,6 @@ with tab_resync:
 with tab_dub_tracker:
     st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN DỰ ÁN")
     
-    # Cấu hình Đơn giá Thù lao Mặc định
     with st.expander("⚙️ CẤU HÌNH ĐƠN GIÁ MẶC ĐỊNH SẢN XUẤT", expanded=False):
         c_rate1, c_rate2 = st.columns([2, 3])
         curr_mode = st.session_state['payroll_rates'].get("mode", "minute")
@@ -1806,50 +1558,36 @@ with tab_dub_tracker:
         
         with c_rate1:
             rate_mode_choice = st.radio(
-                "Cách tính thù lao:", 
-                options=["Theo Phút video (phút)", "Theo Câu thoại (câu)", "Theo Số từ (từ)"], 
-                index=mode_idx,
-                key="radio_payroll_mode"
+                "Cách tính thù lao:", options=["Theo Phút video (phút)", "Theo Câu thoại (câu)", "Theo Số từ (từ)"], 
+                index=mode_idx, key="radio_payroll_mode"
             )
         with c_rate2:
             default_unit_rate = st.number_input(
-                "Đơn giá mặc định khi thêm video mới (VNĐ):", 
-                value=int(st.session_state['payroll_rates'].get("unit_rate", 30000)), 
-                step=5000,
-                key="num_payroll_unit_rate"
+                "Đơn giá mặc định khi thêm video mới (VNĐ):", value=int(st.session_state['payroll_rates'].get("unit_rate", 30000)), 
+                step=5000, key="num_payroll_unit_rate"
             )
             unit_label = "phút" if "Phút" in rate_mode_choice else ("câu" if "Câu" in rate_mode_choice else "từ")
             st.caption(f"👉 **Đơn giá mặc định áp dụng:** `{default_unit_rate:,.0f}` VNĐ / {unit_label}")
             
-        if "Phút" in rate_mode_choice:
-            new_mode = "minute"
-        elif "Câu" in rate_mode_choice:
-            new_mode = "line"
-        else:
-            new_mode = "word"
+        if "Phút" in rate_mode_choice: new_mode = "minute"
+        elif "Câu" in rate_mode_choice: new_mode = "line"
+        else: new_mode = "word"
             
         if new_mode != st.session_state['payroll_rates'].get("mode") or default_unit_rate != st.session_state['payroll_rates'].get("unit_rate"):
-            st.session_state['payroll_rates'] = {
-                "mode": new_mode,
-                "unit_rate": default_unit_rate
-            }
+            st.session_state['payroll_rates'] = {"mode": new_mode, "unit_rate": default_unit_rate}
             save_json_db(RATES_DB_FILE, st.session_state['payroll_rates'])
 
     current_mode = st.session_state['payroll_rates'].get("mode", "minute")
     current_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
 
     subtab_video, subtab_custom_rates, subtab_payroll = st.tabs([
-        "📹 Bảng Theo Dõi Video Theo Tuần Dự Án", 
-        "💵 Chỉnh Đơn Giá Cá Nhân (Video x Diễn viên)", 
-        "💰 Báo Cáo Lương Chi Tiết Từng Diễn Viên"
+        "📹 Bảng Theo Dõi Video Theo Tuần Dự Án", "💵 Chỉnh Đơn Giá Cá Nhân (Video x Diễn viên)", "💰 Báo Cáo Lương Chi Tiết Từng Diễn Viên"
     ])
 
     tracker_data = st.session_state['dubbing_tracker']
 
-    # --- SUBTAB 1: BẢNG THEO DÕI VIDEO CHUẨN 6 CỘT TỪNG TUẦN DỰ ÁN ---
     with subtab_video:
         st.markdown("#### Bảng quản lý danh sách Video và Thù lao (Định dạng chuẩn 6 cột)")
-        
         if tracker_data:
             formatted_editor_list = []
             for idx, item in enumerate(tracker_data, 1):
@@ -1874,13 +1612,8 @@ with tab_dub_tracker:
                     dur_str = f"{tot_words} từ"
                     
                 formatted_editor_list.append({
-                    "Stt": idx,
-                    "Tuần dự án": p_week,
-                    "Tiêu đề video": item['video_title'],
-                    "Thời lượng": dur_str,
-                    "Thành tiền Video": f"{v_pay:,.0f} VNĐ",
-                    "Diễn viên": v_acts,
-                    "Xóa": False
+                    "Stt": idx, "Tuần dự án": p_week, "Tiêu đề video": item['video_title'],
+                    "Thời lượng": dur_str, "Thành tiền Video": f"{v_pay:,.0f} VNĐ", "Diễn viên": v_acts, "Xóa": False
                 })
 
             df_editor_raw = pd.DataFrame(formatted_editor_list)
@@ -1896,19 +1629,15 @@ with tab_dub_tracker:
                     "Diễn viên": st.column_config.TextColumn("Diễn viên (Sửa trực tiếp)"),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
-                hide_index=True,
-                use_container_width=True,
-                key="dubbing_tracker_editor_main"
+                hide_index=True, use_container_width=True, key="dubbing_tracker_editor_main"
             )
 
             col_tr1, col_tr2 = st.columns([1, 1])
             with col_tr1:
                 if st.button("💾 LƯU THAY ĐỔI TRÊN BẢNG VIDEO", type="primary", use_container_width=True):
-                    new_tracker = []
-                    deleted_cnt = 0
+                    new_tracker = []; deleted_cnt = 0
                     for idx_r, row in edited_tracker_df.iterrows():
-                        if row["Xóa"]:
-                            deleted_cnt += 1
+                        if row["Xóa"]: deleted_cnt += 1
                         else:
                             orig_item = tracker_data[idx_r]
                             orig_item['project_week'] = str(row["Tuần dự án"]).strip()
@@ -1917,16 +1646,12 @@ with tab_dub_tracker:
                             new_acts_raw = [a.strip().upper() for a in str(row["Diễn viên"]).split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
                             orig_item['actors'] = ", ".join(new_acts_raw) if new_acts_raw else "CHƯA CÓ THÔNG TIN"
                             
-                            old_bd = orig_item.get("actor_breakdown", {})
-                            new_bd = {}
+                            old_bd = orig_item.get("actor_breakdown", {}); new_bd = {}
                             c_rates = orig_item.get("custom_actor_rates", {})
                             for act in new_acts_raw:
-                                if act in old_bd:
-                                    new_bd[act] = old_bd[act]
-                                else:
-                                    new_bd[act] = {"lines": 0, "words": 0}
-                                if act not in c_rates:
-                                    c_rates[act] = current_rate
+                                if act in old_bd: new_bd[act] = old_bd[act]
+                                else: new_bd[act] = {"lines": 0, "words": 0}
+                                if act not in c_rates: c_rates[act] = current_rate
                             
                             orig_item['actor_breakdown'] = new_bd
                             orig_item['custom_actor_rates'] = c_rates
@@ -1934,9 +1659,7 @@ with tab_dub_tracker:
                             
                     st.session_state['dubbing_tracker'] = new_tracker
                     save_json_db(TRACKER_DB_FILE, new_tracker)
-                    st.success(f"✅ Đã lưu thay đổi & đồng bộ dữ liệu!")
-                    time.sleep(1)
-                    st.rerun()
+                    st.success(f"✅ Đã lưu thay đổi & đồng bộ dữ liệu!"); time.sleep(1); st.rerun()
 
             st.markdown("---")
             st.markdown("#### 📑 Xem theo Bảng chia Tuần Dự Án (Có Hàng Tổng)")
@@ -1944,27 +1667,19 @@ with tab_dub_tracker:
             project_weeks_map = {}
             for item in tracker_data:
                 pw = item.get("project_week", "Tuần 1")
-                if pw not in project_weeks_map:
-                    project_weeks_map[pw] = []
+                if pw not in project_weeks_map: project_weeks_map[pw] = []
                 project_weeks_map[pw].append(item)
 
-            total_studio_money = 0
-            excel_sheets_data = {}
+            total_studio_money = 0; excel_sheets_data = {}
 
             for pw_name, items in sorted(project_weeks_map.items()):
                 st.markdown(f"##### 📅 {pw_name.upper()}")
-                
-                week_rows = []
-                week_tot_dur = 0
-                week_tot_money = 0
+                week_rows = []; week_tot_dur = 0; week_tot_money = 0
                 
                 for idx, item in enumerate(items, 1):
-                    v_title = item['video_title']
-                    v_dur_min = int(item.get("video_duration_min", 1))
-                    v_lines = item.get("total_lines", 0)
-                    v_actors = item.get("actors", "")
-                    bd = item.get("actor_breakdown", {})
-                    custom_rates = item.get("custom_actor_rates", {})
+                    v_title = item['video_title']; v_dur_min = int(item.get("video_duration_min", 1))
+                    v_lines = item.get("total_lines", 0); v_actors = item.get("actors", "")
+                    bd = item.get("actor_breakdown", {}); custom_rates = item.get("custom_actor_rates", {})
                     
                     raw_acts = [a.strip().upper() for a in v_actors.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
                     
@@ -1979,35 +1694,22 @@ with tab_dub_tracker:
                         v_pay = sum((bd.get(act, {}).get("words", 0)) * custom_rates.get(act, current_rate) for act in raw_acts) if raw_acts else tot_words * current_rate
                         dur_str = f"{tot_words} từ"
                         
-                    week_tot_dur += v_dur_min
-                    week_tot_money += v_pay
+                    week_tot_dur += v_dur_min; week_tot_money += v_pay
                     
                     week_rows.append({
-                        "Stt": idx,
-                        "Tiêu đề video": v_title,
-                        "Thời lượng": dur_str,
-                        "Thành tiền": f"{v_pay:,.0f} VNĐ",
-                        "Diễn viên": v_actors
+                        "Stt": idx, "Tiêu đề video": v_title, "Thời lượng": dur_str,
+                        "Thành tiền": f"{v_pay:,.0f} VNĐ", "Diễn viên": v_actors
                     })
 
                 total_studio_money += week_tot_money
-
                 week_rows.append({
-                    "Stt": "TỔNG",
-                    "Tiêu đề video": f"TỔNG CỘNG ({len(items)} video)",
+                    "Stt": "TỔNG", "Tiêu đề video": f"TỔNG CỘNG ({len(items)} video)",
                     "Thời lượng": f"{week_tot_dur} phút" if current_mode == "minute" else "-",
-                    "Thành tiền": f"{week_tot_money:,.0f} VNĐ",
-                    "Diễn viên": "-"
+                    "Thành tiền": f"{week_tot_money:,.0f} VNĐ", "Diễn viên": "-"
                 })
 
                 df_week_display = pd.DataFrame(week_rows)
-                
-                st.dataframe(
-                    df_week_display,
-                    hide_index=True,
-                    use_container_width=True
-                )
-                
+                st.dataframe(df_week_display, hide_index=True, use_container_width=True)
                 excel_sheets_data[pw_name[:30]] = df_week_display
 
             with col_tr2:
@@ -2018,16 +1720,12 @@ with tab_dub_tracker:
                 excel_payroll_buffer.seek(0)
 
                 st.download_button(
-                    label="📊 XUẤT TẤT CẢ TUẦN RA EXCEL (.XLSX)",
-                    data=excel_payroll_buffer,
+                    label="📊 XUẤT TẤT CẢ TUẦN RA EXCEL (.XLSX)", data=excel_payroll_buffer,
                     file_name="Theo_Doi_Video_Long_Tieng_MaiHan.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
                 )
-        else:
-            st.info("Chưa có dữ liệu video nào. Hãy chạy Re-Sync ở Tab 2 để tự động ghi nhận video mới!")
+        else: st.info("Chưa có dữ liệu video nào. Hãy chạy Re-Sync ở Tab 2 để tự động ghi nhận video mới!")
 
-    # --- SUBTAB 2: ĐIỀU CHỈNH ĐƠN GIÁ CÁ NHÂN TỪNG DIỄN VIÊN / TỪNG VIDEO ---
     with subtab_custom_rates:
         st.markdown("#### 💵 Bảng Điều Chỉnh Đơn Giá Cá Nhân (Theo Video & Diễn viên)")
         st.caption("Gõ đơn giá riêng cho từng người trong từng video (Ví dụ: Khánh video A 30k, video B 20k; Trúc video A 15k...):")
@@ -2035,28 +1733,20 @@ with tab_dub_tracker:
         if tracker_data:
             rate_editor_rows = []
             for v_idx, item in enumerate(tracker_data):
-                pw = item.get("project_week", "Tuần 1")
-                v_title = item['video_title']
-                v_dur = int(item.get("video_duration_min", 1))
-                v_acts = item.get("actors", "")
+                pw = item.get("project_week", "Tuần 1"); v_title = item['video_title']
+                v_dur = int(item.get("video_duration_min", 1)); v_acts = item.get("actors", "")
                 custom_rates = item.get("custom_actor_rates", {})
-                
                 acting_actors = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
                 
                 for act in acting_actors:
                     act_rate = custom_rates.get(act, current_rate)
                     rate_editor_rows.append({
-                        "v_idx": v_idx,
-                        "Tuần dự án": pw,
-                        "Tiêu đề video": v_title,
-                        "Thời lượng (Phút)": v_dur,
-                        "Diễn viên": act,
-                        "Đơn giá cá nhân (VNĐ)": int(act_rate)
+                        "v_idx": v_idx, "Tuần dự án": pw, "Tiêu đề video": v_title,
+                        "Thời lượng (Phút)": v_dur, "Diễn viên": act, "Đơn giá cá nhân (VNĐ)": int(act_rate)
                     })
 
             if rate_editor_rows:
                 df_custom_rates = pd.DataFrame(rate_editor_rows)
-                
                 edited_custom_rates_df = st.data_editor(
                     df_custom_rates[["Tuần dự án", "Tiêu đề video", "Thời lượng (Phút)", "Diễn viên", "Đơn giá cá nhân (VNĐ)"]],
                     column_config={
@@ -2066,116 +1756,76 @@ with tab_dub_tracker:
                         "Diễn viên": st.column_config.TextColumn("Diễn viên", disabled=True),
                         "Đơn giá cá nhân (VNĐ)": st.column_config.NumberColumn("Đơn giá riêng (Gõ để sửa)", format="%d", step=1000)
                     },
-                    hide_index=True,
-                    use_container_width=True,
-                    key="custom_rates_editor_table_main"
+                    hide_index=True, use_container_width=True, key="custom_rates_editor_table_main"
                 )
 
                 if st.button("💾 LƯU ĐƠN GIÁ CÁ NHÂN", type="primary", use_container_width=True):
                     for idx_r, row in edited_custom_rates_df.iterrows():
-                        v_i = df_custom_rates.iloc[idx_r]["v_idx"]
-                        act_n = df_custom_rates.iloc[idx_r]["Diễn viên"]
+                        v_i = df_custom_rates.iloc[idx_r]["v_idx"]; act_n = df_custom_rates.iloc[idx_r]["Diễn viên"]
                         new_r = float(row["Đơn giá cá nhân (VNĐ)"])
-                        
-                        if "custom_actor_rates" not in tracker_data[v_i]:
-                            tracker_data[v_i]["custom_actor_rates"] = {}
+                        if "custom_actor_rates" not in tracker_data[v_i]: tracker_data[v_i]["custom_actor_rates"] = {}
                         tracker_data[v_i]["custom_actor_rates"][act_n] = new_r
                         
                     st.session_state['dubbing_tracker'] = tracker_data
                     save_json_db(TRACKER_DB_FILE, tracker_data)
-                    st.success("✅ Đã lưu đơn giá riêng cho từng diễn viên thành công!")
-                    time.sleep(1)
-                    st.rerun()
-            else:
-                st.info("Chưa có thông tin diễn viên lồng tiếng trong danh sách video.")
-        else:
-            st.info("Chưa có danh sách video để điều chỉnh đơn giá.")
+                    st.success("✅ Đã lưu đơn giá riêng cho từng diễn viên thành công!"); time.sleep(1); st.rerun()
+            else: st.info("Chưa có thông tin diễn viên lồng tiếng trong danh sách video.")
+        else: st.info("Chưa có danh sách video để điều chỉnh đơn giá.")
 
-    # --- SUBTAB 3: BÁO CÁO LƯƠNG TỰ ĐỘNG CHỌN DIỄN VIÊN VÀ IN PHIẾU LƯƠNG CÁ NHÂN ---
     with subtab_payroll:
         st.markdown("#### Bảng Tổng kết & Báo cáo Lương Chi Tiết Từng Diễn Viên")
-        
         if tracker_data:
             col_filter1, col_filter2 = st.columns([1, 1])
-            
             all_project_weeks = sorted(list(set(item.get("project_week", "Tuần 1") for item in tracker_data)))
-            with col_filter1:
-                selected_week_filter = st.selectbox("🎯 Chọn Tuần Dự Án:", options=["TẤT CẢ CÁC TUẦN"] + all_project_weeks)
+            with col_filter1: selected_week_filter = st.selectbox("🎯 Chọn Tuần Dự Án:", options=["TẤT CẢ CÁC TUẦN"] + all_project_weeks)
 
-            if selected_week_filter == "TẤT CẢ CÁC TUẦN":
-                active_tracker_data = tracker_data
-            else:
-                active_tracker_data = [item for item in tracker_data if item.get("project_week", "Tuần 1") == selected_week_filter]
+            if selected_week_filter == "TẤT CẢ CÁC TUẦN": active_tracker_data = tracker_data
+            else: active_tracker_data = [item for item in tracker_data if item.get("project_week", "Tuần 1") == selected_week_filter]
 
             actor_weekly_map = {}
             for item in active_tracker_data:
-                v_title = item['video_title']
-                v_dur = int(item.get("video_duration_min", 1))
-                bd = item.get("actor_breakdown", {})
-                v_lines = item.get("total_lines", 0)
+                v_title = item['video_title']; v_dur = int(item.get("video_duration_min", 1))
+                bd = item.get("actor_breakdown", {}); v_lines = item.get("total_lines", 0)
                 custom_rates = item.get("custom_actor_rates", {})
-                
                 acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
 
                 for act_name_clean in acting_actors:
                     if act_name_clean not in actor_weekly_map:
                         actor_weekly_map[act_name_clean] = {
-                            "videos_count": 0,
-                            "total_video_mins": 0,
-                            "total_lines": 0,
-                            "total_words": 0,
-                            "video_rows": []
+                            "videos_count": 0, "total_video_mins": 0, "total_lines": 0, "total_words": 0, "video_rows": []
                         }
                     
                     act_rate = custom_rates.get(act_name_clean, current_rate)
                     act_lines = bd[act_name_clean]["lines"] if (bd and act_name_clean in bd) else v_lines
                     act_words = bd[act_name_clean]["words"] if (bd and act_name_clean in bd) else 0
                     
-                    if current_mode == "minute":
-                        act_pay = v_dur * act_rate
-                        dur_str = f"{v_dur} phút"
-                    elif current_mode == "line":
-                        act_pay = act_lines * act_rate
-                        dur_str = f"{act_lines} câu"
-                    else:
-                        act_pay = act_words * act_rate
-                        dur_str = f"{act_words} từ"
+                    if current_mode == "minute": act_pay = v_dur * act_rate; dur_str = f"{v_dur} phút"
+                    elif current_mode == "line": act_pay = act_lines * act_rate; dur_str = f"{act_lines} câu"
+                    else: act_pay = act_words * act_rate; dur_str = f"{act_words} từ"
 
                     actor_weekly_map[act_name_clean]["videos_count"] += 1
                     actor_weekly_map[act_name_clean]["total_video_mins"] += v_dur
                     actor_weekly_map[act_name_clean]["total_lines"] += act_lines
                     actor_weekly_map[act_name_clean]["total_words"] += act_words
-                    
                     actor_weekly_map[act_name_clean]["video_rows"].append({
                         "Stt": len(actor_weekly_map[act_name_clean]["video_rows"]) + 1,
-                        "Tiêu đề video": v_title,
-                        "Thời lượng": dur_str,
-                        "Đơn giá": f"{act_rate:,.0f} VNĐ",
-                        "Thành tiền": f"{act_pay:,.0f} VNĐ",
-                        "Pay_Num": act_pay
+                        "Tiêu đề video": v_title, "Thời lượng": dur_str,
+                        "Đơn giá": f"{act_rate:,.0f} VNĐ", "Thành tiền": f"{act_pay:,.0f} VNĐ", "Pay_Num": act_pay
                     })
 
             all_actor_names = sorted(list(actor_weekly_map.keys()))
-            
             with col_filter2:
-                selected_actor_view = st.selectbox(
-                    "👤 Chọn Diễn viên để xem & xuất Báo cáo Lương cá nhân:", 
-                    options=["TẤT CẢ DIỄN VIÊN"] + all_actor_names
-                )
+                selected_actor_view = st.selectbox("👤 Chọn Diễn viên để xem & xuất Báo cáo Lương cá nhân:", options=["TẤT CẢ DIỄN VIÊN"] + all_actor_names)
 
             st.markdown("---")
 
-            # MÀN HÌNH 1: HIỂN THỊ CHI TIẾT TỪNG DIỄN VIÊN KHI ĐƯỢC CHỌN
             if selected_actor_view != "TẤT CẢ DIỄN VIÊN":
-                a_info = actor_weekly_map[selected_actor_view]
-                a_rows = a_info["video_rows"]
+                a_info = actor_weekly_map[selected_actor_view]; a_rows = a_info["video_rows"]
                 a_tot_pay = sum(r["Pay_Num"] for r in a_rows)
-                
                 st.subheader(f"👤 PHIẾU BÁO CÁO THÙ LAO: {selected_actor_view}")
                 st.caption(f"Dữ liệu thù lao lồng tiếng cho {selected_actor_view} ({selected_week_filter})")
                 
                 df_single_actor = pd.DataFrame(a_rows)[["Stt", "Tiêu đề video", "Thời lượng", "Đơn giá", "Thành tiền"]]
-                
                 st.dataframe(df_single_actor, hide_index=True, use_container_width=True)
                 st.metric(f"💰 TỔNG THÙ LAO DỰ KIẾN TRẢ CHO {selected_actor_view}:", f"{a_tot_pay:,.0f} VNĐ")
                 
@@ -2184,95 +1834,63 @@ with tab_dub_tracker:
                     actor_docx_buf = generate_actor_salary_slip_docx(selected_actor_view, selected_week_filter, a_rows, a_tot_pay, current_mode)
                     st.download_button(
                         label=f"🖨️ IN / TẢI PHIẾU LƯƠNG WORD CỦA {selected_actor_view} (.DOCX)",
-                        data=actor_docx_buf,
-                        file_name=f"PhieuLuong_{selected_actor_view}_{selected_week_filter}.docx",
+                        data=actor_docx_buf, file_name=f"PhieuLuong_{selected_actor_view}_{selected_week_filter}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        type="primary",
-                        use_container_width=True
+                        type="primary", use_container_width=True
                     )
                 with col_p_btn2:
                     excel_single_buf = io.BytesIO()
-                    with pd.ExcelWriter(excel_single_buf, engine='openpyxl') as writer:
-                        df_single_actor.to_excel(writer, index=False, sheet_name="Phieu Luong")
+                    with pd.ExcelWriter(excel_single_buf, engine='openpyxl') as writer: df_single_actor.to_excel(writer, index=False, sheet_name="Phieu Luong")
                     excel_single_buf.seek(0)
-                    
                     st.download_button(
                         label=f"📊 TẢI PHIẾU LƯƠNG CÁ NHÂN EXCEL (.XLSX)",
-                        data=excel_single_buf,
-                        file_name=f"PhieuLuong_{selected_actor_view}_{selected_week_filter}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
+                        data=excel_single_buf, file_name=f"PhieuLuong_{selected_actor_view}_{selected_week_filter}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
                     )
-
-            # MÀN HÌNH 2: HIỂN THỊ TỔNG HỢP TẤT CẢ DIỄN VIÊN
             else:
-                actor_payroll_rows = []
-                grand_actor_pay = 0
-                
-                unique_video_titles = set()
-                grand_unique_mins = 0
+                actor_payroll_rows = []; grand_actor_pay = 0; unique_video_titles = set(); grand_unique_mins = 0
                 for item in active_tracker_data:
                     if item['video_title'] not in unique_video_titles:
                         unique_video_titles.add(item['video_title'])
                         grand_unique_mins += int(item.get("video_duration_min", 1))
 
                 for idx, (act_name, info) in enumerate(sorted(actor_weekly_map.items()), 1):
-                    if current_mode == "minute":
-                        unit_cnt = info["total_video_mins"]
-                        dur_disp = f"{unit_cnt} phút"
-                    elif current_mode == "line":
-                        unit_cnt = info["total_lines"]
-                        dur_disp = f"{unit_cnt} câu"
-                    else:
-                        unit_cnt = info["total_words"]
-                        dur_disp = f"{unit_cnt} từ"
+                    if current_mode == "minute": unit_cnt = info["total_video_mins"]; dur_disp = f"{unit_cnt} phút"
+                    elif current_mode == "line": unit_cnt = info["total_lines"]; dur_disp = f"{unit_cnt} câu"
+                    else: unit_cnt = info["total_words"]; dur_disp = f"{unit_cnt} từ"
 
                     tot_p = sum(r["Pay_Num"] for r in info["video_rows"])
                     grand_actor_pay += tot_p
 
                     actor_payroll_rows.append({
-                        "Stt": idx,
-                        "Diễn viên Lồng tiếng": act_name,
-                        "Số Video đã lồng": info["videos_count"],
-                        "Tổng phút video": dur_disp,
-                        "Thành tiền Lương": f"{tot_p:,.0f} VNĐ",
+                        "Stt": idx, "Diễn viên Lồng tiếng": act_name, "Số Video đã lồng": info["videos_count"],
+                        "Tổng phút video": dur_disp, "Thành tiền Lương": f"{tot_p:,.0f} VNĐ",
                         "Danh sách Video tham gia": ", ".join([r["Tiêu đề video"] for r in info["video_rows"]])
                     })
 
                 actor_payroll_rows.append({
-                    "Stt": "TỔNG",
-                    "Diễn viên Lồng tiếng": f"TỔNG CỘNG ({len(actor_weekly_map)} Diễn viên)",
-                    "Số Video đã lồng": "-",
-                    "Tổng phút video": f"{grand_unique_mins} phút" if current_mode == "minute" else "-",
-                    "Thành tiền Lương": f"{grand_actor_pay:,.0f} VNĐ",
-                    "Danh sách Video tham gia": "-"
+                    "Stt": "TỔNG", "Diễn viên Lồng tiếng": f"TỔNG CỘNG ({len(actor_weekly_map)} Diễn viên)",
+                    "Số Video đã lồng": "-", "Tổng phút video": f"{grand_unique_mins} phút" if current_mode == "minute" else "-",
+                    "Thành tiền Lương": f"{grand_actor_pay:,.0f} VNĐ", "Danh sách Video tham gia": "-"
                 })
 
                 df_act_payroll = pd.DataFrame(actor_payroll_rows)
-
                 st.metric(f"💰 TỔNG LƯƠNG CẦN CHI CHO DIỄN VIÊN ({selected_week_filter}):", f"{grand_actor_pay:,.0f} VNĐ")
-
                 st.dataframe(
                     df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Tổng phút video", "Thành tiền Lương", "Danh sách Video tham gia"]],
-                    hide_index=True,
-                    use_container_width=True
+                    hide_index=True, use_container_width=True
                 )
 
                 excel_actor_buf = io.BytesIO()
-                with pd.ExcelWriter(excel_actor_buf, engine='openpyxl') as writer:
-                    df_act_payroll.to_excel(writer, index=False, sheet_name="Luong Dien Vien")
+                with pd.ExcelWriter(excel_actor_buf, engine='openpyxl') as writer: df_act_payroll.to_excel(writer, index=False, sheet_name="Luong Dien Vien")
                 excel_actor_buf.seek(0)
-
                 st.download_button(
                     label=f"📊 TẢI BÁO CÁO LƯƠNG TOÀN BỘ DIỄN VIÊN ({selected_week_filter}) EXCEL (.XLSX)",
-                    data=excel_actor_buf,
-                    file_name=f"Bao_Cao_Luong_DienVien_{selected_week_filter}.xlsx",
+                    data=excel_actor_buf, file_name=f"Bao_Cao_Luong_DienVien_{selected_week_filter}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
+                    type="primary", use_container_width=True
                 )
-        else:
-            st.info("Chưa có dữ liệu lồng tiếng để lập báo cáo lương.")
+        else: st.info("Chưa có dữ liệu lồng tiếng để lập báo cáo lương.")
 
 # ==========================================
 # TAB 4: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
@@ -2284,49 +1902,32 @@ with tab_cast_db:
 
         st.markdown("#### ➕ Thêm / Cập nhật Phân vai mới")
         c_c1, c_c2, c_c3 = st.columns([2, 2, 1.2])
-        with c_c1:
-            add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state['cast_input_key']}")
-        with c_c2:
-            add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: TRÚC, THIỆN...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
+        with c_c1: add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state['cast_input_key']}")
+        with c_c2: add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: TRÚC, THIỆN...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
         with c_c3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast"):
                 if add_role_eng and add_actor_vn:
-                    k = add_role_eng.upper().strip()
-                    v = add_actor_vn.strip().upper()
+                    k = add_role_eng.upper().strip(); v = add_actor_vn.strip().upper()
                     st.session_state['custom_cast_mapping'][k] = v
                     save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
                     st.session_state['cast_input_key'] += 1
-                    st.success(f"✅ Đã gán thành công: `{add_role_eng}` ➔ `{add_actor_vn}`")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.warning("Vui lòng nhập đầy đủ tên nhân vật và diễn viên!")
+                    st.success(f"✅ Đã gán thành công: `{add_role_eng}` ➔ `{add_actor_vn}`"); time.sleep(1); st.rerun()
+                else: st.warning("Vui lòng nhập đầy đủ tên nhân vật và diễn viên!")
 
     st.markdown("---")
     with st.container(border=True):
         st.markdown("#### 📑 Danh sách Toàn bộ Bảng Phân Vai Đã Lưu")
-
         search_cast_query = st.text_input("🔍 Tìm kiếm Nhân vật hoặc Diễn viên lồng tiếng:", placeholder="Gõ tên nhân vật hoặc diễn viên...").strip().upper()
-
         all_cast_dict = st.session_state['custom_cast_mapping']
 
-        if search_cast_query:
-            filtered_cast = {
-                k: v for k, v in all_cast_dict.items()
-                if search_cast_query in k or search_cast_query in v.upper()
-            }
-        else:
-            filtered_cast = all_cast_dict
+        if search_cast_query: filtered_cast = {k: v for k, v in all_cast_dict.items() if search_cast_query in k or search_cast_query in v.upper()}
+        else: filtered_cast = all_cast_dict
 
         if filtered_cast:
             cast_db_table = []
             for eng_role, vn_actor in sorted(filtered_cast.items()):
-                cast_db_table.append({
-                    "Nhân vật (Tiếng Anh)": eng_role,
-                    "Diễn viên Lồng tiếng (Tiếng Việt)": vn_actor,
-                    "Xóa khỏi Database": False
-                })
+                cast_db_table.append({"Nhân vật (Tiếng Anh)": eng_role, "Diễn viên Lồng tiếng (Tiếng Việt)": vn_actor, "Xóa khỏi Database": False})
 
             df_cast_db = pd.DataFrame(cast_db_table)
             st.caption(f"Đang hiển thị **{len(df_cast_db)}** vai lồng tiếng trong kho:")
@@ -2338,39 +1939,27 @@ with tab_cast_db:
                     "Diễn viên Lồng tiếng (Tiếng Việt)": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
                     "Xóa khỏi Database": st.column_config.CheckboxColumn("Xóa?")
                 },
-                disabled=["Nhân vật (Tiếng Anh)"],
-                hide_index=True,
-                use_container_width=True,
-                key="global_cast_db_editor"
+                disabled=["Nhân vật (Tiếng Anh)"], hide_index=True, use_container_width=True, key="global_cast_db_editor"
             )
 
             if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT PHÂN VAI", type="primary", use_container_width=True, key="btn_save_global_cast"):
-                new_cast_db = {}
-                deleted_cast_count = 0
-
+                new_cast_db = {}; deleted_cast_count = 0
                 if search_cast_query:
                     for k, v in all_cast_dict.items():
-                        if k not in filtered_cast:
-                            new_cast_db[k] = v
+                        if k not in filtered_cast: new_cast_db[k] = v
 
                 for _, row in edited_cast_db_df.iterrows():
                     eng_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
                     act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
                     is_del = row["Xóa khỏi Database"]
-
-                    if is_del:
-                        deleted_cast_count += 1
+                    if is_del: deleted_cast_count += 1
                     else:
-                        if act_v:
-                            new_cast_db[eng_k] = act_v
+                        if act_v: new_cast_db[eng_k] = act_v
 
                 st.session_state['custom_cast_mapping'] = new_cast_db
                 save_json_db(CAST_DB_FILE, new_cast_db)
-                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)")
-                time.sleep(1)
-                st.rerun()
-        else:
-            st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
+                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
+        else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
 # TAB 5: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
@@ -2382,10 +1971,8 @@ with tab_phonetic_db:
         
         st.markdown("#### 🔊 Nghe phát âm thử bất kỳ cụm từ/từ Tiếng Anh nào")
         col_test1, col_test2, col_test3 = st.columns([2.5, 1.5, 1.5])
-        with col_test1:
-            free_test_word = st.text_input("Nhập từ/cụm Tiếng Anh cần nghe thử:", placeholder="VD: Starbucks, Hamburger, McDonald's...", key="free_audio_text")
-        with col_test2:
-            free_accent = st.radio("Giọng phát âm:", options=["Giọng Mỹ (US)", "Giọng Anh (UK)"], horizontal=True, key="free_audio_accent")
+        with col_test1: free_test_word = st.text_input("Nhập từ/cụm Tiếng Anh cần nghe thử:", placeholder="VD: Starbucks, Hamburger, McDonald's...", key="free_audio_text")
+        with col_test2: free_accent = st.radio("Giọng phát âm:", options=["Giọng Mỹ (US)", "Giọng Anh (UK)"], horizontal=True, key="free_audio_accent")
         with col_test3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             free_listen_btn = st.button("🔊 Phát âm thanh", type="secondary", use_container_width=True, key="btn_free_listen")
@@ -2393,59 +1980,39 @@ with tab_phonetic_db:
         if free_listen_btn and free_test_word:
             tld = 'com' if "Mỹ" in free_accent else 'co.uk'
             test_fp = generate_english_audio(free_test_word, accent=tld)
-            if test_fp:
-                st.audio(test_fp, format="audio/mp3", autoplay=True)
+            if test_fp: st.audio(test_fp, format="audio/mp3", autoplay=True)
 
         st.markdown("---")
-
         st.markdown("#### ➕ Bổ sung từ phiên âm mới vào Kho")
         c1, c2, c3 = st.columns([2, 2, 1.2])
-        with c1:
-            tab_add_eng = st.text_input("Từ Tiếng Anh gốc:", placeholder="VD: Burger", key=f"tab_add_eng_{st.session_state['pho_input_key']}")
-        with c2:
-            tab_add_pho = st.text_input("Phiên âm giọng Nam:", placeholder="VD: Bơ-gơ", key=f"tab_add_pho_{st.session_state['pho_input_key']}")
+        with c1: tab_add_eng = st.text_input("Từ Tiếng Anh gốc:", placeholder="VD: Burger", key=f"tab_add_eng_{st.session_state['pho_input_key']}")
+        with c2: tab_add_pho = st.text_input("Phiên âm giọng Nam:", placeholder="VD: Bơ-gơ", key=f"tab_add_pho_{st.session_state['pho_input_key']}")
         with c3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if st.button("➕ Thêm vào Database", use_container_width=True, type="primary"):
                 if tab_add_eng and tab_add_pho:
-                    k = tab_add_eng.upper().strip()
-                    v = tab_add_pho.strip()
+                    k = tab_add_eng.upper().strip(); v = tab_add_pho.strip()
                     st.session_state['custom_phonetics'][k] = v
                     save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
                     st.session_state['pho_input_key'] += 1
-                    st.success(f"✅ Đã thêm thành công: `{tab_add_eng}` ➔ `{tab_add_pho}`")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.warning("Vui lòng điền đủ 2 ô!")
+                    st.success(f"✅ Đã thêm thành công: `{tab_add_eng}` ➔ `{tab_add_pho}`"); time.sleep(1); st.rerun()
+                else: st.warning("Vui lòng điền đủ 2 ô!")
 
     st.markdown("---")
     with st.container(border=True):
         st.markdown("#### 📑 Danh sách toàn bộ Từ phiên âm đã lưu")
-
         search_query = st.text_input("🔍 Tìm kiếm từ Tiếng Anh hoặc Từ phiên âm:", placeholder="Gõ từ cần tìm ở đây...").strip().upper()
-
         all_phonetics_dict = st.session_state['custom_phonetics']
         
-        if search_query:
-            filtered_dict = {
-                k: v for k, v in all_phonetics_dict.items() 
-                if search_query in k or search_query in v.upper()
-            }
-        else:
-            filtered_dict = all_phonetics_dict
+        if search_query: filtered_dict = {k: v for k, v in all_phonetics_dict.items() if search_query in k or search_query in v.upper()}
+        else: filtered_dict = all_phonetics_dict
 
         if filtered_dict:
             db_table_data = []
             for eng_key, pho_val in sorted(filtered_dict.items()):
-                db_table_data.append({
-                    "Từ Tiếng Anh": eng_key,
-                    "Phiên âm giọng Nam": pho_val,
-                    "Xóa khỏi Database": False
-                })
+                db_table_data.append({"Từ Tiếng Anh": eng_key, "Phiên âm giọng Nam": pho_val, "Xóa khỏi Database": False})
 
             df_db = pd.DataFrame(db_table_data)
-
             st.caption(f"Đang hiển thị **{len(df_db)}** từ phiên âm trong hệ thống:")
 
             edited_db_df = st.data_editor(
@@ -2455,41 +2022,28 @@ with tab_phonetic_db:
                     "Phiên âm giọng Nam": st.column_config.TextColumn("Phiên âm giọng Nam (Sửa trực tiếp tại đây)"),
                     "Xóa khỏi Database": st.column_config.CheckboxColumn("Xóa?")
                 },
-                disabled=["Từ Tiếng Anh"],
-                hide_index=True,
-                use_container_width=True,
-                key="global_phonetic_db_editor"
+                disabled=["Từ Tiếng Anh"], hide_index=True, use_container_width=True, key="global_phonetic_db_editor"
             )
 
             if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT TRONG BẢNG", type="primary", use_container_width=True):
-                new_db = {}
-                deleted_count = 0
-                
+                new_db = {}; deleted_count = 0
                 if search_query:
                     for k, v in all_phonetics_dict.items():
-                        if k not in filtered_dict:
-                            new_db[k] = v
+                        if k not in filtered_dict: new_db[k] = v
 
                 for _, row in edited_db_df.iterrows():
-                    eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
-                    pho_v = str(row["Phiên âm giọng Nam"]).strip()
+                    eng_k = str(row["Từ Tiếng Anh"]).upper().strip(); pho_v = str(row["Phiên âm giọng Nam"]).strip()
                     is_delete = row["Xóa khỏi Database"]
-                    
-                    if is_delete:
-                        deleted_count += 1
+                    if is_delete: deleted_count += 1
                     else:
-                        if pho_v:
-                            new_db[eng_k] = pho_v
+                        if pho_v: new_db[eng_k] = pho_v
 
                 st.session_state['custom_phonetics'] = new_db
                 save_json_db(PHONETIC_DB_FILE, new_db)
-                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_count} từ)")
-                time.sleep(1)
-                st.rerun()
-        else:
-            st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
+                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_count} từ)"); time.sleep(1); st.rerun()
+        else: st.info("Không tìm thấy từ phiên âm nào khớp với từ khóa tìm kiếm.")
 
-# --- FOOTER SAAS TÙY CHỈNH ---
+# --- FOOTER ---
 st.markdown("""
 <div class="saas-footer">
     ScriptPro Enterprise Edition • Designed for Mai Han Team
