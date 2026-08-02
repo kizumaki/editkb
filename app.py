@@ -371,6 +371,25 @@ ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 
 RED_COLOR = RGBColor(255, 0, 0) # Màu đỏ chuẩn cho Tên Diễn Viên Lồng Tiếng
 
+# --- HÀM HỖ TRỢ XUẤT FILE PHỤ ĐỀ ASS / SRT ---
+def srt_timecode_to_ass(timecode_line):
+    m = re.match(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s+-->\s+(\d{2}):(\d{2}):(\d{2}),(\d{3})", timecode_line.strip())
+    if not m:
+        return None, None
+    h1, m1, s1, ms1, h2, m2, s2, ms2 = m.groups()
+    ass_start = f"{int(h1)}:{m1}:{s1}.{int(ms1)//10:02d}"
+    ass_end = f"{int(h2)}:{m2}:{s2}.{int(ms2)//10:02d}"
+    return ass_start, ass_end
+
+def rgb_to_ass_hex(rgb_obj):
+    if not rgb_obj:
+        return "&H00FFFFFF&"
+    try:
+        r, g, b = rgb_obj[0], rgb_obj[1], rgb_obj[2]
+        return f"&H00{b:02X}{g:02X}{r:02X}&"
+    except Exception:
+        return "&H00FFFFFF&"
+
 def build_speaker_regex(custom_speakers):
     base_pattern = r"[\w\s&\.\-\(\)]+"
     if custom_speakers:
@@ -630,6 +649,44 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     else:
         add_text_run_with_html(paragraph, current_text)
 
+def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
+    # Dọn dẹp tab rác
+    text = re.sub(r'\t+', ' ', text).strip()
+    
+    # 1. Chuyển đổi thẻ HTML thành ASS Override Tags
+    ass_text = re.sub(r'</?[bB]>', '', text)
+    ass_text = re.sub(r'<i>', r'{\\i1}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'</i>', r'{\\i0}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'<u>', r'{\\u1}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'</u>', r'{\\u0}', ass_text, flags=re.IGNORECASE)
+    
+    # 2. Xử lý Phiên âm Tiếng Anh trong ASS
+    phonetic_db = st.session_state['custom_phonetics']
+    if enable_phonetic:
+        sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
+        if sorted_eng_keys:
+            pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+            eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
+            
+            def replace_eng(m):
+                orig = m.group(0)
+                pho = phonetic_db.get(orig.upper(), orig)
+                # Màu vàng cho Phiên âm trong ASS: &H00FFFF&
+                return f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
+                
+            ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
+
+    # 3. Tạo Tiền tố Người nói trong ASS
+    spk_hex = rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&"
+    prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
+    
+    if enable_cast and is_first_time and actor_name:
+        # Màu đỏ cho Diễn viên trong ASS: &H0000FF&
+        prefix_ass += f"{{\\c&H0000FF&}}{{\\b1}} {actor_name}{{\\b0}}"
+        
+    full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
+    return full_ass_line
+
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
     parts = speaker_regex.split(text)
@@ -646,9 +703,10 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         new_paragraph.paragraph_format.space_before = Pt(0)
         new_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
-        return
+        return None, text
 
     last_processed_index = 0
+    ass_line_result = ""
     
     for i, match in enumerate(speaker_matches):
         speaker_name = match.group(1).strip()
@@ -675,7 +733,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
             continuation_paragraph.paragraph_format.space_before = Pt(0)
             continuation_paragraph.paragraph_format.space_after = Pt(0)
             apply_html_and_phonetic_to_paragraph(continuation_paragraph, content_block, enable_phonetic)
-            return
+            return None, content_block
 
         stats_counter[speaker_name] += 1
 
@@ -702,10 +760,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if enable_colors:
             run_speaker.font.color.rgb = spk_color
             
+        is_first_time = False
         prefix_len = len(spk_text)
         if enable_cast:
             if speaker_name not in seen_speakers_first_time:
                 seen_speakers_first_time.add(speaker_name)
+                is_first_time = True
                 if actor_name:
                     run_actor = new_paragraph.add_run(f" {actor_name}")
                     run_actor.font.bold = True
@@ -720,6 +780,9 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
         new_paragraph.paragraph_format.space_before = Pt(0)
         new_paragraph.paragraph_format.space_after = Pt(0)
+        
+        # Định dạng dòng chữ cho ASS
+        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
         last_processed_index = next_match_start
     
     remaining_content = re.sub(r'^\s*[\t\s]+', '', text[last_processed_index:]).strip()
@@ -733,7 +796,9 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         continuation_paragraph.paragraph_format.space_after = Pt(0)
         apply_html_and_phonetic_to_paragraph(continuation_paragraph, remaining_content, enable_phonetic)
 
-# --- MAIN PROCESSING & RE-SYNC ---
+    return ass_line_result, text
+
+# --- MAIN PROCESSING & RE-SYNC (XUẤT ĐỒNG THỜI DOCX, ASS, SRT) ---
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False):
     speaker_color_map = {}
     used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
@@ -816,6 +881,11 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     progress_bar = st.progress(0)
     status_text = st.empty()
     
+    ass_dialogues = []
+    srt_dialogues = []
+    current_timecode_line = None
+    srt_counter = 1
+
     for idx, text in enumerate(processed_strings):
         if idx % max(1, total_paras // 10) == 0:
             progress = int((idx / total_paras) * 100)
@@ -826,6 +896,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
         if TIMECODE_REGEX.match(text):
+            current_timecode_line = text
             new_paragraph = document.add_paragraph(text)
             new_paragraph.runs[0].font.bold = True
             new_paragraph.runs[0].font.name = 'Times New Roman'
@@ -834,8 +905,19 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             new_paragraph.paragraph_format.space_after = Pt(0)
         else:
             cleaned_text = normalize_phonetics_in_text(text) if is_resync else text
-            format_and_split_dialogue(document, cleaned_text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time)
+            ass_formatted_line, plain_text_line = format_and_split_dialogue(
+                document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
+                speaker_color_map, used_colors, stats_counter, speaker_regex, seen_speakers_first_time
+            )
             
+            # Ghi nhận vào danh sách Phụ đề ASS & SRT
+            if current_timecode_line and ass_formatted_line:
+                start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
+                if start_ass and end_ass:
+                    ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{ass_formatted_line}")
+                    srt_dialogues.append(f"{srt_counter}\n{current_timecode_line}\n{re.sub(r'{\\.*?}', '', ass_formatted_line)}\n")
+                    srt_counter += 1
+
     progress_bar.progress(100)
     status_text.text("Xử lý hoàn tất!")
     time.sleep(0.5)
@@ -851,9 +933,34 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             if run.font.size is None:
                 run.font.size = Pt(12)
         
-    modified_file = io.BytesIO()
-    document.save(modified_file)
-    modified_file.seek(0)
+    # 1. File Word
+    docx_file = io.BytesIO()
+    document.save(docx_file)
+    docx_file.seek(0)
+    
+    # 2. File Phụ đề Cao cấp ASS
+    ass_header = f"""[Script Info]
+Title: {title_text}
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: None
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Times New Roman,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,30,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    ass_content = ass_header + "\n".join(ass_dialogues)
+    ass_file = io.BytesIO(ass_content.encode('utf-8'))
+    
+    # 3. File Phụ đề Standard SRT
+    srt_content = "\n".join(srt_dialogues)
+    srt_file = io.BytesIO(srt_content.encode('utf-8'))
     
     stats = {
         "total_speakers": len(unique_speakers),
@@ -863,12 +970,12 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         "video_title": title_text
     }
     
-    return modified_file, stats
+    return docx_file, ass_file, srt_file, stats
 
-def clean_file_name_for_output(original_filename, tag="_edit"):
+def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
     name_without_ext = os.path.splitext(original_filename)[0]
     cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$|_final$)', '', name_without_ext, flags=re.IGNORECASE).strip()
-    return f"{cleaned}{tag}.docx"
+    return f"{cleaned}{tag}{ext}"
 
 # --- SIDEBAR (THANH ĐIỀU HƯỚNG SAAS) ---
 st.sidebar.markdown("### ⚡ Control Panel")
@@ -1145,26 +1252,49 @@ with tab_script:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
                 try:
-                    modified_file_io, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False)
-                    new_filename = clean_file_name_for_output(original_filename, tag="_edit")
+                    modified_docx, ass_f, srt_f, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False)
                     
-                    st.session_state['processed_file'] = modified_file_io
-                    st.session_state['new_filename'] = new_filename
+                    st.session_state['processed_docx'] = modified_docx
+                    st.session_state['processed_ass'] = ass_f
+                    st.session_state['processed_srt'] = srt_f
+                    st.session_state['docx_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".docx")
+                    st.session_state['ass_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".ass")
+                    st.session_state['srt_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".srt")
                     st.session_state['stats'] = stats
                     
                 except Exception as e:
                     st.error(f"Đã có lỗi xảy ra: {e}")
 
-            if 'processed_file' in st.session_state:
+            if 'processed_docx' in st.session_state:
                 st.markdown("---")
-                st.download_button(
-                    label="⬇️ 3. TẢI FILE KỊCH BẢN ĐÃ CHUẨN HÓA (.DOCX)",
-                    data=st.session_state['processed_file'],
-                    file_name=st.session_state['new_filename'],
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    type="primary",
-                    use_container_width=True
-                )
+                st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE ĐÃ XỬ LÝ HOÀN HẢO")
+                
+                col_dl1, col_dl2, col_dl3 = st.columns(3)
+                with col_dl1:
+                    st.download_button(
+                        label="📄 FILE WORD KỊCH BẢN (.DOCX)",
+                        data=st.session_state['processed_docx'],
+                        file_name=st.session_state['docx_name'],
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        type="primary",
+                        use_container_width=True
+                    )
+                with col_dl2:
+                    st.download_button(
+                        label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)",
+                        data=st.session_state['processed_ass'],
+                        file_name=st.session_state['ass_name'],
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+                with col_dl3:
+                    st.download_button(
+                        label="📝 PHỤ ĐỀ CHUẨN (.SRT)",
+                        data=st.session_state['processed_srt'],
+                        file_name=st.session_state['srt_name'],
+                        mime="text/plain",
+                        use_container_width=True
+                    )
                 st.balloons()
 
     with col2:
@@ -1213,11 +1343,14 @@ with tab_resync:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
-                    r_file_io, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
-                    r_new_filename = clean_file_name_for_output(r_filename, tag="_final")
+                    r_docx, r_ass, r_srt, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True)
                     
-                    st.session_state['resync_processed_file'] = r_file_io
-                    st.session_state['resync_new_filename'] = r_new_filename
+                    st.session_state['r_processed_docx'] = r_docx
+                    st.session_state['r_processed_ass'] = r_ass
+                    st.session_state['r_processed_srt'] = r_srt
+                    st.session_state['r_docx_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".docx")
+                    st.session_state['r_ass_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".ass")
+                    st.session_state['r_srt_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".srt")
                     st.session_state['resync_stats'] = r_stats
                     
                     # CẬP NHẬT TỰ ĐỘNG SANG TAB "THEO DÕI LỒNG TIẾNG"
@@ -1242,17 +1375,39 @@ with tab_resync:
                 except Exception as e:
                     st.error(f"Lỗi xảy ra khi Re-Sync: {e}")
                     
-            if 'resync_processed_file' in st.session_state:
+            if 'r_processed_docx' in st.session_state:
                 st.markdown("---")
-                st.download_button(
-                    label="⬇️ 3. TẢI FILE KỊCH BẢN ĐÃ CHUẨN HÓA HOÀN HẢO (.DOCX)",
-                    data=st.session_state['resync_processed_file'],
-                    file_name=st.session_state['resync_new_filename'],
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    type="primary",
-                    use_container_width=True,
-                    key="btn_resync_download"
-                )
+                st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE CHUẨN HOÀN HẢO (FINAL)")
+                
+                col_rdl1, col_rdl2, col_rdl3 = st.columns(3)
+                with col_rdl1:
+                    st.download_button(
+                        label="📄 FILE WORD KỊCH BẢN (.DOCX)",
+                        data=st.session_state['r_processed_docx'],
+                        file_name=st.session_state['r_docx_name'],
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        type="primary",
+                        use_container_width=True,
+                        key="btn_resync_dl_docx"
+                    )
+                with col_rdl2:
+                    st.download_button(
+                        label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)",
+                        data=st.session_state['r_processed_ass'],
+                        file_name=st.session_state['r_ass_name'],
+                        mime="text/plain",
+                        use_container_width=True,
+                        key="btn_resync_dl_ass"
+                    )
+                with col_rdl3:
+                    st.download_button(
+                        label="📝 PHỤ ĐỀ CHUẨN (.SRT)",
+                        data=st.session_state['r_processed_srt'],
+                        file_name=st.session_state['r_srt_name'],
+                        mime="text/plain",
+                        use_container_width=True,
+                        key="btn_resync_dl_srt"
+                    )
                 st.balloons()
         else:
             st.info("📌 **Hãy tải file kịch bản đã qua chỉnh sửa thủ công để hệ thống phục hồi lại định dạng chuẩn.**")
@@ -1343,7 +1498,6 @@ with tab_dub_tracker:
                     st.rerun()
 
             with col_tr2:
-                # Nút Xuất file Excel cho Team
                 buffer_excel = io.BytesIO()
                 with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
                     export_df = df_tracker[["STT", "Tiêu đề video", "Diễn viên lồng tiếng"]]
