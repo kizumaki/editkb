@@ -3,13 +3,17 @@ import io
 import os
 import pandas as pd
 
-# Import các hàm dùng chung từ utils.py
+# 1. Import các hàm dùng chung từ utils.py
 from utils import (
     load_json_db, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, 
     PHONETIC_DB_FILE, CAST_DB_FILE, TRACKER_DB_FILE, RATES_DB_FILE, 
     PRONOUN_REL_DB_FILE, SPEAKER_COLOR_DB_FILE, DEFAULT_CAST_MAPPING, 
     DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS
 )
+
+# 2. Import các giao diện Tab đã tách file
+from tab1_script import render_tab1
+from tab2_resync import render_tab2
 
 # ==========================================
 # 1. CẤU HÌNH TRANG CHỦ STREAMLIT
@@ -103,7 +107,30 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
+# Gọi hàm hiển thị giao diện của từng Tab
 with tab1:
-    st.info("Đang kết nối Tab 1...")
+    render_tab1(enable_colors, enable_phonetic, enable_cast)
 
-# Các Tab tiếp theo sẽ được gọi từ các file tương ứng ở bước sau!
+with tab2:
+    render_tab2(enable_colors, enable_phonetic, enable_cast)
+
+with tab3:
+    st.info("📌 Tab 3 (Theo dõi & Báo cáo Lương) đang chờ nạp file...")
+
+with tab4:
+    st.info("📌 Tab 4 (Bảng Phân Vai Lồng Tiếng) đang chờ nạp file...")
+
+with tab5:
+    st.info("📌 Tab 5 (Kho Database Phiên Âm Giọng Nam) đang chờ nạp file...")
+
+with tab6:
+    st.info("📌 Tab 6 (Đối Chiếu 2 File Tiếng Anh) đang chờ nạp file...")
+
+with tab7:
+    st.info("📌 Tab 7 (Soát Bất Nhất Thuật Ngữ & Xưng Hô) đang chờ nạp file...")
+
+with tab8:
+    st.info("📌 Tab 8 (Dọn Dẹp & Chuẩn Hóa Phụ Đề) đang chờ nạp file...")
+
+with tab9:
+    st.info("📌 Tab 9 (Bộ Công Cụ Chuyển Đổi) đang chờ nạp file...")
