@@ -8,8 +8,8 @@ import pandas as pd
 from utils import (
     load_json_db, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, 
     PHONETIC_DB_FILE, CAST_DB_FILE, TRACKER_DB_FILE, RATES_DB_FILE, 
-    PRONOUN_REL_DB_FILE, DEFAULT_CAST_MAPPING, DEFAULT_FIXED_SPEAKER_COLORS, 
-    DEFAULT_SOUTH_VIETNAM_PHONETICS, extract_phrases_from_file
+    PRONOUN_REL_DB_FILE, SPEAKER_COLOR_DB_FILE, DEFAULT_CAST_MAPPING, 
+    DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS, extract_phrases_from_file
 )
 
 from tab1_script import render_tab1
@@ -42,6 +42,7 @@ if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
 if 'cast_input_key' not in st.session_state: st.session_state['cast_input_key'] = 0
 if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_key'] = 0
+if 'color_input_key' not in st.session_state: st.session_state['color_input_key'] = 0
 if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
 if 'custom_non_speakers' not in st.session_state: st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
@@ -54,6 +55,17 @@ if 'custom_phonetics' not in st.session_state:
 if 'custom_cast_mapping' not in st.session_state:
     loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
     st.session_state['custom_cast_mapping'] = {**DEFAULT_CAST_MAPPING, **loaded_cast}
+
+if 'fixed_speaker_colors' not in st.session_state:
+    st.session_state['fixed_speaker_colors'] = load_json_db(SPEAKER_COLOR_DB_FILE, DEFAULT_FIXED_SPEAKER_COLORS)
+
+if 'custom_pronoun_rel' not in st.session_state:
+    default_pronouns = {
+        "TYLER|BILL": {"self": "tui", "target": "ông"},
+        "CORY|EASTON": {"self": "tui", "target": "ông"},
+        "COBY|COACH RAC": {"self": "tui", "target": "ông"}
+    }
+    st.session_state['custom_pronoun_rel'] = load_json_db(PRONOUN_REL_DB_FILE, default_pronouns)
 
 if 'dubbing_tracker' not in st.session_state: st.session_state['dubbing_tracker'] = load_json_db(TRACKER_DB_FILE, [])
 
