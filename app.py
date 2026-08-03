@@ -1,13 +1,15 @@
 import streamlit as st
 import io
 import os
+import re
+import time
 import pandas as pd
 
 from utils import (
     load_json_db, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, 
     PHONETIC_DB_FILE, CAST_DB_FILE, TRACKER_DB_FILE, RATES_DB_FILE, 
-    PRONOUN_REL_DB_FILE, SPEAKER_COLOR_DB_FILE, DEFAULT_CAST_MAPPING, 
-    DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS
+    PRONOUN_REL_DB_FILE, DEFAULT_CAST_MAPPING, DEFAULT_FIXED_SPEAKER_COLORS, 
+    DEFAULT_SOUTH_VIETNAM_PHONETICS, extract_phrases_from_file
 )
 
 from tab1_script import render_tab1
@@ -20,6 +22,9 @@ from tab7_consistency import render_tab7
 from tab8_cleaner import render_tab8
 from tab9_tools import render_tab9
 
+# ==========================================
+# 1. CẤU HÌNH TRANG CHỦ STREAMLIT
+# ==========================================
 st.set_page_config(
     page_title="ScriptPro Enterprise - Subtitle & Script Editor",
     page_icon="🎬",
@@ -27,6 +32,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ==========================================
+# 2. KHỞI TẠO SESSION STATE
+# ==========================================
 if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
 if 'resync_uploader_key' not in st.session_state: st.session_state['resync_uploader_key'] = 0
 if 'spk_input_key' not in st.session_state: st.session_state['spk_input_key'] = 0
@@ -34,7 +42,7 @@ if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
 if 'cast_input_key' not in st.session_state: st.session_state['cast_input_key'] = 0
 if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_key'] = 0
-if 'color_input_key' not in st.session_state: st.session_state['color_input_key'] = 0
+if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
 if 'custom_non_speakers' not in st.session_state: st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
 if 'custom_speakers' not in st.session_state: st.session_state['custom_speakers'] = load_json_db(SPEAKER_DB_FILE, set())
@@ -47,16 +55,22 @@ if 'custom_cast_mapping' not in st.session_state:
     loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
     st.session_state['custom_cast_mapping'] = {**DEFAULT_CAST_MAPPING, **loaded_cast}
 
-if 'fixed_speaker_colors' not in st.session_state:
-    st.session_state['fixed_speaker_colors'] = load_json_db(SPEAKER_COLOR_DB_FILE, DEFAULT_FIXED_SPEAKER_COLORS)
-
 if 'dubbing_tracker' not in st.session_state: st.session_state['dubbing_tracker'] = load_json_db(TRACKER_DB_FILE, [])
 
 if 'payroll_rates' not in st.session_state:
     st.session_state['payroll_rates'] = load_json_db(RATES_DB_FILE, {"mode": "minute", "unit_rate": 30000})
 
+# ==========================================
+# 3. UNIFIED SIDEBAR (CONTROL PANEL)
+# ==========================================
 st.sidebar.markdown("### ⚡ Control Panel")
-ui_theme_choice = st.sidebar.radio("Lựa chọn Skin hiển thị:", options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Tối ưu tương phản)"], index=0)
+
+ui_theme_choice = st.sidebar.radio(
+    "Lựa chọn Skin hiển thị:",
+    options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Tối ưu tương phản)"],
+    index=0,
+    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện truyền thống. Chế độ 'Enterprise Pro' mang lại phong cách Studio hiện đại, rõ nét và tương phản cao."
+)
 
 if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
@@ -66,20 +80,123 @@ if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, 
     st.rerun()
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("#### 🎛️ Bật/Tắt Tính năng")
 enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
-enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True)
-enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True)
+enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
+enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, help="Hiển thị thông tin diễn viên lồng tiếng ở đầu trang và lần xuất hiện đầu tiên của nhân vật")
 
-banner_html = f"""
-<div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); padding: 2rem; border-radius: 14px; color: white; margin-bottom: 1.5rem;">
-    <div style="font-size: 0.8rem; font-weight: bold; background: #0284C7; display: inline-block; padding: 3px 10px; border-radius: 4px; margin-bottom: 8px;">{ui_theme_choice}</div>
-    <div style="font-size: 2.2rem; font-weight: 800;">&#127916; ScriptPro Enterprise Studio</div>
-    <div style="font-size: 1rem; color: #94A3B8; margin-top: 4px;">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
+
+with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=False):
+    manual_spk_input = st.text_area("Nhập thủ công:", height=80, key=f"spk_manual_{st.session_state['spk_input_key']}")
+    upload_spk_file = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['spk_input_key']}")
+    
+    if st.button("Lưu Người Nói", use_container_width=True):
+        new_spks = set()
+        if manual_spk_input:
+            parts = re.split(r'[,\n]', manual_spk_input)
+            new_spks.update([p.strip() for p in parts if p.strip()])
+        if upload_spk_file:
+            new_spks.update(extract_phrases_from_file(upload_spk_file, upload_spk_file.name))
+            
+        if new_spks:
+            st.session_state['custom_speakers'].update(new_spks)
+            save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
+            st.session_state['spk_input_key'] += 1
+            st.success(f"✅ Đã lưu {len(new_spks)} người nói!"); time.sleep(1); st.rerun()
+
+with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
+    manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
+    upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
+    
+    if st.button("Lưu Từ Nhiễu", use_container_width=True):
+        new_phrases = set()
+        if manual_input:
+            parts = re.split(r'[,\n]', manual_input)
+            new_phrases.update([p.strip().upper() for p in parts if p.strip()])
+        if upload_non_speaker:
+            new_phrases.update([p.upper() for p in extract_phrases_from_file(upload_non_speaker, upload_non_speaker.name)])
+            
+        if new_phrases:
+            st.session_state['custom_non_speakers'].update(new_phrases)
+            save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
+            st.session_state['ns_input_key'] += 1
+            st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
+
+# ==========================================
+# 4. DYNAMIC CSS INJECTION THEO SKINS
+# ==========================================
+if "Enterprise Pro" in ui_theme_choice:
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: #0F172A; }
+        .hero-container {
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            padding: 2.2rem 2rem; border-radius: 14px; color: #FFFFFF; margin-bottom: 1.8rem;
+            border-left: 6px solid #38BDF8; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2);
+        }
+        .hero-title { font-size: 2.3rem; font-weight: 800; margin: 0; color: #FFFFFF; }
+        .hero-subtitle { font-size: 1.05rem; color: #94A3B8; margin-top: 0.4rem; }
+        .badge-pro {
+            background-color: #0284C7; color: #FFFFFF; padding: 4px 12px;
+            border-radius: 6px; font-size: 0.75rem; font-weight: 700;
+            text-transform: uppercase; display: inline-block; margin-bottom: 0.6rem;
+        }
+        .metric-card {
+            background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+            padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .metric-label { font-size: 0.8rem; color: #475569; font-weight: 700; text-transform: uppercase; }
+        .metric-value { font-size: 1.8rem; font-weight: 800; color: #0F172A; margin-top: 0.2rem; }
+        .qc-card-warning {
+            background-color: #FEF2F2; border-left: 5px solid #DC2626; color: #991B1B; padding: 12px 16px; border-radius: 8px; margin-bottom: 10px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        .hero-container {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            padding: 2.5rem 2rem; border-radius: 16px; color: white; margin-bottom: 2rem;
+            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
+        }
+        .hero-title { font-size: 2.4rem; font-weight: 800; margin: 0; }
+        .hero-subtitle { font-size: 1.05rem; opacity: 0.9; margin-top: 0.5rem; }
+        .badge-pro {
+            background-color: rgba(255, 255, 255, 0.2); backdrop-filter: blur(8px);
+            padding: 4px 12px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;
+            text-transform: uppercase; display: inline-block; margin-bottom: 0.8rem;
+        }
+        .metric-card {
+            background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 1.25rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        }
+        .metric-label { font-size: 0.85rem; color: #64748B; font-weight: 500; text-transform: uppercase; }
+        .metric-value { font-size: 1.8rem; font-weight: 700; color: #0F172A; margin-top: 0.25rem; }
+        .qc-card-warning { background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ==========================================
+# 5. HERO BANNER
+# ==========================================
+st.markdown(f"""
+<div class="hero-container">
+    <div class="badge-pro">{ui_theme_choice}</div>
+    <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
+    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
 </div>
-"""
-st.markdown(banner_html, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+# ==========================================
+# 6. MÀN HÌNH CHÍNH TÁCH 9 TABS
+# ==========================================
+tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_cleaner, tab_tools = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
     "📋 Theo dõi & Báo cáo Lương",
@@ -91,12 +208,14 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
-with tab1: render_tab1(enable_colors, enable_phonetic, enable_cast)
-with tab2: render_tab2(enable_colors, enable_phonetic, enable_cast)
-with tab3: render_tab3()
-with tab4: render_tab4()
-with tab5: render_tab5()
-with tab6: render_tab6(enable_colors, enable_phonetic, enable_cast)
-with tab7: render_tab7()
-with tab8: render_tab8()
-with tab9: render_tab9()
+with tab_script: render_tab1(enable_colors, enable_phonetic, enable_cast)
+with tab_resync: render_tab2(enable_colors, enable_phonetic, enable_cast)
+with tab_dub_tracker: render_tab3()
+with tab_cast_db: render_tab4()
+with tab_phonetic_db: render_tab5()
+with tab_dual_align: render_tab6(enable_colors, enable_phonetic, enable_cast)
+with tab_consistency: render_tab7()
+with tab_cleaner: render_tab8()
+with tab_tools: render_tab9()
+
+st.markdown('<div class="saas-footer">Copyright © Mai Han Team. All Rights Reserved.</div>', unsafe_allow_html=True)
