@@ -1,24 +1,13 @@
 import streamlit as st
-import io
 import time
 import pandas as pd
-from gtts import gTTS
-from utils import PHONETIC_DB_FILE, save_json_db
-
-def generate_english_audio(text_to_speak, accent='com'):
-    try:
-        tts = gTTS(text=text_to_speak, lang='en', tld=accent)
-        fp = io.BytesIO(); tts.write_to_fp(fp); fp.seek(0)
-        return fp
-    except Exception as e:
-        st.error(f"Không thể tải âm thanh: {e}")
-        return None
+from utils import PHONETIC_DB_FILE, save_json_db, generate_english_audio
 
 def render_tab5():
+    st.subheader("📚 TỪ ĐIỂN PHIÊN ÂM GIỌNG NAM (GLOBAL DATABASE)")
+    st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
+    
     with st.container(border=True):
-        st.subheader("📚 Từ Điển Phiên Âm Giọng Nam (Global Database)")
-        st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
-        
         st.markdown("#### 🔊 Nghe phát âm thử bất kỳ cụm từ/từ Tiếng Anh nào")
         col_test1, col_test2, col_test3 = st.columns([2.5, 1.5, 1.5])
         with col_test1: free_test_word = st.text_input("Nhập từ/cụm Tiếng Anh cần nghe thử:", placeholder="VD: Starbucks, Hamburger, McDonald's...", key="free_audio_text")
