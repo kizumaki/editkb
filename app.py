@@ -1490,7 +1490,6 @@ st.markdown(f"""
     <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
 </div>
 """, unsafe_allow_html=True)
-
 # --- MÀN HÌNH CHÍNH TÁCH 9 TABS ---
 tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_cleaner, tab_tools = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
