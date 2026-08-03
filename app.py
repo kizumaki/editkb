@@ -1767,20 +1767,21 @@ with tab_script:
         st.markdown("### 📊 SaaS Analytics")
         if 'stats' in st.session_state:
             stats = st.session_state['stats']
-            st.markdown(f"""
-            <div class="metric-card" style="margin-bottom: 12px;">
-                <div class="metric-label">🎭 Tổng số Nhân vật</div>
-                <div class="metric-value">{stats["total_speakers"]}</div>
-            </div>
-            <div class="metric-card" style="margin-bottom: 12px;">
-                <div class="metric-label">💬 Tổng số Câu thoại</div>
-                <div class="metric-value">{stats["total_lines"]}</div>
-            </div>
-            <div class="metric-card" style="margin-bottom: 12px;">
-                <div class="metric-label">⏱️ Độ dài Video</div>
-                <div class="metric-value">{stats["video_duration_min"]} phút</div>
-            </div>
-            """, unsafe_allow_html=True)
+    metrics_html = f"""
+        <div class="metric-card" style="margin-bottom: 12px;">
+            <div class="metric-label">&#128587; Tổng số Nhân vật</div>
+            <div class="metric-value">{stats['total_speakers']}</div>
+        </div>
+        <div class="metric-card" style="margin-bottom: 12px;">
+            <div class="metric-label">&#128172; Tổng số Câu thoại</div>
+            <div class="metric-value">{stats['total_lines']}</div>
+        </div>
+        <div class="metric-card" style="margin-bottom: 12px;">
+            <div class="metric-label">&#9201; Độ dài Video</div>
+            <div class="metric-value">{stats['video_duration_min']} phút</div>
+        </div>
+        """
+        st.markdown(metrics_html, unsafe_allow_html=True)
             top_name, top_count = stats["top_speaker"]
             st.info(f"👑 **Nhân vật thoại nhiều nhất:** \n\n**{top_name}** với {top_count} câu thoại.")
         else: st.info("Bảng phân tích dữ liệu kịch bản sẽ xuất hiện tại đây sau khi bạn xử lý file.")
