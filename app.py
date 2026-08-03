@@ -2,6 +2,8 @@ import streamlit as st
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT, WD_COLOR_INDEX
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 import io
 import os
 import re
