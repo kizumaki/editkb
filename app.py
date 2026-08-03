@@ -2,8 +2,6 @@ import streamlit as st
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT, WD_COLOR_INDEX
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
 import io
 import os
 import re
@@ -51,34 +49,33 @@ DEFAULT_CAST_MAPPING = {
     "JACKSON OLSON": "THÔNG", "DANNY": "QUANG", "KYLE": "QUANG", "BILL": "HITA", "TIM": "HITA"
 }
 
-# 🎨 BẢNG MÀU CHỮ & HIGHLIGHT CỐ ĐỊNH CHÍNH XÁC (CÓ HỖ TRỢ CẢ MÀU CHỮ LẪN HIGHLIGHT NỀN)
+# 🎨 BẢNG MÀU CỐ ĐỊNH CHÍNH XÁC TỪ FILE VAI - MAU.XLSX CỦA MAI HAN TEAM
 DEFAULT_FIXED_SPEAKER_COLORS = {
-    "ALL": {"text_color": (255, 0, 0), "highlight_color": (255, 255, 0)},
-    "BEN AZELART": {"text_color": (21, 96, 130), "highlight_color": None},
-    "BETHANY": {"text_color": (255, 192, 0), "highlight_color": None},
-    "BRI": {"text_color": (116, 166, 123), "highlight_color": None},
-    "CALEB": {"text_color": (116, 56, 25), "highlight_color": None},
-    "CHASE": {"text_color": (255, 0, 255), "highlight_color": None},
-    "CHUNKZ": {"text_color": (21, 96, 130), "highlight_color": None},
-    "COBY": {"text_color": (255, 0, 255), "highlight_color": None},
-    "CODY": {"text_color": (233, 113, 50), "highlight_color": None},
-    "CORY": {"text_color": (255, 0, 0), "highlight_color": None},
-    "DAKA": {"text_color": (110, 196, 229), "highlight_color": None},
-    "GARRETT": {"text_color": (243, 243, 243), "highlight_color": None},
-    "JOSH": {"text_color": (160, 43, 147), "highlight_color": None},
-    "KEELEY": {"text_color": (255, 192, 0), "highlight_color": None},
-    "LARRY": {"text_color": (243, 243, 243), "highlight_color": None},
-    "LOGAN": {"text_color": (216, 170, 211), "highlight_color": None},
-    "NATHAN": {"text_color": (21, 96, 130), "highlight_color": None},
-    "NICK": {"text_color": (255, 0, 0), "highlight_color": None},
-    "PRESTON": {"text_color": (255, 0, 0), "highlight_color": None},
-    "RILEY": {"text_color": (116, 166, 123), "highlight_color": None},
-    "SCOTT": {"text_color": (233, 113, 50), "highlight_color": None},
-    "SPARKY": {"text_color": (116, 56, 25), "highlight_color": None},
-    "STEPHEN": {"text_color": (0, 51, 204), "highlight_color": None},
-    "STEVEN": {"text_color": (0, 255, 255), "highlight_color": None},
-    "TYLER": {"text_color": (160, 43, 147), "highlight_color": None},
-    "YOMI": {"text_color": (0, 153, 153), "highlight_color": None}
+    "BEN AZELART": (21, 96, 130),
+    "BETHANY": (255, 192, 0),
+    "BRI": (116, 166, 123),
+    "CALEB": (116, 56, 25),
+    "CHASE": (255, 0, 255),
+    "CHUNKZ": (21, 96, 130),
+    "COBY": (255, 0, 255),
+    "CODY": (233, 113, 50),
+    "CORY": (255, 0, 0),
+    "DAKA": (110, 196, 229),
+    "GARRETT": (243, 243, 243),
+    "JOSH": (160, 43, 147),
+    "KEELEY": (255, 192, 0),
+    "LARRY": (243, 243, 243),
+    "LOGAN": (216, 170, 211),
+    "NATHAN": (21, 96, 130),
+    "NICK": (255, 0, 0),
+    "PRESTON": (255, 0, 0),
+    "RILEY": (116, 166, 123),
+    "SCOTT": (233, 113, 50),
+    "SPARKY": (116, 56, 25),
+    "STEPHEN": (0, 51, 204),
+    "STEVEN": (0, 255, 255),
+    "TYLER": (160, 43, 147),
+    "YOMI": (0, 153, 153)
 }
 
 DEFAULT_SOUTH_VIETNAM_PHONETICS = {
@@ -178,27 +175,12 @@ DEFAULT_NON_SPEAKER_PHRASES = {
 VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
 VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
 
-def normalize_speaker_color_db(db_data):
-    normalized = {}
-    if not isinstance(db_data, dict): return normalized
-    for spk, val in db_data.items():
-        spk_clean = str(spk).upper().strip()
-        if isinstance(val, (list, tuple)) and len(val) == 3:
-            normalized[spk_clean] = {"text_color": tuple(val), "highlight_color": None}
-        elif isinstance(val, dict):
-            tc = tuple(val.get("text_color")) if val.get("text_color") else None
-            hc = tuple(val.get("highlight_color")) if val.get("highlight_color") else None
-            normalized[spk_clean] = {"text_color": tc, "highlight_color": hc}
-    return normalized
-
 def load_json_db(filepath, default_data=None):
     if os.path.exists(filepath):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if filepath == SPEAKER_COLOR_DB_FILE:
-                    return normalize_speaker_color_db(data)
-                elif isinstance(data, dict) and isinstance(default_data, dict):
+                if isinstance(data, dict) and isinstance(default_data, dict):
                     res = {}
                     for k, v in data.items():
                         if isinstance(v, (list, tuple)) and len(v) == 3: res[k] = tuple(v)
@@ -216,12 +198,6 @@ def save_json_db(filepath, data_container):
                 out_dict = {}
                 for k, v in data_container.items():
                     if isinstance(v, (tuple, list)): out_dict[k] = list(v)
-                    elif isinstance(v, dict):
-                        sub_dict = {}
-                        for sub_k, sub_v in v.items():
-                            if isinstance(sub_v, (tuple, list)): sub_dict[sub_k] = list(sub_v)
-                            else: sub_dict[sub_k] = sub_v
-                        out_dict[k] = sub_dict
                     else: out_dict[k] = v
                 json.dump(out_dict, f, ensure_ascii=False, indent=2)
             else: json.dump(data_container, f, ensure_ascii=False, indent=2)
@@ -253,7 +229,7 @@ if 'custom_cast_mapping' not in st.session_state:
 
 if 'fixed_speaker_colors' not in st.session_state:
     loaded_colors = load_json_db(SPEAKER_COLOR_DB_FILE, DEFAULT_FIXED_SPEAKER_COLORS)
-    merged_colors = {**normalize_speaker_color_db(DEFAULT_FIXED_SPEAKER_COLORS), **normalize_speaker_color_db(loaded_colors)}
+    merged_colors = {**DEFAULT_FIXED_SPEAKER_COLORS, **loaded_colors}
     st.session_state['fixed_speaker_colors'] = merged_colors
 
 if 'custom_pronoun_rel' not in st.session_state:
@@ -464,43 +440,25 @@ def generate_vibrant_rgb_colors_excluding(excluded_rgbs, count=200):
             colors.append(rgb_tuple)
     return colors
 
-def get_speaker_color_config(speaker_name, speaker_color_map, available_rgb_tuples):
+def get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples):
     spk_upper = speaker_name.strip().upper()
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     
-    # 1. Nếu là nhân vật cố định trong Database
+    # 1. Nếu là nhân vật cố định ➔ Trả về đúng màu cố định từ VAI - MAU.xlsx
     if spk_upper in fixed_colors:
-        cfg = fixed_colors[spk_upper]
-        if isinstance(cfg, dict):
-            return cfg
-        elif isinstance(cfg, (tuple, list)):
-            return {"text_color": tuple(cfg), "highlight_color": None}
-            
-    # 2. Nếu là nhân vật phụ / vãng lai ➔ Sinh màu chữ ngẫu nhiên KHÔNG TRÙNG LẶP
+        val = fixed_colors[spk_upper]
+        r, g, b = val[0], val[1], val[2]
+        return RGBColor(r, g, b)
+        
+    # 2. Nếu là nhân vật vãng lai / tạm thời ➔ Sinh màu ngẫu nhiên KHÔNG TRÙNG với màu cố định & không trùng lẫn nhau
     if spk_upper not in speaker_color_map:
         if available_rgb_tuples:
             r, g, b = available_rgb_tuples.pop()
         else:
             r, g, b = (random.randint(50, 220), random.randint(50, 220), random.randint(50, 220))
-        speaker_color_map[spk_upper] = {"text_color": (r, g, b), "highlight_color": None}
+        speaker_color_map[spk_upper] = RGBColor(r, g, b)
         
     return speaker_color_map[spk_upper]
-
-def get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples):
-    cfg = get_speaker_color_config(speaker_name, speaker_color_map, available_rgb_tuples)
-    tc = cfg.get("text_color")
-    if tc: return RGBColor(tc[0], tc[1], tc[2])
-    return RGBColor(79, 70, 229)
-
-def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
-    if text_color_tuple:
-        r, g, b = text_color_tuple
-        run.font.color.rgb = RGBColor(r, g, b)
-    if highlight_color_tuple:
-        hr, hg, hb = highlight_color_tuple
-        hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
-        shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
-        run._r.get_or_add_rPr().append(shd_xml)
 
 def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, normalize_spaces=True, capitalize_first=True, remove_leading_dash=True):
     if not text or not isinstance(text, str): return ""
@@ -632,6 +590,25 @@ def is_valid_speaker_name(name):
     if any(char in clean for char in ['/', '?', '!', ',', '.', '-->', '(', ')']): return False
     if len(clean.split()) > 4: return False
     return True
+
+def build_speaker_regex(custom_speakers):
+    base_pattern = r"[\w\s&\.\-\(\)]+"
+    if custom_speakers:
+        sorted_custom = sorted(list(custom_speakers), key=len, reverse=True)
+        custom_pattern = "|".join([re.escape(s) for s in sorted_custom])
+        pattern_str = rf"({custom_pattern}|{base_pattern}):\s*"
+    else: pattern_str = rf"({base_pattern}):\s*"
+    return re.compile(pattern_str, re.IGNORECASE | re.UNICODE)
+
+def get_paragraph_text_with_html(paragraph):
+    text = ""
+    for run in paragraph.runs:
+        r_text = run.text
+        if not r_text: continue
+        if run.italic and not ("<i>" in r_text or "</i>" in r_text): text += f"<i>{r_text}</i>"
+        else: text += r_text
+    text = text.replace("</i><i>", "")
+    return text
 
 def process_srt_to_docx(uploaded_file, file_name_without_ext):
     srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
@@ -960,7 +937,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     
     speaker_color_map = {}
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = {tuple(v.get("text_color")) for v in fixed_colors.values() if isinstance(v, dict) and v.get("text_color")}
+    fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
     available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
     random.shuffle(available_rgb_tuples)
 
@@ -987,8 +964,8 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
             r_spk = p_line.add_run(f"{spk}:")
             r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
             if enable_colors:
-                cfg = get_speaker_color_config(spk, speaker_color_map, available_rgb_tuples)
-                apply_speaker_styling_to_run(r_spk, cfg.get("text_color"), cfg.get("highlight_color"))
+                spk_color_obj = get_speaker_color(spk, speaker_color_map, available_rgb_tuples)
+                r_spk.font.color.rgb = spk_color_obj
             p_line.add_run("\t")
         else:
             p_line.add_run("\t")
@@ -1219,7 +1196,97 @@ def extract_phrases_from_file(file_io, file_name):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return phrases
 
-# --- HÀM TÁCH BỐ CỤC FORMATTING CHO THOẠI VÀ BẢNG WORD ---
+def normalize_phonetics_in_text(text):
+    text = re.sub(r'\t+', ' ', text)
+    phonetic_db = st.session_state.get('custom_phonetics', {})
+    def replace_match(m):
+        eng_word = m.group(1)
+        if eng_word.upper() in phonetic_db or is_candidate_english_word(eng_word): return eng_word
+        return m.group(0)
+    pattern = r'\b[\w\s-]+\s*\(([A-Za-z0-9\'-]+)\)'
+    cleaned_text = re.sub(pattern, replace_match, text)
+    return re.sub(r'\s+', ' ', cleaned_text).strip()
+
+def add_text_run_with_html(paragraph, text, highlight=None):
+    if not text: return
+    tag_regex = re.compile(r'(</?[ibuIBU]>)')
+    parts = tag_regex.split(text)
+    
+    is_italic = False; is_bold = False; is_underline = False
+    for part in parts:
+        if not part: continue
+        lower_part = part.lower()
+        if lower_part == '<i>': is_italic = True
+        elif lower_part == '</i>': is_italic = False
+        elif lower_part == '<b>': is_bold = True
+        elif lower_part == '</b>': is_bold = False
+        elif lower_part == '<u>': is_underline = True
+        elif lower_part == '</u>': is_underline = False
+        else:
+            run = paragraph.add_run(part)
+            if is_italic: run.font.italic = True
+            if is_bold: run.font.bold = True
+            if is_underline: run.font.underline = True
+            if highlight: run.font.highlight_color = highlight
+
+def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
+    current_text = re.sub(r'\t+', ' ', current_text).strip()
+    if not current_text: return
+    
+    phonetic_db = st.session_state['custom_phonetics']
+    if not enable_phonetic:
+        add_text_run_with_html(paragraph, current_text)
+        return
+
+    sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
+    if sorted_eng_keys:
+        pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+        eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
+    else: eng_phonetic_regex = None
+
+    if eng_phonetic_regex:
+        matches = list(eng_phonetic_regex.finditer(current_text))
+        last_end = 0
+        for match in matches:
+            eng_word_original = match.group(0)
+            start, end = match.span()
+            if start > last_end: add_text_run_with_html(paragraph, current_text[last_end:start])
+            pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
+            add_text_run_with_html(paragraph, f"{pho_text} ", highlight=WD_COLOR_INDEX.YELLOW)
+            add_text_run_with_html(paragraph, f"({eng_word_original})", highlight=WD_COLOR_INDEX.YELLOW)
+            last_end = end
+        if last_end < len(current_text): add_text_run_with_html(paragraph, current_text[last_end:])
+    else: add_text_run_with_html(paragraph, current_text)
+
+def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
+    text = re.sub(r'\t+', ' ', text).strip()
+    ass_text = re.sub(r'</?[bB]>', '', text)
+    ass_text = re.sub(r'<i>', r'{\\i1}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'</i>', r'{\\i0}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'<u>', r'{\\u1}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'</u>', r'{\\u0}', ass_text, flags=re.IGNORECASE)
+    
+    phonetic_db = st.session_state['custom_phonetics']
+    if enable_phonetic:
+        sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
+        if sorted_eng_keys:
+            pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+            eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
+            def replace_eng(m):
+                orig = m.group(0); pho = phonetic_db.get(orig.upper(), orig)
+                return f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
+            ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
+
+    is_all = (speaker_name.strip().upper() == "ALL")
+    spk_hex = "&H0000FF&" if is_all else (rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&")
+    prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
+    
+    if enable_cast and is_first_time and actor_name and not is_all:
+        prefix_ass += f"{{\\c&H0000FF&}}{{\\b1}} {actor_name}{{\\b0}}"
+        
+    full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
+    return full_ass_line
+
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, available_rgb_tuples, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
     text = re.sub(r'\t+', ' ', text).strip()
     TAB_STOP_POSITION = Inches(1.0)
@@ -1281,17 +1348,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         
         is_all = (speaker_name.strip().upper() == "ALL")
         spk_text = f"{speaker_name}:"
+        spk_color = RED_COLOR if is_all else get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples)
+        run_speaker = new_paragraph.add_run(spk_text); run_speaker.font.bold = True
         
-        # 🎨 LẤY CẤU HÌNH MÀU CHỮ LẪN HIGHLIGHT NỀN CHO NHÂN VẬT
-        spk_cfg = get_speaker_color_config(speaker_name, speaker_color_map, available_rgb_tuples)
-        tc_tuple = spk_cfg.get("text_color")
-        hc_tuple = spk_cfg.get("highlight_color")
-        
-        run_speaker = new_paragraph.add_run(spk_text)
-        run_speaker.font.bold = True
-        
-        if enable_colors:
-            apply_speaker_styling_to_run(run_speaker, tc_tuple, hc_tuple)
+        if is_all:
+            run_speaker.font.color.rgb = RED_COLOR; run_speaker.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        elif enable_colors: run_speaker.font.color.rgb = spk_color
             
         is_first_time = False
         if enable_cast and not is_all:
@@ -1305,21 +1367,56 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
         new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         
-        spk_color_for_ass = RGBColor(tc_tuple[0], tc_tuple[1], tc_tuple[2]) if tc_tuple else RED_COLOR
-        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color_for_ass, enable_colors, enable_phonetic, enable_cast, is_first_time)
+        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
         last_processed_index = next_match_start
 
     pure_dialogue_text = " ".join(pure_dialogue_list)
     return ass_line_result, pure_dialogue_text
 
+def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12):
+    doc = Document()
+    p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
+    
+    p_sub = doc.add_paragraph(f"Video: {video_title}")
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
+    
+    doc.add_paragraph()
+    TAB_STOP = Inches(1.0)
+    for item in dialogue_list:
+        if item.get("timecode"):
+            p_tc = doc.add_paragraph(item["timecode"])
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
+            p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+            
+        p_line = doc.add_paragraph()
+        p_line.paragraph_format.left_indent = TAB_STOP
+        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        
+        r_spk = p_line.add_run(f"{item['speaker']}:")
+        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
+        r_spk.font.color.rgb = RGBColor(79, 70, 229)
+        p_line.add_run("\t")
+        r_text = p_line.add_run(item['text'])
+        r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(font_size_pt)
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
+        
+    for p in doc.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf
+
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
     speaker_color_map = {}
     
-    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP
+    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP (ĐÃ ÉP KIỂU TUPLE TRÁNH LỖI SET ELEMENT)
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = {tuple(v.get("text_color")) for v in fixed_colors.values() if isinstance(v, dict) and v.get("text_color")}
+    fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
     
-    # Sinh 200 màu rực rỡ HOÀN TOÀN KHÔNG TRÙNG LẶP với các màu cố định
+    # Sinh 200 màu rực rỡ HOÀN TOÀN KHÔNG TRÙNG LẶP với 25 màu cố định
     available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
     random.shuffle(available_rgb_tuples)
 
@@ -1380,16 +1477,13 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 p_spk = document.add_paragraph()
                 p_spk.paragraph_format.space_before = Pt(0); p_spk.paragraph_format.space_after = Pt(0)
                 is_all = (spk.strip().upper() == "ALL")
-                
-                spk_cfg = get_speaker_color_config(spk, speaker_color_map, available_rgb_tuples)
-                tc_tuple = spk_cfg.get("text_color")
-                hc_tuple = spk_cfg.get("highlight_color")
-                
+                spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, available_rgb_tuples)
                 r_spk_name = p_spk.add_run(f"{spk}: ")
                 r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(font_size_pt); r_spk_name.font.bold = True
                 
-                if enable_colors:
-                    apply_speaker_styling_to_run(r_spk_name, tc_tuple, hc_tuple)
+                if is_all:
+                    r_spk_name.font.color.rgb = RED_COLOR; r_spk_name.font.highlight_color = WD_COLOR_INDEX.YELLOW
+                elif enable_colors: r_spk_name.font.color.rgb = spk_color
                     
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
                 if actor and not is_all:
@@ -2318,7 +2412,7 @@ with tab_dub_tracker:
 with tab_cast_db:
     subtab_cast_map, subtab_color_map = st.tabs([
         "🎭 Bảng Phân Vai Diễn Viên (Global Database)",
-        "🎨 Bảng Màu & Highlight Nhân Vật Cố Định (VAI - MAU.xlsx Database)"
+        "🎨 Bảng Màu Nhân Vật Cố Định (VAI - MAU.xlsx Database)"
     ])
 
     # SUBTAB 1: PHÂN VAI DIỄN VIÊN
@@ -2388,65 +2482,42 @@ with tab_cast_db:
                     st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
             else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
-    # SUBTAB 2: BẢNG MÀU CHỮ LẪN HIGHLIGHT CỐ ĐỊNH (UPDATE VỚI ĐẦY ĐỦ HIGHLIGHT OPTION)
+    # SUBTAB 2: BẢNG MÀU NHÂN VẬT CỐ ĐỊNH (CÓ TÍCH HỢP COLOR PICKER TRỰC QUAN)
     with subtab_color_map:
         with st.container(border=True):
-            st.subheader("🎨 BẢNG MÀU CHỮ & HIGHLIGHT CỐ ĐỊNH (FIXED COLOR & HIGHLIGHT)")
-            st.markdown("Quản lý danh sách nhân vật cốt lõi có MÀU SẮC CHỮ và MÀU HIGHLIGHT NỀN cố định cho kịch bản Tab 1 & Tab 2.")
+            st.subheader("🎨 BẢNG MÀU NHÂN VẬT CỐ ĐỊNH (FIXED CHARACTER COLORS)")
+            st.markdown("Quản lý danh sách nhân vật cốt lõi có MÀU SẮC ẨN ĐỊNH cố định cho tất cả các kịch bản Tab 1 & Tab 2.")
 
-            st.markdown("#### ➕ Bổ sung / Sửa Màu & Highlight Cố định")
-            col_col1, col_col2, col_col3, col_col4 = st.columns([1.8, 1.5, 1.5, 1.2])
+            st.markdown("#### ➕ Bổ sung / Sửa Màu Nhân vật Cố định")
+            col_col1, col_col2, col_col3 = st.columns([2, 2, 1.2])
             with col_col1:
-                new_color_spk = st.text_input("Tên Nhân vật Cố định:", placeholder="VD: ALL, CORY, NICK...", key=f"add_color_spk_{st.session_state['color_input_key']}").strip().upper()
+                new_color_spk = st.text_input("Tên Nhân vật Cố định:", placeholder="VD: CORY, NICK...", key=f"add_color_spk_{st.session_state['color_input_key']}").strip().upper()
             with col_col2:
-                enable_tc = st.checkbox("Tô Màu Chữ", value=True, key=f"chk_tc_{st.session_state['color_input_key']}")
-                new_text_hex = st.color_picker("Chọn Màu Chữ:", "#FF0000", key=f"add_tc_picker_{st.session_state['color_input_key']}") if enable_tc else None
+                new_color_hex = st.color_picker("Chọn Bảng Màu Trực Quan:", "#FF0000", key=f"add_color_picker_{st.session_state['color_input_key']}")
             with col_col3:
-                enable_hc = st.checkbox("Tô Highlight Nền", value=False, key=f"chk_hc_{st.session_state['color_input_key']}")
-                new_hl_hex = st.color_picker("Chọn Màu Highlight:", "#FFFF00", key=f"add_hc_picker_{st.session_state['color_input_key']}") if enable_hc else None
-            with col_col4:
                 st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                if st.button("➕ Thêm Quy Tắc Màu", use_container_width=True, type="primary", key="btn_add_fixed_color"):
-                    if new_color_spk:
-                        tc_tuple = None
-                        if enable_tc and new_text_hex:
-                            h = new_text_hex.lstrip('#')
-                            tc_tuple = (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-                            
-                        hc_tuple = None
-                        if enable_hc and new_hl_hex:
-                            hh = new_hl_hex.lstrip('#')
-                            hc_tuple = (int(hh[0:2], 16), int(hh[2:4], 16), int(hh[4:6], 16))
-                            
-                        st.session_state['fixed_speaker_colors'][new_color_spk] = {
-                            "text_color": tc_tuple,
-                            "highlight_color": hc_tuple
-                        }
+                if st.button("➕ Thêm Màu Cố Định", use_container_width=True, type="primary", key="btn_add_fixed_color"):
+                    if new_color_spk and new_color_hex:
+                        hex_clean = new_color_hex.lstrip('#')
+                        r = int(hex_clean[0:2], 16); g = int(hex_clean[2:4], 16); b = int(hex_clean[4:6], 16)
+                        st.session_state['fixed_speaker_colors'][new_color_spk] = (r, g, b)
                         save_json_db(SPEAKER_COLOR_DB_FILE, st.session_state['fixed_speaker_colors'])
                         st.session_state['color_input_key'] += 1
-                        st.success(f"✅ Đã lưu cấu hình Màu Chữ & Highlight cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
+                        st.success(f"✅ Đã gán màu cố định `{new_color_hex}` cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 📑 Danh Sách Bảng Màu & Highlight Cố Định Đã Lưu Kho")
+            st.markdown("#### 📑 Danh Sách 25 Nhân Vật Cố Định Đã Lưu Kho (Trích xuất từ VAI - MAU.xlsx)")
             fixed_color_dict = st.session_state['fixed_speaker_colors']
 
             color_db_table = []
-            for spk_k, cfg in sorted(fixed_color_dict.items()):
-                if isinstance(cfg, dict):
-                    tc = cfg.get("text_color")
-                    hc = cfg.get("highlight_color")
-                else:
-                    tc = tuple(cfg) if isinstance(cfg, (list, tuple)) else (255, 0, 0)
-                    hc = None
-                    
-                tc_hex = f"#{tc[0]:02X}{tc[1]:02X}{tc[2]:02X}" if tc else "Không tô"
-                hc_hex = f"#{hc[0]:02X}{hc[1]:02X}{hc[2]:02X}" if hc else "Không tô"
-                
+            for spk_k, rgb_v in sorted(fixed_color_dict.items()):
+                r, g, b = rgb_v[0], rgb_v[1], rgb_v[2]
+                hex_str = f"#{r:02X}{g:02X}{b:02X}"
                 color_db_table.append({
                     "Nhân vật Cố định": spk_k,
-                    "Màu Chữ (Hex)": tc_hex,
-                    "Highlight Nền (Hex)": hc_hex,
+                    "Mã Hex": hex_str,
+                    "Mã RGB": f"({r}, {g}, {b})",
                     "Xóa": False
                 })
 
@@ -2455,14 +2526,14 @@ with tab_cast_db:
                 df_color_db,
                 column_config={
                     "Nhân vật Cố định": st.column_config.TextColumn("Tên Nhân vật", disabled=True),
-                    "Màu Chữ (Hex)": st.column_config.TextColumn("Màu chữ", disabled=True),
-                    "Highlight Nền (Hex)": st.column_config.TextColumn("Highlight Nền", disabled=True),
+                    "Mã Hex": st.column_config.TextColumn("Mã màu Hex", disabled=True),
+                    "Mã RGB": st.column_config.TextColumn("Mã màu RGB", disabled=True),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True, use_container_width=True, key="fixed_color_db_editor_table"
             )
 
-            if st.button("💾 LƯU BẢNG MÀU VÀO DATABASE", type="secondary", use_container_width=True, key="btn_save_fixed_color_db"):
+            if st.button("💾 LƯU BẢNG MÀU CỐ ĐỊNH VÀO DATABASE", type="secondary", use_container_width=True, key="btn_save_fixed_color_db"):
                 new_fixed_map = {}
                 for _, row in edited_color_db_df.iterrows():
                     if not row["Xóa"]:
