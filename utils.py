@@ -313,9 +313,6 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
     res = re.sub(r'\{\\[^}]*\}', '', res)
     res = re.sub(r'\\N', '\n', res, flags=re.IGNORECASE)
     
-    if strip_all_tags: res = re.sub(r'<[^>]*>', '', res)
-    else: res = re.sub(r'<(?!/?(i|b|u)\b)[^>]*>', '', res, flags=re.IGNORECASE)
-        
     if remove_leading_dash:
         res = re.sub(r'^\s*[-–—]\s*', '', res)
         res = re.sub(r'(\n)\s*[-–—]\s*', r'\1', res)
@@ -330,12 +327,16 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
         res = re.sub(r'[ \t]+', ' ', res)
         res = re.sub(r'\s*\n\s*', '\n', res)
         res = res.strip()
-        
-    # TỰ ĐỘNG CHUYỂN GHI CHÚ TRONG NGOẶC ĐƠN THÀNH IN NGHIÊNG <i>(...)</i>
-    res = re.sub(r'<i>\s*\((.*?)\)\s*</i>', r'(\1)', res)
-    res = re.sub(r'\((.*?)\)', r'<i>(\1)</i>', res)
-    res = re.sub(r'<i>\s*<i>', '<i>', res)
-    res = re.sub(r'</i>\s*</i>', '</i>', res)
+
+    # CHỈ CHUYỂN NGOẶC ĐƠN THÀNH <i>(...)</i> KHI KHÔNG PHẢI VĂN BẢN EXCEL (strip_all_tags=False)
+    if not strip_all_tags:
+        res = re.sub(r'<i>\s*\((.*?)\)\s*</i>', r'(\1)', res)
+        res = re.sub(r'\((.*?)\)', r'<i>(\1)</i>', res)
+        res = re.sub(r'<i>\s*<i>', '<i>', res)
+        res = re.sub(r'</i>\s*</i>', '</i>', res)
+    else:
+        # NẾU LÀ EXCEL (strip_all_tags=True), LÀM SẠCH HOÀN TOÀN MÃ HTML ĐỂ KHÔNG BỊ RÁC CHỮ
+        res = re.sub(r'<[^>]*>', '', res)
 
     if capitalize_first and res:
         lines = res.split('\n')
