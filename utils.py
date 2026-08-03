@@ -262,6 +262,7 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
     spk_upper = speaker_name.strip().upper()
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     
+    # 1. Bảng màu cố định
     if spk_upper in fixed_colors:
         cfg = fixed_colors[spk_upper]
         tc = cfg.get("text_color") if isinstance(cfg, dict) else cfg
@@ -270,18 +271,23 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
         hl_rgb = RGBColor(hc[0], hc[1], hc[2]) if hc and len(hc) >= 3 else None
         return text_rgb, hl_rgb
     
+    # 2. Tra cứu Cache phiên làm việc (Fix triệt để lỗi ép kiểu tuple/RGBColor)
     if spk_upper in speaker_color_map:
-        cached = speaker_color_map[spk_upper]
-        if isinstance(cached, tuple): return cached[0], cached[1]
-        return cached, None
+        res = speaker_color_map[spk_upper]
+        if isinstance(res, tuple) and len(res) == 2:
+            return res[0], res[1]
+        elif isinstance(res, RGBColor):
+            return res, None
 
+    # 3. Cấp màu mới
     if used_colors: color_object = used_colors.pop()
     else:
         r, g, b = random.choice(FONT_COLORS_RGB_200)
         color_object = RGBColor(r, g, b)
         
-    speaker_color_map[spk_upper] = color_object
-    return color_object, None
+    res = (color_object, None)
+    speaker_color_map[spk_upper] = res
+    return res[0], res[1]
 
 def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     spk_color, _ = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
@@ -289,13 +295,17 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
 
 def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
     if text_color_tuple:
-        r, g, b = text_color_tuple
-        run.font.color.rgb = RGBColor(r, g, b)
+        if isinstance(text_color_tuple, RGBColor):
+            run.font.color.rgb = text_color_tuple
+        elif isinstance(text_color_tuple, (tuple, list)) and len(text_color_tuple) >= 3:
+            run.font.color.rgb = RGBColor(text_color_tuple[0], text_color_tuple[1], text_color_tuple[2])
+            
     if highlight_color_tuple:
-        hr, hg, hb = highlight_color_tuple
-        hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
-        shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
-        run._r.get_or_add_rPr().append(shd_xml)
+        if isinstance(highlight_color_tuple, (tuple, list, RGBColor)) and len(highlight_color_tuple) >= 3:
+            hr, hg, hb = highlight_color_tuple[0], highlight_color_tuple[1], highlight_color_tuple[2]
+            hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
+            shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
+            run._r.get_or_add_rPr().append(shd_xml)
 
 def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, normalize_spaces=True, capitalize_first=True, remove_leading_dash=True):
     if not text or not isinstance(text, str): return ""
@@ -308,10 +318,12 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
     else:
         res = re.sub(r'<(?!/?(i|b|u)\b)[^>]*>', '', res, flags=re.IGNORECASE)
         
+    # CHỈ XÓA GẠCH ĐẦU DÒNG LẺ, BẢO VỆ TUYỆT ĐỐI CÁC KÝ HIỆU BIÊN TẬP NHƯ (-), (-)./, (c)
     if remove_leading_dash:
         res = re.sub(r'^\s*[-–—]\s+(?=[A-Za-zÀ-ỹ0-9])', '', res)
         res = re.sub(r'(\n)\s*[-–—]\s+(?=[A-Za-zÀ-ỹ0-9])', r'\1', res)
         
+    # SỬA DẤU CÂU NHƯNG BẢO VỆ KÝ HIỆU (-)./, (-), (c), /
     if fix_punctuation:
         res = re.sub(r'(?<!\()\s+([,!?:;\.\)])', r'\1', res)
         res = re.sub(r'([,!?:;])([A-Za-zÀ-ỹ0-9])', r'\1 \2', res)
@@ -1286,7 +1298,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     unique_speakers = []; assigned_actors = []; unassigned_speakers = []
     for text in body_zone:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
-        spk_tags = find_all_speaker_tags(text, custom_speakers, custom_non_speakers)
+        spk_tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
         for _, _, speaker_name, _ in spk_tags:
             if speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
