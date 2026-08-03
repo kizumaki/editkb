@@ -7,7 +7,7 @@ import pandas as pd
 from docx import Document
 from utils import (
     process_srt_to_docx, process_docx_to_srt, parse_srt_to_dataframe, 
-    apply_excel_styles, find_all_speaker_tags, save_json_db, NON_SPEAKER_PHRASES, 
+    apply_excel_styles, find_all_speaker_tags, save_json_db, DEFAULT_NON_SPEAKER_PHRASES, 
     NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, TIMECODE_REGEX, generate_reaper_region_csv, 
     generate_pro_tools_csv, generate_cmx3600_edl
 )
