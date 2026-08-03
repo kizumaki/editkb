@@ -359,3 +359,32 @@ def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12)
         
     buf = io.BytesIO(); doc.save(buf); buf.seek(0)
     return buf
+
+def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay, current_mode):
+    doc = Document()
+    p_title = doc.add_paragraph("MAI HAN STUDIO - PHIẾU BÁO CÁO THÙ LAO LỒNG TIẾNG")
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
+    p_sub = doc.add_paragraph(f"Diễn viên Lồng tiếng: {actor_name} | {week_name}")
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
+    
+    doc.add_paragraph()
+    table = doc.add_table(rows=1, cols=5); table.style = 'Table Grid'
+    hdr_cells = table.rows[0].cells; hdr_names = ["Stt", "Tiêu đề video", "Khối lượng", "Đơn giá áp dụng", "Thành tiền"]
+    for i, name in enumerate(hdr_names):
+        hdr_cells[i].text = name; hdr_cells[i].paragraphs[0].runs[0].font.bold = True; hdr_cells[i].paragraphs[0].runs[0].font.name = 'Times New Roman'
+        
+    for r in video_rows:
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(r["Stt"]); row_cells[1].text = str(r["Tiêu đề video"]); row_cells[2].text = str(r["Thời lượng"])
+        row_cells[3].text = str(r["Đơn giá"]); row_cells[4].text = str(r["Thành tiền"])
+        for c in row_cells:
+            for p in c.paragraphs:
+                for run in p.runs: run.font.name = 'Times New Roman'; run.font.size = Pt(11)
+
+    doc.add_paragraph()
+    p_total = doc.add_paragraph(f"👉 TỔNG THÙ LAO THANH TOÁN: {total_pay:,.0f} VNĐ")
+    p_total.runs[0].font.name = 'Times New Roman'; p_total.runs[0].font.size = Pt(13); p_total.runs[0].bold = True
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf
