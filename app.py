@@ -14,6 +14,8 @@ from tab1_script import render_tab1
 from tab2_resync import render_tab2
 from tab3_payroll import render_tab3
 from tab4_cast_color import render_tab4
+from tab5_phonetic import render_tab5
+from tab6_dual_align import render_tab6
 
 st.set_page_config(
     page_title="ScriptPro Enterprise - Subtitle & Script Editor",
@@ -90,9 +92,9 @@ with tab1: render_tab1(enable_colors, enable_phonetic, enable_cast)
 with tab2: render_tab2(enable_colors, enable_phonetic, enable_cast)
 with tab3: render_tab3()
 with tab4: render_tab4()
+with tab5: render_tab5()
+with tab6: render_tab6(enable_colors, enable_phonetic, enable_cast)
 
-with tab5: st.info("📌 Tab 5 (Kho Database Phiên Âm Giọng Nam) đang chờ nạp file...")
-with tab6: st.info("📌 Tab 6 (Đối Chiếu 2 File Tiếng Anh) đang chờ nạp file...")
 with tab7: st.info("📌 Tab 7 (Soát Bất Nhất Thuật Ngữ & Xưng Hô) đang chờ nạp file...")
 with tab8: st.info("📌 Tab 8 (Dọn Dẹp & Chuẩn Hóa Phụ Đề) đang chờ nạp file...")
 with tab9: st.info("📌 Tab 9 (Bộ Công Cụ Chuyển Đổi) đang chờ nạp file...")
