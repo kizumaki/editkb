@@ -258,7 +258,7 @@ def generate_vibrant_rgb_colors(count=200):
 FONT_COLORS_RGB_200 = generate_vibrant_rgb_colors(200)
 
 # ==========================================
-# THUẬT TOÁN TRA CỨU MÀU NHÂN VẬT CHUẨN
+# THUẬT TOÁN TRA CỨU MÀU NHÂN VẬT CHUẨN (FIXED)
 # ==========================================
 def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors):
     spk_upper = speaker_name.strip().upper()
@@ -270,15 +270,13 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
         tc = cfg.get("text_color") if isinstance(cfg, dict) else cfg
         hc = cfg.get("highlight_color") if isinstance(cfg, dict) else None
         
-        text_rgb = RGBColor(tc[0], tc[1], tc[2]) if tc and len(tc) >= 3 else None
-        hl_rgb = RGBColor(hc[0], hc[1], hc[2]) if hc and len(hc) >= 3 else None
+        text_rgb = RGBColor(tc[0], tc[1], tc[2]) if tc and isinstance(tc, (tuple, list)) and len(tc) >= 3 else None
+        hl_rgb = RGBColor(hc[0], hc[1], hc[2]) if hc and isinstance(hc, (tuple, list)) and len(hc) >= 3 else None
         return text_rgb, hl_rgb
     
     # 2. Tra cứu trong cache phiên làm việc hiện tại
     if spk_upper in speaker_color_map:
-        cached = speaker_color_map[spk_upper]
-        if isinstance(cached, tuple): return cached[0], cached[1]
-        return cached, None
+        return speaker_color_map[spk_upper]
 
     # 3. Nếu chưa có màu cố định -> Cấp màu nổi bật ngẫu nhiên không trùng
     if used_colors:
@@ -287,8 +285,9 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
         r, g, b = random.choice(FONT_COLORS_RGB_200)
         color_object = RGBColor(r, g, b)
         
-    speaker_color_map[spk_upper] = color_object
-    return color_object, None
+    res = (color_object, None)
+    speaker_color_map[spk_upper] = res
+    return res
 
 def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     spk_color, _ = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
@@ -296,13 +295,17 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
 
 def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
     if text_color_tuple:
-        r, g, b = text_color_tuple
-        run.font.color.rgb = RGBColor(r, g, b)
+        if isinstance(text_color_tuple, RGBColor):
+            run.font.color.rgb = text_color_tuple
+        elif isinstance(text_color_tuple, (tuple, list)) and len(text_color_tuple) >= 3:
+            run.font.color.rgb = RGBColor(text_color_tuple[0], text_color_tuple[1], text_color_tuple[2])
+            
     if highlight_color_tuple:
-        hr, hg, hb = highlight_color_tuple
-        hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
-        shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
-        run._r.get_or_add_rPr().append(shd_xml)
+        if isinstance(highlight_color_tuple, (tuple, list, RGBColor)) and len(highlight_color_tuple) >= 3:
+            hr, hg, hb = highlight_color_tuple[0], highlight_color_tuple[1], highlight_color_tuple[2]
+            hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
+            shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
+            run._r.get_or_add_rPr().append(shd_xml)
 
 def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, normalize_spaces=True, capitalize_first=True, remove_leading_dash=True):
     if not text or not isinstance(text, str): return ""
@@ -784,7 +787,6 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
             r_spk = p_line.add_run(f"{spk}:")
             r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
             
-            # Tra cứu màu chuẩn cho vai trong file alignment
             spk_c, spk_h = get_speaker_color_and_highlight(spk, {}, FONT_COLORS_RGB_200.copy())
             if enable_colors and spk_c:
                 r_spk.font.color.rgb = spk_c
@@ -792,7 +794,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
                 r_spk.font.color.rgb = RGBColor(79, 70, 229)
                 
             if enable_colors and spk_h:
-                apply_speaker_styling_to_run(r_spk, (spk_c[0], spk_c[1], spk_c[2]) if spk_c else None, (spk_h[0], spk_h[1], spk_h[2]))
+                apply_speaker_styling_to_run(r_spk, spk_c, spk_h)
 
             p_line.add_run("\t")
         else:
@@ -1194,7 +1196,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         elif enable_colors:
             if spk_color: run_speaker.font.color.rgb = spk_color
             if spk_hl:
-                apply_speaker_styling_to_run(run_speaker, (spk_color[0], spk_color[1], spk_color[2]) if spk_color else None, (spk_hl[0], spk_hl[1], spk_hl[2]))
+                apply_speaker_styling_to_run(run_speaker, spk_color, spk_hl)
             
         is_first_time = False
         if enable_cast and not is_all:
@@ -1283,7 +1285,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 elif enable_colors:
                     if spk_color: r_spk_name.font.color.rgb = spk_color
                     if spk_hl:
-                        apply_speaker_styling_to_run(r_spk_name, (spk_color[0], spk_color[1], spk_color[2]) if spk_color else None, (spk_hl[0], spk_hl[1], spk_hl[2]))
+                        apply_speaker_styling_to_run(r_spk_name, spk_color, spk_hl)
                     
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
                 if actor and not is_all:
