@@ -34,7 +34,6 @@ CAST_DB_FILE = "custom_cast_mapping.json"
 TRACKER_DB_FILE = "dubbing_tracker.json"
 RATES_DB_FILE = "payroll_rates.json"
 PRONOUN_REL_DB_FILE = "custom_pronoun_relationships.json"
-SPEAKER_COLOR_DB_FILE = "custom_speaker_colors.json"
 
 DEFAULT_CAST_MAPPING = {
     "BRI": "TRÚC", "CHASE": "THIỆN", "PRESTON": "KHÁNH", "SCOTT": "THÔNG",
@@ -47,35 +46,6 @@ DEFAULT_CAST_MAPPING = {
     "CODY": "CƯỜNG", "BETHANY": "TRÚC", "KRISTIN": "PHỤNG", "AMY": "TÚ",
     "ALLISON": "TÚ", "AUBREY": "PHỤNG", "TY JACKSON": "THÔNG", "HLV": "CƯỜNG",
     "JACKSON OLSON": "THÔNG", "DANNY": "QUANG", "KYLE": "QUANG", "BILL": "HITA", "TIM": "HITA"
-}
-
-# 🎨 BẢNG MÀU CỐ ĐỊNH CHÍNH XÁC TỪ FILE VAI - MAU.XLSX CỦA MAI HAN TEAM
-DEFAULT_FIXED_SPEAKER_COLORS = {
-    "BEN AZELART": (21, 96, 130),
-    "BETHANY": (255, 192, 0),
-    "BRI": (116, 166, 123),
-    "CALEB": (116, 56, 25),
-    "CHASE": (255, 0, 255),
-    "CHUNKZ": (21, 96, 130),
-    "COBY": (255, 0, 255),
-    "CODY": (233, 113, 50),
-    "CORY": (255, 0, 0),
-    "DAKA": (110, 196, 229),
-    "GARRETT": (243, 243, 243),
-    "JOSH": (160, 43, 147),
-    "KEELEY": (255, 192, 0),
-    "LARRY": (243, 243, 243),
-    "LOGAN": (216, 170, 211),
-    "NATHAN": (21, 96, 130),
-    "NICK": (255, 0, 0),
-    "PRESTON": (255, 0, 0),
-    "RILEY": (116, 166, 123),
-    "SCOTT": (233, 113, 50),
-    "SPARKY": (116, 56, 25),
-    "STEPHEN": (0, 51, 204),
-    "STEVEN": (0, 255, 255),
-    "TYLER": (160, 43, 147),
-    "YOMI": (0, 153, 153)
 }
 
 DEFAULT_SOUTH_VIETNAM_PHONETICS = {
@@ -180,12 +150,6 @@ def load_json_db(filepath, default_data=None):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, dict) and isinstance(default_data, dict):
-                    res = {}
-                    for k, v in data.items():
-                        if isinstance(v, (list, tuple)) and len(v) == 3: res[k] = tuple(v)
-                        else: res[k] = v
-                    return res
                 return set(data) if isinstance(data, list) and isinstance(default_data, set) else data
         except Exception: pass
     return default_data if default_data is not None else (set() if not isinstance(default_data, dict) else {})
@@ -194,12 +158,6 @@ def save_json_db(filepath, data_container):
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             if isinstance(data_container, set): json.dump(list(data_container), f, ensure_ascii=False, indent=2)
-            elif isinstance(data_container, dict):
-                out_dict = {}
-                for k, v in data_container.items():
-                    if isinstance(v, (tuple, list)): out_dict[k] = list(v)
-                    else: out_dict[k] = v
-                json.dump(out_dict, f, ensure_ascii=False, indent=2)
             else: json.dump(data_container, f, ensure_ascii=False, indent=2)
     except Exception as e: st.error(f"Không thể lưu vào Database: {e}")
 
@@ -211,7 +169,6 @@ if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
 if 'cast_input_key' not in st.session_state: st.session_state['cast_input_key'] = 0
 if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_key'] = 0
-if 'color_input_key' not in st.session_state: st.session_state['color_input_key'] = 0
 if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
 if 'custom_non_speakers' not in st.session_state: st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
@@ -226,11 +183,6 @@ if 'custom_cast_mapping' not in st.session_state:
     loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
     merged_cast = {**DEFAULT_CAST_MAPPING, **loaded_cast}
     st.session_state['custom_cast_mapping'] = merged_cast
-
-if 'fixed_speaker_colors' not in st.session_state:
-    loaded_colors = load_json_db(SPEAKER_COLOR_DB_FILE, DEFAULT_FIXED_SPEAKER_COLORS)
-    merged_colors = {**DEFAULT_FIXED_SPEAKER_COLORS, **loaded_colors}
-    st.session_state['fixed_speaker_colors'] = merged_colors
 
 if 'custom_pronoun_rel' not in st.session_state:
     default_pronouns = {
@@ -419,47 +371,6 @@ else:
 # ==========================================
 # 5. HÀM BÓC TÁCH BẰNG REGEX & THUẬT TOÁN
 # ==========================================
-def generate_vibrant_rgb_colors_excluding(excluded_rgbs, count=200):
-    colors = []
-    used_set = set(tuple(x) for x in excluded_rgbs)
-    attempts = 0
-    while len(colors) < count and attempts < 10000:
-        attempts += 1
-        h = random.random(); s = 0.9; v = 0.8
-        i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
-        if i % 6 == 0: r, g, b = v, t, p
-        elif i % 6 == 1: r, g, b = q, v, p
-        elif i % 6 == 2: r, g, b = p, v, t
-        elif i % 6 == 3: r, g, b = p, q, v
-        elif i % 6 == 4: r, g, b = t, p, v
-        else: r, g, b = v, p, q
-        r_int, g_int, b_int = int(r * 255), int(g * 255), int(b * 255)
-        rgb_tuple = (r_int, g_int, b_int)
-        if rgb_tuple not in used_set:
-            used_set.add(rgb_tuple)
-            colors.append(rgb_tuple)
-    return colors
-
-def get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples):
-    spk_upper = speaker_name.strip().upper()
-    fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    
-    # 1. Nếu là nhân vật cố định ➔ Trả về đúng màu cố định từ VAI - MAU.xlsx
-    if spk_upper in fixed_colors:
-        val = fixed_colors[spk_upper]
-        r, g, b = val[0], val[1], val[2]
-        return RGBColor(r, g, b)
-        
-    # 2. Nếu là nhân vật vãng lai / tạm thời ➔ Sinh màu ngẫu nhiên KHÔNG TRÙNG với màu cố định & không trùng lẫn nhau
-    if spk_upper not in speaker_color_map:
-        if available_rgb_tuples:
-            r, g, b = available_rgb_tuples.pop()
-        else:
-            r, g, b = (random.randint(50, 220), random.randint(50, 220), random.randint(50, 220))
-        speaker_color_map[spk_upper] = RGBColor(r, g, b)
-        
-    return speaker_color_map[spk_upper]
-
 def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, normalize_spaces=True, capitalize_first=True, remove_leading_dash=True):
     if not text or not isinstance(text, str): return ""
     res = text
@@ -935,12 +846,6 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     document.add_paragraph()
     TAB_STOP = Inches(1.0)
     
-    speaker_color_map = {}
-    fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
-    available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
-    random.shuffle(available_rgb_tuples)
-
     for idx, row in df_aligned.iterrows():
         tc_line = row['Timecode']
         spk = row['Speaker_MH'] if row['Speaker_MH'] else "Unknown"
@@ -963,9 +868,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
         if should_show_spk:
             r_spk = p_line.add_run(f"{spk}:")
             r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
-            if enable_colors:
-                spk_color_obj = get_speaker_color(spk, speaker_color_map, available_rgb_tuples)
-                r_spk.font.color.rgb = spk_color_obj
+            if enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
             p_line.add_run("\t")
         else:
             p_line.add_run("\t")
@@ -1196,6 +1099,34 @@ def extract_phrases_from_file(file_io, file_name):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return phrases
 
+def generate_vibrant_rgb_colors(count=200):
+    colors = set()
+    while len(colors) < count:
+        h = random.random(); s = 0.9; v = 0.8
+        if s == 0.0: r = g = b = v
+        else:
+            i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
+            if i % 6 == 0: r, g, b = v, t, p
+            elif i % 6 == 1: r, g, b = q, v, p
+            elif i % 6 == 2: r, g, b = p, v, t
+            elif i % 6 == 3: r, g, b = p, q, v
+            elif i % 6 == 4: r, g, b = t, p, v
+            else: r, g, b = v, p, q
+        r, g, b = int(r * 255), int(g * 255), int(b * 255)
+        colors.add((r, g, b))
+    return list(colors)
+
+FONT_COLORS_RGB_200 = generate_vibrant_rgb_colors(200)
+
+def get_speaker_color(speaker_name, speaker_color_map, used_colors):
+    if speaker_name not in speaker_color_map:
+        if used_colors: color_object = used_colors.pop()
+        else:
+            r, g, b = random.choice(FONT_COLORS_RGB_200)
+            color_object = RGBColor(r, g, b)
+        speaker_color_map[speaker_name] = color_object
+    return speaker_color_map[speaker_name]
+
 def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
     phonetic_db = st.session_state.get('custom_phonetics', {})
@@ -1287,7 +1218,7 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
     full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
     return full_ass_line
 
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, available_rgb_tuples, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
+def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
     text = re.sub(r'\t+', ' ', text).strip()
     TAB_STOP_POSITION = Inches(1.0)
     
@@ -1348,7 +1279,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         
         is_all = (speaker_name.strip().upper() == "ALL")
         spk_text = f"{speaker_name}:"
-        spk_color = RED_COLOR if is_all else get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples)
+        spk_color = RED_COLOR if is_all else get_speaker_color(speaker_name, speaker_color_map, used_colors)
         run_speaker = new_paragraph.add_run(spk_text); run_speaker.font.bold = True
         
         if is_all:
@@ -1410,17 +1341,8 @@ def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12)
     return buf
 
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
-    speaker_color_map = {}
-    
-    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP (ĐÃ ÉP KIỂU TUPLE TRÁNH LỖI SET ELEMENT)
-    fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
-    
-    # Sinh 200 màu rực rỡ HOÀN TOÀN KHÔNG TRÙNG LẶP với 25 màu cố định
-    available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
-    random.shuffle(available_rgb_tuples)
-
-    stats_counter = Counter(); seen_speakers_first_time = set()
+    speaker_color_map = {}; used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
+    random.shuffle(used_colors); stats_counter = Counter(); seen_speakers_first_time = set()
     actor_dialogue_map = {}; qc_warnings = []        
     
     custom_speakers = st.session_state.get('custom_speakers', set())
@@ -1477,7 +1399,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 p_spk = document.add_paragraph()
                 p_spk.paragraph_format.space_before = Pt(0); p_spk.paragraph_format.space_after = Pt(0)
                 is_all = (spk.strip().upper() == "ALL")
-                spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, available_rgb_tuples)
+                spk_color = RED_COLOR if is_all else get_speaker_color(spk, speaker_color_map, used_colors)
                 r_spk_name = p_spk.add_run(f"{spk}: ")
                 r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(font_size_pt); r_spk_name.font.bold = True
                 
@@ -1523,7 +1445,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             
             ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
                 document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
-                speaker_color_map, available_rgb_tuples, stats_counter, seen_speakers_first_time,
+                speaker_color_map, used_colors, stats_counter, seen_speakers_first_time,
                 actor_dialogue_map, current_timecode_line, custom_speakers, custom_non_speakers,
                 font_size_pt=font_size_pt
             )
@@ -1624,7 +1546,7 @@ tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
     "📋 Theo dõi & Báo cáo Lương",
-    "🎭 Bảng Phân Vai & Mã Màu", 
+    "🎭 Bảng Phân Vai Lồng Tiếng", 
     "📚 Kho Database Phiên Âm Giọng Nam",
     "🔀 Đối Chiếu 2 File Tiếng Anh & QC Dịch",
     "🔎 Soát Bất Nhất Thuật Ngữ & Xưng Hô",
@@ -2407,141 +2329,73 @@ with tab_dub_tracker:
         else: st.info("Chưa có dữ liệu lồng tiếng để lập báo cáo lương.")
 
 # ==========================================
-# TAB 4: QUẢN LÝ DATABASE PHÂN VAI & MÀU SẮC LỒNG TIẾNG
+# TAB 4: QUẢN LÝ DATABASE PHÂN VAI LỒNG TIẾNG
 # ==========================================
 with tab_cast_db:
-    subtab_cast_map, subtab_color_map = st.tabs([
-        "🎭 Bảng Phân Vai Diễn Viên (Global Database)",
-        "🎨 Bảng Màu Nhân Vật Cố Định (VAI - MAU.xlsx Database)"
-    ])
+    with st.container(border=True):
+        st.subheader("🎭 BẢNG PHÂN VAI LỒNG TIẾNG (GLOBAL DATABASE)")
+        st.markdown("Nơi thiết lập mặc định nhân vật Tiếng Anh nào sẽ do diễn viên lồng tiếng Việt nào đảm nhận cho Mai Han Team.")
 
-    # SUBTAB 1: PHÂN VAI DIỄN VIÊN
-    with subtab_cast_map:
-        with st.container(border=True):
-            st.subheader("🎭 BẢNG PHÂN VAI LỒNG TIẾNG")
-            st.markdown("Nơi thiết lập mặc định nhân vật Tiếng Anh nào sẽ do diễn viên lồng tiếng Việt nào đảm nhận cho Mai Han Team.")
+        st.markdown("#### ➕ Thêm / Cập nhật Phân vai mới")
+        c_c1, c_c2, c_c3 = st.columns([2, 2, 1.2])
+        with c_c1: add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state['cast_input_key']}")
+        with c_c2: add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: TRÚC, THIỆN...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
+        with c_c3:
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast"):
+                if add_role_eng and add_actor_vn:
+                    k = add_role_eng.upper().strip(); v = add_actor_vn.strip().upper()
+                    st.session_state['custom_cast_mapping'][k] = v
+                    save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
+                    st.session_state['cast_input_key'] += 1
+                    st.success(f"✅ Đã gán thành công: `{add_role_eng}` ➔ `{add_actor_vn}`"); time.sleep(1); st.rerun()
+                else: st.warning("Vui lòng nhập đầy đủ tên nhân vật và diễn viên!")
 
-            st.markdown("#### ➕ Thêm / Cập nhật Phân vai mới")
-            c_c1, c_c2, c_c3 = st.columns([2, 2, 1.2])
-            with c_c1: add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state['cast_input_key']}")
-            with c_c2: add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: TRÚC, THIỆN...", key=f"add_actor_vn_{st.session_state['cast_input_key']}")
-            with c_c3:
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast"):
-                    if add_role_eng and add_actor_vn:
-                        k = add_role_eng.upper().strip(); v = add_actor_vn.strip().upper()
-                        st.session_state['custom_cast_mapping'][k] = v
-                        save_json_db(CAST_DB_FILE, st.session_state['custom_cast_mapping'])
-                        st.session_state['cast_input_key'] += 1
-                        st.success(f"✅ Đã gán thành công: `{add_role_eng}` ➔ `{add_actor_vn}`"); time.sleep(1); st.rerun()
-                    else: st.warning("Vui lòng nhập đầy đủ tên nhân vật và diễn viên!")
+    st.markdown("---")
+    with st.container(border=True):
+        st.markdown("#### 📑 Danh sách Toàn bộ Bảng Phân Vai Đã Lưu")
+        search_cast_query = st.text_input("🔍 Tìm kiếm Nhân vật hoặc Diễn viên lồng tiếng:", placeholder="Gõ tên nhân vật hoặc diễn viên...").strip().upper()
+        all_cast_dict = st.session_state['custom_cast_mapping']
 
-        st.markdown("---")
-        with st.container(border=True):
-            st.markdown("#### 📑 Danh sách Toàn bộ Bảng Phân Vai Đã Lưu")
-            search_cast_query = st.text_input("🔍 Tìm kiếm Nhân vật hoặc Diễn viên lồng tiếng:", placeholder="Gõ tên nhân vật hoặc diễn viên...").strip().upper()
-            all_cast_dict = st.session_state['custom_cast_mapping']
+        if search_cast_query: filtered_cast = {k: v for k, v in all_cast_dict.items() if search_cast_query in k or search_cast_query in v.upper()}
+        else: filtered_cast = all_cast_dict
 
-            if search_cast_query: filtered_cast = {k: v for k, v in all_cast_dict.items() if search_cast_query in k or search_cast_query in v.upper()}
-            else: filtered_cast = all_cast_dict
+        if filtered_cast:
+            cast_db_table = []
+            for eng_role, vn_actor in sorted(filtered_cast.items()):
+                cast_db_table.append({"Nhân vật (Tiếng Anh)": eng_role, "Diễn viên Lồng tiếng (Tiếng Việt)": vn_actor, "Xóa khỏi Database": False})
 
-            if filtered_cast:
-                cast_db_table = []
-                for eng_role, vn_actor in sorted(filtered_cast.items()):
-                    cast_db_table.append({"Nhân vật (Tiếng Anh)": eng_role, "Diễn viên Lồng tiếng (Tiếng Việt)": vn_actor, "Xóa khỏi Database": False})
+            df_cast_db = pd.DataFrame(cast_db_table)
+            st.caption(f"Đang hiển thị **{len(df_cast_db)}** vai lồng tiếng trong kho:")
 
-                df_cast_db = pd.DataFrame(cast_db_table)
-                st.caption(f"Đang hiển thị **{len(df_cast_db)}** vai lồng tiếng trong kho:")
-
-                edited_cast_db_df = st.data_editor(
-                    df_cast_db,
-                    column_config={
-                        "Nhân vật (Tiếng Anh)": st.column_config.TextColumn("Tên Nhân vật gốc (In hoa)", disabled=True),
-                        "Diễn viên Lồng tiếng (Tiếng Việt)": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
-                        "Xóa khỏi Database": st.column_config.CheckboxColumn("Xóa?")
-                    },
-                    disabled=["Nhân vật (Tiếng Anh)"], hide_index=True, use_container_width=True, key="global_cast_db_editor"
-                )
-
-                if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT PHÂN VAI", type="primary", use_container_width=True, key="btn_save_global_cast"):
-                    new_cast_db = {}; deleted_cast_count = 0
-                    if search_cast_query:
-                        for k, v in all_cast_dict.items():
-                            if k not in filtered_cast: new_cast_db[k] = v
-
-                    for _, row in edited_cast_db_df.iterrows():
-                        eng_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
-                        act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
-                        is_del = row["Xóa khỏi Database"]
-                        if is_del: deleted_cast_count += 1
-                        else:
-                            if act_v: new_cast_db[eng_k] = act_v
-
-                    st.session_state['custom_cast_mapping'] = new_cast_db
-                    save_json_db(CAST_DB_FILE, new_cast_db)
-                    st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
-            else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
-
-    # SUBTAB 2: BẢNG MÀU NHÂN VẬT CỐ ĐỊNH (CÓ TÍCH HỢP COLOR PICKER TRỰC QUAN)
-    with subtab_color_map:
-        with st.container(border=True):
-            st.subheader("🎨 BẢNG MÀU NHÂN VẬT CỐ ĐỊNH (FIXED CHARACTER COLORS)")
-            st.markdown("Quản lý danh sách nhân vật cốt lõi có MÀU SẮC ẨN ĐỊNH cố định cho tất cả các kịch bản Tab 1 & Tab 2.")
-
-            st.markdown("#### ➕ Bổ sung / Sửa Màu Nhân vật Cố định")
-            col_col1, col_col2, col_col3 = st.columns([2, 2, 1.2])
-            with col_col1:
-                new_color_spk = st.text_input("Tên Nhân vật Cố định:", placeholder="VD: CORY, NICK...", key=f"add_color_spk_{st.session_state['color_input_key']}").strip().upper()
-            with col_col2:
-                new_color_hex = st.color_picker("Chọn Bảng Màu Trực Quan:", "#FF0000", key=f"add_color_picker_{st.session_state['color_input_key']}")
-            with col_col3:
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                if st.button("➕ Thêm Màu Cố Định", use_container_width=True, type="primary", key="btn_add_fixed_color"):
-                    if new_color_spk and new_color_hex:
-                        hex_clean = new_color_hex.lstrip('#')
-                        r = int(hex_clean[0:2], 16); g = int(hex_clean[2:4], 16); b = int(hex_clean[4:6], 16)
-                        st.session_state['fixed_speaker_colors'][new_color_spk] = (r, g, b)
-                        save_json_db(SPEAKER_COLOR_DB_FILE, st.session_state['fixed_speaker_colors'])
-                        st.session_state['color_input_key'] += 1
-                        st.success(f"✅ Đã gán màu cố định `{new_color_hex}` cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
-
-        st.markdown("---")
-        with st.container(border=True):
-            st.markdown("#### 📑 Danh Sách 25 Nhân Vật Cố Định Đã Lưu Kho (Trích xuất từ VAI - MAU.xlsx)")
-            fixed_color_dict = st.session_state['fixed_speaker_colors']
-
-            color_db_table = []
-            for spk_k, rgb_v in sorted(fixed_color_dict.items()):
-                r, g, b = rgb_v[0], rgb_v[1], rgb_v[2]
-                hex_str = f"#{r:02X}{g:02X}{b:02X}"
-                color_db_table.append({
-                    "Nhân vật Cố định": spk_k,
-                    "Mã Hex": hex_str,
-                    "Mã RGB": f"({r}, {g}, {b})",
-                    "Xóa": False
-                })
-
-            df_color_db = pd.DataFrame(color_db_table)
-            edited_color_db_df = st.data_editor(
-                df_color_db,
+            edited_cast_db_df = st.data_editor(
+                df_cast_db,
                 column_config={
-                    "Nhân vật Cố định": st.column_config.TextColumn("Tên Nhân vật", disabled=True),
-                    "Mã Hex": st.column_config.TextColumn("Mã màu Hex", disabled=True),
-                    "Mã RGB": st.column_config.TextColumn("Mã màu RGB", disabled=True),
-                    "Xóa": st.column_config.CheckboxColumn("Xóa?")
+                    "Nhân vật (Tiếng Anh)": st.column_config.TextColumn("Tên Nhân vật gốc (In hoa)", disabled=True),
+                    "Diễn viên Lồng tiếng (Tiếng Việt)": st.column_config.TextColumn("Diễn viên lồng tiếng (Sửa trực tiếp)"),
+                    "Xóa khỏi Database": st.column_config.CheckboxColumn("Xóa?")
                 },
-                hide_index=True, use_container_width=True, key="fixed_color_db_editor_table"
+                disabled=["Nhân vật (Tiếng Anh)"], hide_index=True, use_container_width=True, key="global_cast_db_editor"
             )
 
-            if st.button("💾 LƯU BẢNG MÀU CỐ ĐỊNH VÀO DATABASE", type="secondary", use_container_width=True, key="btn_save_fixed_color_db"):
-                new_fixed_map = {}
-                for _, row in edited_color_db_df.iterrows():
-                    if not row["Xóa"]:
-                        spk_k = str(row["Nhân vật Cố định"]).upper().strip()
-                        new_fixed_map[spk_k] = fixed_color_dict[spk_k]
-                st.session_state['fixed_speaker_colors'] = new_fixed_map
-                save_json_db(SPEAKER_COLOR_DB_FILE, new_fixed_map)
-                st.success("✅ Đã lưu cập nhật Bảng Màu Cố Định vào Database!"); time.sleep(1); st.rerun()
+            if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT PHÂN VAI", type="primary", use_container_width=True, key="btn_save_global_cast"):
+                new_cast_db = {}; deleted_cast_count = 0
+                if search_cast_query:
+                    for k, v in all_cast_dict.items():
+                        if k not in filtered_cast: new_cast_db[k] = v
+
+                for _, row in edited_cast_db_df.iterrows():
+                    eng_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
+                    act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
+                    is_del = row["Xóa khỏi Database"]
+                    if is_del: deleted_cast_count += 1
+                    else:
+                        if act_v: new_cast_db[eng_k] = act_v
+
+                st.session_state['custom_cast_mapping'] = new_cast_db
+                save_json_db(CAST_DB_FILE, new_cast_db)
+                st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
+        else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
 # ==========================================
 # TAB 5: KHO DATABASE PHIÊN ÂM GIỌNG NAM (TỔNG HỢP)
@@ -2768,8 +2622,7 @@ with tab_dual_align:
             with col_ex2:
                 aligned_docx_buf = generate_aligned_docx_file(
                     df_aligned, base_out_name, enable_colors, enable_phonetic, enable_cast,
-                    hide_default_spk=hide_default_spk_export, fallback_spk_name=fallback_spk_name,
-                    font_size_pt=12
+                    hide_default_spk=hide_default_spk_export, fallback_spk_name=fallback_spk_name
                 )
                 st.download_button(
                     label="📄 TẢI WORD VIỆT HOÀN CHỈNH (.DOCX)",
@@ -2994,7 +2847,7 @@ with tab_consistency:
                 else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
 
 # ==========================================
-# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ
+# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (UPDATED STATE BINDING)
 # ==========================================
 with tab_cleaner:
     st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
@@ -3030,6 +2883,7 @@ with tab_cleaner:
                 key="textarea_raw_clean_input"
             )
             
+            # NÚT THỰC THI THIẾT LẬP SESSION STATE TRỰC TIẾP
             btn_do_clean = st.button("🧹 THỰC THI DỌN DẸP VĂN BẢN", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
 
         if btn_do_clean and input_raw_text:
@@ -3270,8 +3124,8 @@ with tab_tools:
                                 zip_buf.seek(0)
                                 st.success(f"✅ Đã chuyển đổi thành công {len(batch_docx_files)} file!")
                                 st.download_button(
-                                    label="📦 Tải Trọn Bộ Word (.ZIP)", data=zip_buf.getvalue(),
-                                    file_name="Word_Files.zip", mime="application/zip", use_container_width=True
+                                    label="📦 Tải Trọn Bộ SRT (.ZIP)", data=zip_buf.getvalue(),
+                                    file_name="SRT_Files.zip", mime="application/zip", use_container_width=True
                                 )
                         except Exception as e: st.error(f"Lỗi: {e}")
 
