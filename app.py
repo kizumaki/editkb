@@ -2101,8 +2101,10 @@ with tab_cast_db:
                     st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
             else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
-    # SUBTAB 2: BẢNG MÀU CHỮ LẪN HIGHLIGHT CỐ ĐỊNH (XEM TRỰC QUAN MÀU THỰC TẾ & COLOR COLUMN)
+    # SUBTAB 2: BẢNG MÀU CHỮ LẪN HIGHLIGHT CỐ ĐỊNH (SỬA LỖI STREAMLIT COLORCOLUMN BẰNG BẢNG THẺ MÀU TRỰC QUAN AN TOÀN)
     with subtab_color_map:
+        fixed_color_dict = st.session_state['fixed_speaker_colors']
+        
         with st.container(border=True):
             st.subheader("🎨 BẢNG MÀU CHỮ & HIGHLIGHT CỐ ĐỊNH (FIXED COLOR & HIGHLIGHT)")
             st.markdown("Quản lý danh sách nhân vật cốt lõi có MÀU SẮC CHỮ và MÀU HIGHLIGHT NỀN cố định cho kịch bản Tab 1 & Tab 2.")
@@ -2144,17 +2146,39 @@ with tab_cast_db:
                     {spk_disp_name}:
                 </span>
                 <span style="font-family: 'Times New Roman', serif; font-size: 16px; color: #0F172A;">
-                    &nbsp;&nbsp;&t; Mẫu câu thoại hiển thị thực tế khi xuất ra kịch bản Word lồng tiếng.
+                    Mẫu câu thoại hiển thị thực tế khi xuất ra kịch bản Word lồng tiếng.
                 </span>
             </div>
             """, unsafe_allow_html=True)
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 📑 Danh Sách Bảng Màu & Highlight Cố Định Đã Lưu Kho")
-            st.caption("💡 Mẹo: Bạn có thể nhìn trực tiếp ô màu bên dưới và bấm vào ô màu để chỉnh sửa trực tiếp trong bảng!")
-            fixed_color_dict = st.session_state['fixed_speaker_colors']
+            st.markdown("#### 🎨 BẢNG THẺ MÀU TRỰC QUAN TOÀN BỘ NHÂN VẬT CỐ ĐỊNH")
+            st.caption("Danh sách 25+ nhân vật đã lưu kho được hiển thị trực tiếp bằng màu chữ & màu highlight nền thật:")
+            
+            # GIẢI PHÁP HIỂN THỊ THẺ MÀU TRỰC QUAN VƯỢT TRỘI KHÔNG LỖI
+            badge_html_items = []
+            for spk_k, cfg in sorted(fixed_color_dict.items()):
+                if isinstance(cfg, dict):
+                    tc = cfg.get("text_color")
+                    hc = cfg.get("highlight_color")
+                else:
+                    tc = tuple(cfg) if isinstance(cfg, (list, tuple)) else (255, 0, 0)
+                    hc = None
+                
+                tc_css = f"rgb({tc[0]},{tc[1]},{tc[2]})" if tc else "#0F172A"
+                hc_css = f"rgb({hc[0]},{hc[1]},{hc[2]})" if hc else "#FFFFFF"
+                
+                badge_html_items.append(
+                    f'<div style="display: inline-block; margin: 5px; padding: 6px 14px; border-radius: 6px; background-color: {hc_css}; border: 1px solid #CBD5E1; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">'
+                    f'<span style="color: {tc_css}; font-family: \'Times New Roman\', serif; font-weight: bold; font-size: 15px;">{spk_k}:</span> '
+                    f'<span style="font-size: 12px; color: #64748B;">({tc_css})</span>'
+                    f'</div>'
+                )
 
+            st.markdown(f'<div style="background: #F8FAFC; padding: 15px; border-radius: 10px; border: 1px solid #E2E8F0; margin-bottom: 20px;">{"".join(badge_html_items)}</div>', unsafe_allow_html=True)
+
+            st.markdown("##### 📑 Bảng Chi Tiết Mã Màu & Chỉnh Sửa / Xóa:")
             color_db_table = []
             for spk_k, cfg in sorted(fixed_color_dict.items()):
                 if isinstance(cfg, dict):
@@ -2164,13 +2188,13 @@ with tab_cast_db:
                     tc = tuple(cfg) if isinstance(cfg, (list, tuple)) else (255, 0, 0)
                     hc = None
                     
-                tc_hex = f"#{tc[0]:02X}{tc[1]:02X}{tc[2]:02X}" if tc else None
-                hc_hex = f"#{hc[0]:02X}{hc[1]:02X}{hc[2]:02X}" if hc else None
+                tc_hex = f"#{tc[0]:02X}{tc[1]:02X}{tc[2]:02X}" if tc else ""
+                hc_hex = f"#{hc[0]:02X}{hc[1]:02X}{hc[2]:02X}" if hc else ""
                 
                 color_db_table.append({
                     "Nhân vật Cố định": spk_k,
-                    "Màu Chữ (Hex)": tc_hex,
-                    "Highlight Nền (Hex)": hc_hex,
+                    "Màu Chữ (Mã Hex)": tc_hex,
+                    "Highlight Nền (Mã Hex)": hc_hex,
                     "Xóa": False
                 })
 
@@ -2179,8 +2203,8 @@ with tab_cast_db:
                 df_color_db,
                 column_config={
                     "Nhân vật Cố định": st.column_config.TextColumn("Tên Nhân vật", disabled=True),
-                    "Màu Chữ (Hex)": st.column_config.ColorColumn("Màu chữ (Xem & Sửa trực tiếp)"),
-                    "Highlight Nền (Hex)": st.column_config.ColorColumn("Highlight Nền (Xem & Sửa trực tiếp)"),
+                    "Màu Chữ (Mã Hex)": st.column_config.TextColumn("Màu chữ (Gõ mã Hex)"),
+                    "Highlight Nền (Mã Hex)": st.column_config.TextColumn("Highlight Nền (Gõ mã Hex)"),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True, use_container_width=True, key="fixed_color_db_editor_table"
@@ -2191,8 +2215,8 @@ with tab_cast_db:
                 for _, row in edited_color_db_df.iterrows():
                     if not row["Xóa"]:
                         spk_k = str(row["Nhân vật Cố định"]).upper().strip()
-                        tc_hex = row["Màu Chữ (Hex)"]
-                        hc_hex = row["Highlight Nền (Hex)"]
+                        tc_hex = row["Màu Chữ (Mã Hex)"]
+                        hc_hex = row["Highlight Nền (Mã Hex)"]
                         new_fixed_map[spk_k] = {
                             "text_color": hex_to_rgb(tc_hex),
                             "highlight_color": hex_to_rgb(hc_hex)
