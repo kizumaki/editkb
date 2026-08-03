@@ -3,7 +3,6 @@ import io
 import os
 import pandas as pd
 
-# 1. Import các hàm dùng chung từ utils.py
 from utils import (
     load_json_db, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, 
     PHONETIC_DB_FILE, CAST_DB_FILE, TRACKER_DB_FILE, RATES_DB_FILE, 
@@ -11,13 +10,11 @@ from utils import (
     DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS
 )
 
-# 2. Import các giao diện Tab đã tách file
 from tab1_script import render_tab1
 from tab2_resync import render_tab2
+from tab3_payroll import render_tab3
+from tab4_cast_color import render_tab4
 
-# ==========================================
-# 1. CẤU HÌNH TRANG CHỦ STREAMLIT
-# ==========================================
 st.set_page_config(
     page_title="ScriptPro Enterprise - Subtitle & Script Editor",
     page_icon="🎬",
@@ -25,9 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ==========================================
-# 2. KHỞI TẠO SESSION STATE
-# ==========================================
 if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
 if 'resync_uploader_key' not in st.session_state: st.session_state['resync_uploader_key'] = 0
 if 'spk_input_key' not in st.session_state: st.session_state['spk_input_key'] = 0
@@ -56,16 +50,8 @@ if 'dubbing_tracker' not in st.session_state: st.session_state['dubbing_tracker'
 if 'payroll_rates' not in st.session_state:
     st.session_state['payroll_rates'] = load_json_db(RATES_DB_FILE, {"mode": "minute", "unit_rate": 30000})
 
-# ==========================================
-# 3. SIDEBAR PANEL
-# ==========================================
 st.sidebar.markdown("### ⚡ Control Panel")
-
-ui_theme_choice = st.sidebar.radio(
-    "Lựa chọn Skin hiển thị:",
-    options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Tối ưu tương phản)"],
-    index=0
-)
+ui_theme_choice = st.sidebar.radio("Lựa chọn Skin hiển thị:", options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Tối ưu tương phản)"], index=0)
 
 if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
@@ -75,14 +61,10 @@ if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, 
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 🎛️ Bật/Tắt Tính năng")
 enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
 enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True)
 enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True)
 
-# ==========================================
-# 4. HERO BANNER
-# ==========================================
 banner_html = f"""
 <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); padding: 2rem; border-radius: 14px; color: white; margin-bottom: 1.5rem;">
     <div style="font-size: 0.8rem; font-weight: bold; background: #0284C7; display: inline-block; padding: 3px 10px; border-radius: 4px; margin-bottom: 8px;">{ui_theme_choice}</div>
@@ -92,9 +74,6 @@ banner_html = f"""
 """
 st.markdown(banner_html, unsafe_allow_html=True)
 
-# ==========================================
-# 5. KHUNG MÀN HÌNH CHÍNH 9 TABS
-# ==========================================
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
@@ -107,30 +86,13 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "🧰 Bộ Công Cụ Chuyển Đổi"
 ])
 
-# Gọi hàm hiển thị giao diện của từng Tab
-with tab1:
-    render_tab1(enable_colors, enable_phonetic, enable_cast)
+with tab1: render_tab1(enable_colors, enable_phonetic, enable_cast)
+with tab2: render_tab2(enable_colors, enable_phonetic, enable_cast)
+with tab3: render_tab3()
+with tab4: render_tab4()
 
-with tab2:
-    render_tab2(enable_colors, enable_phonetic, enable_cast)
-
-with tab3:
-    st.info("📌 Tab 3 (Theo dõi & Báo cáo Lương) đang chờ nạp file...")
-
-with tab4:
-    st.info("📌 Tab 4 (Bảng Phân Vai Lồng Tiếng) đang chờ nạp file...")
-
-with tab5:
-    st.info("📌 Tab 5 (Kho Database Phiên Âm Giọng Nam) đang chờ nạp file...")
-
-with tab6:
-    st.info("📌 Tab 6 (Đối Chiếu 2 File Tiếng Anh) đang chờ nạp file...")
-
-with tab7:
-    st.info("📌 Tab 7 (Soát Bất Nhất Thuật Ngữ & Xưng Hô) đang chờ nạp file...")
-
-with tab8:
-    st.info("📌 Tab 8 (Dọn Dẹp & Chuẩn Hóa Phụ Đề) đang chờ nạp file...")
-
-with tab9:
-    st.info("📌 Tab 9 (Bộ Công Cụ Chuyển Đổi) đang chờ nạp file...")
+with tab5: st.info("📌 Tab 5 (Kho Database Phiên Âm Giọng Nam) đang chờ nạp file...")
+with tab6: st.info("📌 Tab 6 (Đối Chiếu 2 File Tiếng Anh) đang chờ nạp file...")
+with tab7: st.info("📌 Tab 7 (Soát Bất Nhất Thuật Ngữ & Xưng Hô) đang chờ nạp file...")
+with tab8: st.info("📌 Tab 8 (Dọn Dẹp & Chuẩn Hóa Phụ Đề) đang chờ nạp file...")
+with tab9: st.info("📌 Tab 9 (Bộ Công Cụ Chuyển Đổi) đang chờ nạp file...")
