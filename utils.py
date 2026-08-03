@@ -89,6 +89,27 @@ DEFAULT_NON_SPEAKER_PHRASES = {
     "LAUNCH", "OH NO", "OH", "AH", "YEP", "WAIT", "YEAH", "WOO", "OKAY", "YES", "I ANH", "O BRI", "NG", "THE ONLY PROBLEM", "NOTE", "WARNING", "THINGS"
 }
 
+EXCEL_COLOR_PALETTE = [
+    'background-color: #ADD8E6; color: #000000',
+    'background-color: #90EE90; color: #000000',
+    'background-color: #FFB6C1; color: #000000',
+    'background-color: #FFFFE0; color: #000000',
+    'background-color: #DDA0DD; color: #000000',
+    'background-color: #AFEEEE; color: #000000',
+    'background-color: #F0E68C; color: #000000',
+    'background-color: #FFA07A; color: #000000',
+    'background-color: #E0FFFF; color: #000000',
+    'background-color: #F5F5DC; color: #000000',
+    'background-color: #2F4F4F; color: #FFFFFF',
+    'background-color: #191970; color: #FFFFFF',
+    'background-color: #006400; color: #FFFFFF',
+    'background-color: #800000; color: #FFFFFF',
+    'background-color: #4B0082; color: #FFFFFF',
+    'background-color: #556B2F; color: #FFFFFF',
+    'background-color: #8B4513; color: #FFFFFF',
+    'background-color: #36454F; color: #FFFFFF',
+]
+
 TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$")
 ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 RED_COLOR = RGBColor(255, 0, 0)
@@ -388,3 +409,72 @@ def generate_actor_salary_slip_docx(actor_name, week_name, video_rows, total_pay
     p_total.runs[0].font.name = 'Times New Roman'; p_total.runs[0].font.size = Pt(13); p_total.runs[0].bold = True
     buf = io.BytesIO(); doc.save(buf); buf.seek(0)
     return buf
+
+def clean_dialogue_text_for_excel(text):
+    text = clean_and_normalize_text(text, strip_all_tags=True)
+    return text
+
+def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None, default_speaker="Unknown"):
+    if custom_speakers is None: custom_speakers = st.session_state.get('custom_speakers', set())
+    if non_speakers is None: non_speakers = st.session_state.get('custom_non_speakers', set())
+
+    fallback_spk = default_speaker.strip() if default_speaker and default_speaker.strip() else "Unknown"
+
+    data = []
+    blocks = re.split(r'\n\s*\n', srt_content.strip())
+    last_known_speaker = fallback_spk
+    last_is_explicit = False
+
+    for block in blocks:
+        lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+        if len(lines) < 2: continue
+
+        time_line = ""; time_idx = -1
+        for idx, line in enumerate(lines[:2]):
+            if "-->" in line: time_line = line; time_idx = idx; break
+        if not time_line: continue
+
+        time_match = re.match(r'(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})', time_line)
+        if not time_match: continue
+
+        time_start = time_match.group(1).replace('.', ',')
+        time_end = time_match.group(2).replace('.', ',')
+
+        dialogue_lines = lines[time_idx + 1:]
+        if not dialogue_lines: continue
+
+        block_text = "\n".join(dialogue_lines)
+        speaker_tags = find_all_speaker_tags(block_text, custom_speakers, non_speakers)
+
+        if not speaker_tags:
+            clean_text = clean_dialogue_text_for_excel(block_text)
+            if clean_text: data.append([time_start, time_end, last_known_speaker, clean_text, last_is_explicit])
+        else:
+            last_idx = 0
+            for i, (start_pos, end_pos, spk_name, raw_m) in enumerate(speaker_tags):
+                leading_text = block_text[last_idx:start_pos].strip()
+                clean_leading = clean_dialogue_text_for_excel(leading_text)
+                if clean_leading: data.append([time_start, time_end, last_known_speaker, clean_leading, last_is_explicit])
+
+                next_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(block_text)
+                segment_text = block_text[end_pos:next_start]
+                clean_seg = clean_dialogue_text_for_excel(segment_text)
+                if clean_seg:
+                    data.append([time_start, time_end, spk_name, clean_seg, True])
+                    last_known_speaker = spk_name
+                    last_is_explicit = True
+                else:
+                    last_known_speaker = spk_name
+                    last_is_explicit = True
+                last_idx = next_start
+
+    return pd.DataFrame(data, columns=['Start', 'End', 'Speaker', 'Dialogue', 'Is_Explicit'])
+
+def apply_excel_styles(df):
+    unique_speakers = df['Speaker'].unique()
+    color_map = {speaker: EXCEL_COLOR_PALETTE[i % len(EXCEL_COLOR_PALETTE)] for i, speaker in enumerate(unique_speakers)}
+    def highlight_speaker(row):
+        color_style = color_map.get(row['Speaker'], 'background-color: #FFFFFF; color: #000000')
+        return [color_style] * len(row)
+    try: return df.style.apply(highlight_speaker, axis=1)
+    except Exception: return df
