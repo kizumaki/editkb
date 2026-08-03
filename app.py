@@ -1483,13 +1483,14 @@ def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
     return f"{cleaned}{tag}{ext}"
 
 # --- HERO BANNER HEADER ---
-st.markdown(f"""
+banner_html = f"""
 <div class="hero-container">
     <div class="badge-pro">{ui_theme_choice}</div>
-    <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
+    <div class="hero-title">&#127916; ScriptPro Enterprise Studio</div>
     <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
 </div>
-""", unsafe_allow_html=True)
+"""
+st.markdown(banner_html, unsafe_allow_html=True)
 # --- MÀN HÌNH CHÍNH TÁCH 9 TABS ---
 tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_cleaner, tab_tools = st.tabs([
     "🎬 Xử lý Kịch bản Gốc", 
