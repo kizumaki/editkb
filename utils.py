@@ -1001,6 +1001,15 @@ def extract_phrases_from_file(file_io, file_name):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return phrases
 
+def generate_english_audio(text_to_speak, accent='com'):
+    try:
+        tts = gTTS(text=text_to_speak, lang='en', tld=accent)
+        fp = io.BytesIO(); tts.write_to_fp(fp); fp.seek(0)
+        return fp
+    except Exception as e:
+        st.error(f"Không thể tải âm thanh: {e}")
+        return None
+
 def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
     phonetic_db = st.session_state.get('custom_phonetics', {})
