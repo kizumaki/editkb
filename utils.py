@@ -581,6 +581,254 @@ def apply_excel_styles(df):
     try: return df.style.apply(highlight_speaker, axis=1)
     except Exception: return df
 
+def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_speakers=None, default_speaker="Unknown"):
+    if filename.lower().endswith('.srt'):
+        try: content_str = file_bytes.decode('utf-8')
+        except UnicodeDecodeError: content_str = file_bytes.decode('latin-1')
+        return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers, default_speaker)
+    elif filename.lower().endswith('.docx'):
+        doc = Document(io.BytesIO(file_bytes))
+        paragraphs_text = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
+        timecode_pattern = re.compile(r'\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}')
+        
+        srt_lines = []
+        i = 0
+        while i < len(paragraphs_text):
+            line = paragraphs_text[i]
+            if line.isdigit() and i + 1 < len(paragraphs_text) and timecode_pattern.search(paragraphs_text[i+1]):
+                srt_lines.append(line)
+                srt_lines.append(paragraphs_text[i+1])
+                i += 2
+                while i < len(paragraphs_text):
+                    if paragraphs_text[i].isdigit() and i + 1 < len(paragraphs_text) and timecode_pattern.search(paragraphs_text[i+1]): break
+                    else: srt_lines.append(paragraphs_text[i]); i += 1
+            else: i += 1
+        content_str = "\n".join(srt_lines)
+        return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers, default_speaker)
+    return pd.DataFrame(columns=['Start', 'End', 'Speaker', 'Dialogue', 'Is_Explicit'])
+
+def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default_speaker="Unknown"):
+    aligned_rows = []
+    fallback_spk = default_speaker.strip() if default_speaker and default_speaker.strip() else "Unknown"
+    
+    for idx_mh, row_mh in df_mh_eng.iterrows():
+        s_mh = timecode_to_sec(row_mh['Start'])
+        e_mh = timecode_to_sec(row_mh['End'])
+        is_explicit_mh = row_mh.get('Is_Explicit', False)
+        
+        best_off_matches = []
+        for idx_off, row_off in df_off_eng.iterrows():
+            s_off = timecode_to_sec(row_off['Start'])
+            e_off = timecode_to_sec(row_off['End'])
+            overlap = calculate_time_overlap(s_mh, e_mh, s_off, e_off)
+            if overlap > 0.1:
+                best_off_matches.append((idx_off, overlap, row_off))
+                
+        if best_off_matches:
+            off_indices = [m[0] for m in best_off_matches]
+            min_off_idx = min(off_indices)
+            max_off_idx = max(off_indices)
+            
+            prev_off_text = str(df_off_eng.iloc[min_off_idx-1]['Dialogue']) if min_off_idx > 0 and pd.notna(df_off_eng.iloc[min_off_idx-1]['Dialogue']) else ""
+            next_off_text = str(df_off_eng.iloc[max_off_idx+1]['Dialogue']) if max_off_idx < len(df_off_eng)-1 and pd.notna(df_off_eng.iloc[max_off_idx+1]['Dialogue']) else ""
+            
+            off_dialogues = [str(m[2]['Dialogue']) for m in best_off_matches if pd.notna(m[2]['Dialogue'])]
+            off_text_combined = " ".join(off_dialogues)
+            off_spk = best_off_matches[0][2]['Speaker']
+            off_window_text = f"{prev_off_text} {off_text_combined} {next_off_text}".strip()
+        else:
+            off_text_combined = ""
+            off_window_text = ""
+            off_spk = ""
+
+        vn_text_combined = ""
+        vn_spk = ""
+        if df_vn is not None and not df_vn.empty:
+            best_vn_matches = []
+            for idx_vn, row_vn in df_vn.iterrows():
+                s_vn = timecode_to_sec(row_vn['Start'])
+                e_vn = timecode_to_sec(row_vn['End'])
+                overlap_vn = calculate_time_overlap(s_mh, e_mh, s_vn, e_vn)
+                if overlap_vn > 0.1:
+                    best_vn_matches.append((overlap_vn, row_vn))
+            if best_vn_matches:
+                vn_text_combined = " ".join([str(m[1]['Dialogue']) for m in best_vn_matches if pd.notna(m[1]['Dialogue'])])
+                vn_spk = best_vn_matches[0][1]['Speaker']
+        else:
+            vn_spk = str(row_mh['Speaker']) if pd.notna(row_mh['Speaker']) else ""
+
+        qc_status = "🟢 Khớp chuẩn"
+        qc_details = "Nội dung Tiếng Anh khớp chuẩn nghĩa"
+        
+        mh_diag_clean = str(row_mh['Dialogue']).strip() if pd.notna(row_mh['Dialogue']) else ""
+        off_diag_clean = off_text_combined.strip()
+        
+        if not off_diag_clean:
+            qc_status = "🔴 Thiếu câu gốc Khách"
+            qc_details = "File Mai Han có câu này nhưng file Khách không thấy có"
+        elif not mh_diag_clean:
+            qc_status = "🔴 Thiếu câu Mai Han"
+            qc_details = "File Khách có câu này nhưng Mai Han nghe bị bỏ sót"
+        else:
+            mh_words = set(re.findall(r'\b\w+\b', mh_diag_clean.lower()))
+            off_window_words = set(re.findall(r'\b\w+\b', off_window_text.lower()))
+            
+            if mh_words:
+                missing_in_window = mh_words - off_window_words
+                found_ratio = (len(mh_words) - len(missing_in_window)) / len(mh_words)
+                if found_ratio < 0.75:
+                    qc_status = "🟡 Khác từ vựng Tiếng Anh"
+                    qc_details = f"Thiếu các từ gốc: {', '.join(list(missing_in_window)[:5])} -> Kiểm tra lại câu Tiếng Việt!"
+
+            spk_mh_clean = str(row_mh['Speaker']).strip().upper() if pd.notna(row_mh['Speaker']) else ""
+            spk_off_clean = str(off_spk).strip().upper() if off_spk else ""
+            
+            if spk_mh_clean and spk_off_clean and spk_mh_clean != spk_off_clean:
+                if spk_mh_clean not in ["UNKNOWN", fallback_spk.upper()] and spk_off_clean not in ["UNKNOWN", fallback_spk.upper()]:
+                    qc_status = "🔵 Lệch người nói"
+                    qc_details = f"Mai Han: {row_mh['Speaker']} vs Khách: {off_spk}"
+
+        spk_display_mh = str(row_mh['Speaker']) if pd.notna(row_mh['Speaker']) and str(row_mh['Speaker']) != "Unknown" else fallback_spk
+        spk_display_off = off_spk if off_spk and off_spk != "Unknown" else fallback_spk
+        spk_display_vn = vn_spk if vn_spk and vn_spk != "Unknown" else fallback_spk
+
+        aligned_rows.append({
+            "Stt": idx_mh + 1,
+            "Timecode": f"{row_mh['Start']} --> {row_mh['End']}",
+            "Start": row_mh['Start'],
+            "End": row_mh['End'],
+            "Tiếng Anh Mai Han (AI/Heard)": f"{spk_display_mh}: {row_mh['Dialogue']}",
+            "Tiếng Anh Khách (Official)": f"{spk_display_off}: {off_text_combined}" if spk_display_off else off_text_combined,
+            "Dịch Tiếng Việt (Cần Sửa)": f"{spk_display_vn}: {vn_text_combined}" if spk_display_vn else vn_text_combined,
+            "Speaker_MH": spk_display_mh,
+            "Is_Explicit_MH": is_explicit_mh,
+            "Speaker_Off": spk_display_off,
+            "Speaker_VN": spk_display_vn,
+            "Dialogue_MH": row_mh['Dialogue'],
+            "Dialogue_Off": off_text_combined,
+            "Dialogue_VN": vn_text_combined,
+            "Trạng thái QC": qc_status,
+            "Ghi chú QC": qc_details
+        })
+
+    return pd.DataFrame(aligned_rows)
+
+def generate_qc_dual_excel(df_aligned):
+    out_buf = io.BytesIO()
+    def highlight_qc_rows(row):
+        st_val = str(row['Trạng thái QC'])
+        if '🔴' in st_val: return ['background-color: #FEE2E2; color: #991B1B'] * len(row)
+        elif '🟡' in st_val: return ['background-color: #FEF3C7; color: #92400E'] * len(row)
+        elif '🔵' in st_val: return ['background-color: #E0F2FE; color: #075985'] * len(row)
+        return ['background-color: #FFFFFF; color: #000000'] * len(row)
+
+    styled_df = df_aligned.style.apply(highlight_qc_rows, axis=1)
+    with pd.ExcelWriter(out_buf, engine='openpyxl') as writer:
+        styled_df.to_excel(writer, index=False, sheet_name="Doi_Chieu_English_QC")
+    out_buf.seek(0)
+    return out_buf
+
+def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True, hide_default_spk=True, fallback_spk_name="Unknown", font_size_pt=12):
+    document = Document()
+    p_title = document.add_paragraph(title_text.upper())
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(20); p_title.runs[0].bold = True
+    
+    unique_speakers = []
+    for spk in df_aligned['Speaker_MH']:
+        if spk and spk not in unique_speakers and spk != "Unknown": unique_speakers.append(spk)
+            
+    if unique_speakers and not (hide_default_spk and len(unique_speakers) == 1 and unique_speakers[0].upper() == fallback_spk_name.upper()):
+        speaker_list_text = "VAI: " + ", ".join(unique_speakers)
+        p = document.add_paragraph(speaker_list_text)
+        p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(font_size_pt); p.runs[0].bold = True
+        p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
+
+    document.add_paragraph()
+    TAB_STOP = Inches(1.0)
+    
+    for idx, row in df_aligned.iterrows():
+        tc_line = row['Timecode']
+        spk = row['Speaker_MH'] if row['Speaker_MH'] else "Unknown"
+        diag = row['Dialogue_VN'] if row['Dialogue_VN'] else ""
+        is_explicit = row.get('Is_Explicit_MH', True)
+        
+        p_tc = document.add_paragraph(tc_line)
+        p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
+        p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+        
+        p_line = document.add_paragraph()
+        p_line.paragraph_format.left_indent = TAB_STOP
+        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        
+        should_show_spk = True
+        if hide_default_spk and (not is_explicit or spk.upper() == fallback_spk_name.upper() or spk.upper() == "UNKNOWN"):
+            should_show_spk = False
+
+        if should_show_spk:
+            r_spk = p_line.add_run(f"{spk}:")
+            r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
+            if enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
+            p_line.add_run("\t")
+        else:
+            p_line.add_run("\t")
+
+        if diag: apply_html_and_phonetic_to_paragraph(p_line, diag, enable_phonetic)
+            
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
+        
+    for p in document.paragraphs:
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        for r in p.runs:
+            r.font.name = 'Times New Roman'
+            if r.font.size is None: r.font.size = Pt(font_size_pt)
+        
+    buf = io.BytesIO(); document.save(buf); buf.seek(0)
+    return buf
+
+def sec_to_reaper_tc(sec):
+    h = int(sec // 3600); mins = int((sec % 3600) // 60); s = int(sec % 60)
+    ms = int(round((sec - int(sec)) * 1000))
+    if ms >= 1000: s += 1; ms -= 1000
+    return f"{h:02d}:{mins:02d}:{s:02d}.{ms:03d}"
+
+def sec_to_fps_tc(sec, fps=25):
+    h = int(sec // 3600); mins = int((sec % 3600) // 60); s = int(sec % 60)
+    frames = int(round((sec - int(sec)) * fps))
+    if frames >= fps: s += 1; frames -= fps
+    return f"{h:02d}:{mins:02d}:{s:02d}:{frames:02d}"
+
+def generate_reaper_region_csv(df):
+    rows = ["#,Name,Start,End,Length,Color"]
+    for idx, r in df.iterrows():
+        s_sec = timecode_to_sec(r['Start']); e_sec = timecode_to_sec(r['End'])
+        dur_sec = max(0.1, e_sec - s_sec)
+        s_tc = sec_to_reaper_tc(s_sec); e_tc = sec_to_reaper_tc(e_sec); l_tc = sec_to_reaper_tc(dur_sec)
+        name_clean = f"{r['Speaker']}: {r['Dialogue']}".replace('"', '""')
+        rows.append(f'R{idx+1},"{name_clean}",{s_tc},{e_tc},{l_tc},')
+    return "\n".join(rows)
+
+def generate_pro_tools_csv(df):
+    rows = ["Marker Name,Timecode In,Timecode Out,Comment"]
+    for idx, r in df.iterrows():
+        s_sec = timecode_to_sec(r['Start']); e_sec = timecode_to_sec(r['End'])
+        s_tc = sec_to_fps_tc(s_sec, 25); e_tc = sec_to_fps_tc(e_sec, 25)
+        spk = r['Speaker'].replace('"', '""'); diag = r['Dialogue'].replace('"', '""')
+        rows.append(f'"{spk}",{s_tc},{e_tc},"{diag}"')
+    return "\n".join(rows)
+
+def generate_cmx3600_edl(df):
+    lines = ["TITLE: SCRIPTPRO_DAW_MARKERS", "FCM: NON-DROP FRAME", ""]
+    for idx, r in df.iterrows():
+        s_sec = timecode_to_sec(r['Start']); e_sec = timecode_to_sec(r['End'])
+        s_tc = sec_to_fps_tc(s_sec, 25); e_tc = sec_to_fps_tc(e_sec, 25)
+        lines.append(f"{idx+1:03d}  AX       V     C        {s_tc} {e_tc} {s_tc} {e_tc}")
+        lines.append(f"* FROM CLIP: {r['Speaker']}")
+        lines.append(f"* COMMENT: {r['Dialogue']}")
+        lines.append("")
+    return "\n".join(lines)
+
 def process_srt_to_docx(uploaded_file, file_name_without_ext):
     srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
     blocks = re.split(r'\n\s*\n', srt_content.strip())
