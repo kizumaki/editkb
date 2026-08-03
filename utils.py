@@ -528,9 +528,9 @@ def clean_dialogue_text_for_excel(text):
     text = clean_and_normalize_text(text, strip_all_tags=True)
     return text
 
-def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None, default_speaker="Unknown"):
+def parse_srt_to_dataframe(srt_content, custom_speakers=None, custom_non_speakers=None, default_speaker="Unknown"):
     if custom_speakers is None: custom_speakers = st.session_state.get('custom_speakers', set())
-    if non_speakers is None: non_speakers = st.session_state.get('custom_non_speakers', set())
+    if custom_non_speakers is None: custom_non_speakers = st.session_state.get('custom_non_speakers', set())
 
     fallback_spk = default_speaker.strip() if default_speaker and default_speaker.strip() else "Unknown"
 
@@ -558,7 +558,7 @@ def parse_srt_to_dataframe(srt_content, custom_speakers=None, non_speakers=None,
         if not dialogue_lines: continue
 
         block_text = "\n".join(dialogue_lines)
-        speaker_tags = find_all_speaker_tags(block_text, custom_speakers, non_speakers)
+        speaker_tags = find_all_speaker_tags(block_text, custom_speakers, custom_non_speakers)
 
         if not speaker_tags:
             clean_text = clean_dialogue_text_for_excel(block_text)
@@ -593,11 +593,11 @@ def apply_excel_styles(df):
     try: return df.style.apply(highlight_speaker, axis=1)
     except Exception: return df
 
-def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_speakers=None, default_speaker="Unknown"):
+def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, custom_non_speakers=None, default_speaker="Unknown"):
     if filename.lower().endswith('.srt'):
         try: content_str = file_bytes.decode('utf-8')
         except UnicodeDecodeError: content_str = file_bytes.decode('latin-1')
-        return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers, default_speaker)
+        return parse_srt_to_dataframe(content_str, custom_speakers, custom_non_speakers, default_speaker)
     elif filename.lower().endswith('.docx'):
         doc = Document(io.BytesIO(file_bytes))
         paragraphs_text = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
@@ -616,7 +616,7 @@ def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_
                     else: srt_lines.append(paragraphs_text[i]); i += 1
             else: i += 1
         content_str = "\n".join(srt_lines)
-        return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers, default_speaker)
+        return parse_srt_to_dataframe(content_str, custom_speakers, custom_non_speakers, default_speaker)
     return pd.DataFrame(columns=['Start', 'End', 'Speaker', 'Dialogue', 'Is_Explicit'])
 
 def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default_speaker="Unknown"):
@@ -1064,35 +1064,55 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
         return
 
     sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
-    if sorted_eng_keys:
-        pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
-        eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
-    else: eng_phonetic_regex = None
+    if not sorted_eng_keys:
+        add_text_run_with_html(paragraph, current_text)
+        return
 
-    if eng_phonetic_regex:
-        matches = list(eng_phonetic_regex.finditer(current_text))
-        valid_matches = []
-        for match in matches:
-            start, end = match.span()
-            prefix = current_text[:start]
-            suffix = current_text[end:]
-            open_p = prefix.count('(') - prefix.count(')')
-            close_p = suffix.count(')') - suffix.count('(')
-            if open_p > 0 and close_p > 0:
-                continue
-            valid_matches.append(match)
+    pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+    eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
 
-        last_end = 0
-        for match in valid_matches:
-            eng_word_original = match.group(0)
-            start, end = match.span()
-            if start > last_end: add_text_run_with_html(paragraph, current_text[last_end:start])
-            pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
-            add_text_run_with_html(paragraph, f"{pho_text} ", highlight=WD_COLOR_INDEX.YELLOW)
-            add_text_run_with_html(paragraph, f"({eng_word_original})", highlight=WD_COLOR_INDEX.YELLOW)
-            last_end = end
-        if last_end < len(current_text): add_text_run_with_html(paragraph, current_text[last_end:])
-    else: add_text_run_with_html(paragraph, current_text)
+    matches = list(eng_phonetic_regex.finditer(current_text))
+    last_end = 0
+    for match in matches:
+        eng_word_orig = match.group(0)
+        s_eng, e_eng = match.span()
+        
+        prefix = current_text[:s_eng]
+        suffix = current_text[e_eng:]
+        
+        open_p = prefix.count('(') - prefix.count(')')
+        close_p = suffix.count(')') - suffix.count('(')
+        
+        if open_p > 0 and close_p > 0 and prefix.rfind('(') != -1:
+            paren_pos = prefix.rfind('(')
+            pho_expected = phonetic_db.get(eng_word_orig.upper(), "")
+            before_paren = prefix[:paren_pos].rstrip()
+            if pho_expected and before_paren.upper().endswith(pho_expected.upper()):
+                pho_start = len(before_paren) - len(pho_expected)
+            else:
+                m_word = re.search(r'([A-Za-zÀ-ỹ0-9]+(?:-[A-Za-zÀ-ỹ0-9]+)*)\s*$', before_paren)
+                pho_start = m_word.start(1) if m_word else paren_pos
+            
+            close_paren_pos = suffix.find(')')
+            pair_end = e_eng + close_paren_pos + 1 if close_paren_pos != -1 else e_eng
+            
+            if pho_start >= last_end:
+                if pho_start > last_end:
+                    add_text_run_with_html(paragraph, current_text[last_end:pho_start])
+                pair_text = current_text[pho_start:pair_end]
+                add_text_run_with_html(paragraph, pair_text, highlight=WD_COLOR_INDEX.YELLOW)
+                last_end = pair_end
+        else:
+            if s_eng >= last_end:
+                if s_eng > last_end:
+                    add_text_run_with_html(paragraph, current_text[last_end:s_eng])
+                pho_text = phonetic_db.get(eng_word_orig.upper(), eng_word_orig)
+                converted_pair = f"{pho_text} ({eng_word_orig})"
+                add_text_run_with_html(paragraph, converted_pair, highlight=WD_COLOR_INDEX.YELLOW)
+                last_end = e_eng
+
+    if last_end < len(current_text):
+        add_text_run_with_html(paragraph, current_text[last_end:])
 
 def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
@@ -1109,27 +1129,47 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
             pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
             eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
             matches = list(eng_phonetic_regex.finditer(ass_text))
-            valid_matches = []
-            for match in matches:
-                start, end = match.span()
-                prefix = ass_text[:start]
-                suffix = ass_text[end:]
-                open_p = prefix.count('(') - prefix.count(')')
-                close_p = suffix.count(')') - suffix.count('(')
-                if open_p > 0 and close_p > 0:
-                    continue
-                valid_matches.append(match)
-
             out = ""
             last_end = 0
-            for match in valid_matches:
-                orig = match.group(0)
-                start, end = match.span()
-                out += ass_text[last_end:start]
-                pho = phonetic_db.get(orig.upper(), orig)
-                out += f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
-                last_end = end
-            out += ass_text[last_end:]
+            for match in matches:
+                eng_word_orig = match.group(0)
+                s_eng, e_eng = match.span()
+                
+                prefix = ass_text[:s_eng]
+                suffix = ass_text[e_eng:]
+                
+                open_p = prefix.count('(') - prefix.count(')')
+                close_p = suffix.count(')') - suffix.count('(')
+                
+                if open_p > 0 and close_p > 0 and prefix.rfind('(') != -1:
+                    paren_pos = prefix.rfind('(')
+                    pho_expected = phonetic_db.get(eng_word_orig.upper(), "")
+                    before_paren = prefix[:paren_pos].rstrip()
+                    if pho_expected and before_paren.upper().endswith(pho_expected.upper()):
+                        pho_start = len(before_paren) - len(pho_expected)
+                    else:
+                        m_word = re.search(r'([A-Za-zÀ-ỹ0-9]+(?:-[A-Za-zÀ-ỹ0-9]+)*)\s*$', before_paren)
+                        pho_start = m_word.start(1) if m_word else paren_pos
+                    
+                    close_paren_pos = suffix.find(')')
+                    pair_end = e_eng + close_paren_pos + 1 if close_paren_pos != -1 else e_eng
+                    
+                    if pho_start >= last_end:
+                        if pho_start > last_end:
+                            out += ass_text[last_end:pho_start]
+                        pair_text = ass_text[pho_start:pair_end]
+                        out += f"{{\\c&H00FFFF&}}{{\\b1}}{pair_text}{{\\b0}}{{\\c&HFFFFFF&}}"
+                        last_end = pair_end
+                else:
+                    if s_eng >= last_end:
+                        if s_eng > last_end:
+                            out += ass_text[last_idx:s_eng]
+                        pho_text = phonetic_db.get(eng_word_orig.upper(), eng_word_orig)
+                        out += f"{{\\c&H00FFFF&}}{{\\b1}}{pho_text} ({eng_word_orig}){{\\b0}}{{\\c&HFFFFFF&}}"
+                        last_end = e_eng
+                        
+            if last_end < len(ass_text):
+                out += ass_text[last_end:]
             ass_text = out
 
     is_all = (speaker_name.strip().upper() == "ALL")
