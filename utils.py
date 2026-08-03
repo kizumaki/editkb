@@ -258,7 +258,7 @@ def generate_vibrant_rgb_colors(count=200):
 FONT_COLORS_RGB_200 = generate_vibrant_rgb_colors(200)
 
 # ==========================================
-# THUẬT TOÁN TRA CỨU MÀU NHÂN VẬT CHUẨN (FIXED)
+# THUẬT TOÁN TRA CỨU MÀU NHÂN VẬT CHUẨN
 # ==========================================
 def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors):
     spk_upper = speaker_name.strip().upper()
@@ -331,6 +331,12 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
         res = re.sub(r'\s*\n\s*', '\n', res)
         res = res.strip()
         
+    # TỰ ĐỘNG CHUYỂN GHI CHÚ TRONG NGOẶC ĐƠN THÀNH IN NGHIÊNG <i>(...)</i>
+    res = re.sub(r'<i>\s*\((.*?)\)\s*</i>', r'(\1)', res)
+    res = re.sub(r'\((.*?)\)', r'<i>(\1)</i>', res)
+    res = re.sub(r'<i>\s*<i>', '<i>', res)
+    res = re.sub(r'</i>\s*</i>', '</i>', res)
+
     if capitalize_first and res:
         lines = res.split('\n')
         cap_lines = []
@@ -381,6 +387,14 @@ def find_all_speaker_tags(text, custom_speakers=None, non_speakers=None):
     
     matches = []
     for m in re.finditer(pattern, text):
+        # BỎ QUA NẾU DẤU HAI CHẤM : NẰM TRONG NGOẶC ĐƠN () HOẶC NGOẶC VUÔNG []
+        col_pos = m.end() - 1
+        prefix_to_colon = text[:col_pos]
+        open_p = prefix_to_colon.count('(') - prefix_to_colon.count(')')
+        open_b = prefix_to_colon.count('[') - prefix_to_colon.count(']')
+        if open_p > 0 or open_b > 0:
+            continue
+
         raw_prefix = m.group(1)
         extracted_spk = None
         
@@ -1187,7 +1201,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         is_all = (speaker_name.strip().upper() == "ALL")
         spk_text = f"{speaker_name}:"
         
-        # LẤY CẢ MÀU CHỮ & MÀU HIGHLIGHT TỪ BẢNG CỐ ĐỊNH
         spk_color, spk_hl = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
         run_speaker = new_paragraph.add_run(spk_text); run_speaker.font.bold = True
         
