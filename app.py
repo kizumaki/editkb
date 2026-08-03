@@ -169,6 +169,7 @@ if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
 if 'cast_input_key' not in st.session_state: st.session_state['cast_input_key'] = 0
 if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_key'] = 0
+if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
 if 'custom_non_speakers' not in st.session_state: st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
 if 'custom_speakers' not in st.session_state: st.session_state['custom_speakers'] = load_json_db(SPEAKER_DB_FILE, set())
@@ -2846,7 +2847,7 @@ with tab_consistency:
                 else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
 
 # ==========================================
-# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (WITH ACTION BUTTON)
+# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (UPDATED STATE BINDING)
 # ==========================================
 with tab_cleaner:
     st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
@@ -2857,7 +2858,7 @@ with tab_cleaner:
         "📁 Dọn Dẹp & Chuẩn Hóa File Hàng Loạt (.srt / .docx)"
     ])
 
-    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP (CÓ NÚT THỰC THI)
+    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP
     with subtab_paste_clean:
         st.markdown("#### 1. Chọn Quy Tắc Giặt Sạch Văn Bản")
         col_opt1, col_opt2, col_opt3, col_opt4 = st.columns(4)
@@ -2882,7 +2883,7 @@ with tab_cleaner:
                 key="textarea_raw_clean_input"
             )
             
-            # NÚT THỰC THI CHÍNH THỨC THEO YÊU CẦU
+            # NÚT THỰC THI THIẾT LẬP SESSION STATE TRỰC TIẾP
             btn_do_clean = st.button("🧹 THỰC THI DỌN DẸP VĂN BẢN", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
 
         if btn_do_clean and input_raw_text:
@@ -2894,24 +2895,21 @@ with tab_cleaner:
                 capitalize_first=opt_cap_first, 
                 remove_leading_dash=opt_remove_dash
             )
-            st.session_state['manual_cleaned_result'] = cleaned_res
+            st.session_state['textarea_clean_output'] = cleaned_res
             st.session_state['manual_cleaned_orig_len'] = len(input_raw_text)
             st.session_state['manual_cleaned_res_len'] = len(cleaned_res)
-
-        output_display_text = st.session_state.get('manual_cleaned_result', "")
 
         with col_text_out:
             st.markdown("##### 📤 Văn Bản Đã Làm Sạch Hoàn Hảo:")
             st.text_area(
                 "Kết quả sau khi dọn dẹp:",
-                value=output_display_text,
                 height=240,
                 key="textarea_clean_output"
             )
 
-        if 'manual_cleaned_result' in st.session_state and st.session_state['manual_cleaned_result']:
-            orig_c = st.session_state.get('manual_cleaned_orig_len', 0)
-            clean_c = st.session_state.get('manual_cleaned_res_len', 0)
+        if 'manual_cleaned_orig_len' in st.session_state:
+            orig_c = st.session_state['manual_cleaned_orig_len']
+            clean_c = st.session_state['manual_cleaned_res_len']
             diff_c = orig_c - clean_c
             st.success(f"✅ Đã dọn dẹp xong! Giảm **{diff_c}** ký tự rác/khoảng trắng thừa (Từ {orig_c} ➔ {clean_c} ký tự).")
 
