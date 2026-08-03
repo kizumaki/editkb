@@ -187,6 +187,7 @@ EXCEL_COLOR_PALETTE = [
 ]
 
 TIMECODE_REGEX = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}$")
+SHORT_TIMECODE_REGEX = re.compile(r"^(?:\d{2}:)?\d{2}:\d{2}(?:[,.]\d{3})?\s*(?:-->\s*(?:\d{2}:)?\d{2}:\d{2}(?:[,.]\d{3})?)?$")
 ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 RED_COLOR = RGBColor(255, 0, 0)
 
@@ -307,12 +308,10 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
     else:
         res = re.sub(r'<(?!/?(i|b|u)\b)[^>]*>', '', res, flags=re.IGNORECASE)
         
-    # CHỈ XÓA GẠCH ĐẦU DÒNG LẺ, BẢO VỆ TUYỆT ĐỐI CÁC KÝ HIỆU BIÊN TẬP NHƯ (-), (-)./, (c)
     if remove_leading_dash:
         res = re.sub(r'^\s*[-–—]\s+(?=[A-Za-zÀ-ỹ0-9])', '', res)
         res = re.sub(r'(\n)\s*[-–—]\s+(?=[A-Za-zÀ-ỹ0-9])', r'\1', res)
         
-    # SỬA DẤU CÂU NHƯNG BẢO VỆ KÝ HIỆU (-)./, (-), (c), /
     if fix_punctuation:
         res = re.sub(r'(?<!\()\s+([,!?:;\.\)])', r'\1', res)
         res = re.sub(r'([,!?:;])([A-Za-zÀ-ỹ0-9])', r'\1 \2', res)
@@ -425,6 +424,14 @@ def is_valid_speaker_name(name):
     if clean.upper() in non_speakers_upper or clean.upper() in DEFAULT_NON_SPEAKER_PHRASES: return False
     if any(char in clean for char in ['?', '!', ',', '-->']): return False
     if len(clean.split()) > 6: return False
+    return True
+
+def is_valid_actor_name_strict(act_str):
+    if not act_str: return False
+    clean = act_str.strip().upper()
+    if not clean or clean in DEFAULT_NON_SPEAKER_PHRASES: return False
+    if any(char in clean for char in ['(', ')', '[', ']', '/', '\\', '-', '.']): return False
+    if len(clean) > 25 or clean.isdigit(): return False
     return True
 
 def get_paragraph_text_with_html(paragraph):
@@ -940,7 +947,7 @@ def preprocess_raw_paragraphs(raw_paragraphs, custom_speakers, non_speakers):
                 if next_i < total:
                     next_raw_text = get_paragraph_text_with_html(raw_paragraphs[next_i])
                     next_text = re.sub(r'\t+', ' ', next_raw_text).strip()
-                    is_timecode = TIMECODE_REGEX.match(next_text)
+                    is_timecode = TIMECODE_REGEX.match(next_text) or SHORT_TIMECODE_REGEX.match(next_text)
                     is_number = re.fullmatch(r"^\s*\d+\s*$", next_text)
                     is_srt = next_text.lower().startswith("srt conversion") or next_text.lower().startswith("vai:")
                     next_spk_tags = find_all_speaker_tags(next_text, custom_speakers, non_speakers)
@@ -987,7 +994,7 @@ def scan_english_words_in_dialogue(uploaded_file, custom_speakers, non_speakers)
     processed_strings = preprocess_raw_paragraphs(raw_paragraphs, custom_speakers, non_speakers)
     eng_found = set()
     for text in processed_strings:
-        if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text): continue
+        if not text or text.lower().startswith("srt conversion") or TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text): continue
         tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
         dialogue_content = ""
         if not tags: dialogue_content = text
@@ -1036,7 +1043,6 @@ def generate_english_audio(text_to_speak, accent='com'):
 
 def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
-    # BẢO TỒN 100% KÝ HIỆU (-)./, (-), (c), / VÀ MỌI TỪ VỰNG TIẾNG VIỆT/TIẾNG ANH
     return re.sub(r'[ \t]+', ' ', text).strip()
 
 def add_text_run_with_html(paragraph, text, highlight=None):
@@ -1146,7 +1152,7 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
     spk_hex = "&H0000FF&" if is_all else (rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&")
     prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
     
-    if enable_cast and is_first_time and actor_name and not is_all:
+    if enable_cast and is_first_time and actor_name and not is_all and is_valid_actor_name_strict(actor_name):
         prefix_ass += f"{{\\c&H0000FF&}}{{\\b1}} {actor_name}{{\\b0}}"
         
     full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
@@ -1190,11 +1196,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         next_match_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(text)
             
         content = re.sub(r'^\s*[\t\s]+', '', text[end_pos:next_match_start]).strip()
-        actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+        raw_actor = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+        actor_name = raw_actor if is_valid_actor_name_strict(raw_actor) else ""
         
         if not actor_name:
             first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
-            if first_word and first_word in st.session_state['custom_cast_mapping'].values():
+            if first_word and first_word in st.session_state['custom_cast_mapping'].values() and is_valid_actor_name_strict(first_word):
                 actor_name = first_word; st.session_state['custom_cast_mapping'][speaker_name.upper()] = actor_name
 
         if actor_name and content.startswith(actor_name):
@@ -1228,7 +1235,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if enable_cast and not is_all:
             if speaker_name not in seen_speakers_first_time:
                 seen_speakers_first_time.add(speaker_name); is_first_time = True
-                if actor_name:
+                if actor_name and is_valid_actor_name_strict(actor_name):
                     run_actor = new_paragraph.add_run(f" {actor_name}")
                     run_actor.font.bold = True; run_actor.font.color.rgb = RED_COLOR
 
@@ -1256,7 +1263,8 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     
     first_timecode_idx = 0
     for idx, text in enumerate(processed_strings):
-        if TIMECODE_REGEX.match(text): first_timecode_idx = idx; break
+        if TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text): 
+            first_timecode_idx = idx; break
             
     header_zone = processed_strings[:first_timecode_idx] if first_timecode_idx > 0 else []
     body_zone = processed_strings[first_timecode_idx:] if first_timecode_idx > 0 else processed_strings
@@ -1265,7 +1273,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if ":" in h_line and not h_line.lower().startswith("srt conversion"):
             parts = h_line.split(":", 1)
             spk_k = parts[0].strip().upper(); act_v = parts[1].strip().upper()
-            if is_valid_speaker_name(spk_k) and act_v and act_v not in DEFAULT_NON_SPEAKER_PHRASES:
+            if is_valid_speaker_name(spk_k) and is_valid_actor_name_strict(act_v):
                 st.session_state['custom_cast_mapping'][spk_k] = act_v
 
     document = Document()
@@ -1283,7 +1291,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             if speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
                 act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-                if act:
+                if act and is_valid_actor_name_strict(act):
                     if act not in assigned_actors: assigned_actors.append(act)
                 else:
                     if speaker_name.upper() != "ALL": unassigned_speakers.append(speaker_name)
@@ -1314,7 +1322,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                         apply_speaker_styling_to_run(r_spk_name, (spk_color[0], spk_color[1], spk_color[2]) if spk_color else None, (spk_hl[0], spk_hl[1], spk_hl[2]))
                     
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
-                if actor and not is_all:
+                if actor and not is_all and is_valid_actor_name_strict(actor):
                     r_actor = p_spk.add_run(actor)
                     r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(font_size_pt); r_actor.font.bold = True
                     r_actor.font.color.rgb = RED_COLOR
@@ -1338,7 +1346,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if not text or text.upper() == title_text.upper(): continue
         if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
-        if TIMECODE_REGEX.match(text):
+        if TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text):
             current_timecode_line = text
             dur, t1, t2 = calculate_duration_sec(text)
             if t2 > max_video_time_sec: max_video_time_sec = t2
