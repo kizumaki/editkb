@@ -138,7 +138,7 @@ def render_tab9():
                 detected_srt_spk_disp = [f"{name} ({srt_speaker_counts[name]} lần)" for name in detected_srt_spk_names]
                 detected_srt_non_spk_disp = [f"{name} ({srt_speaker_counts[name]} lần)" for name in detected_srt_non_spk_names]
 
-                # KHU VỰC PHÁT HIỆN NGƯỜI NÓI & TỪ GÂY NHIỄU (SOÁT LỖI TẠI CHỖ)
+                # KHU VỰC PHÁT HIỆN NGƯỜI NÓI & TỪ GÂY NHIỄU (SOÁT LỖI TẠI CHỐ)
                 with st.container(border=True):
                     st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói (SRT)")
                     st.caption("Kiểm tra danh sách tên người nói bóc tách từ file SRT. Chọn từ bị nhận diện sai để nạp trực tiếp vào Database:")
@@ -179,6 +179,10 @@ def render_tab9():
                 if df_converted_excel.empty:
                     st.error("Không thể đọc được phụ đề nào từ file SRT này.")
                 else:
+                    # LOẠI BỎ CỘT 'Is_Explicit' TẠI ĐÂY
+                    if 'Is_Explicit' in df_converted_excel.columns:
+                        df_converted_excel = df_converted_excel.drop(columns=['Is_Explicit'])
+
                     st.markdown("##### 📊 Thống Kê Nhân Vật Trong File Excel")
                     unique_spks = df_converted_excel['Speaker'].unique()
                     actual_spks = [s for s in unique_spks if s not in ["Unknown", ""]]
