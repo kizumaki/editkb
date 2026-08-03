@@ -3,12 +3,18 @@ import time
 import pandas as pd
 from utils import CAST_DB_FILE, SPEAKER_COLOR_DB_FILE, save_json_db, hex_to_rgb
 
+def rgb_to_hex(rgb_tuple, default_hex="#FF0000"):
+    if not rgb_tuple or not isinstance(rgb_tuple, (tuple, list)) or len(rgb_tuple) < 3:
+        return default_hex
+    return f"#{int(rgb_tuple[0]):02X}{int(rgb_tuple[1]):02X}{int(rgb_tuple[2]):02X}"
+
 def render_tab4():
     subtab_cast_map, subtab_color_map = st.tabs([
         "🎭 Bảng Phân Vai Diễn Viên (Global Database)",
         "🎨 Bảng Màu & Highlight Nhân Vật Cố Định"
     ])
 
+    # SUBTAB 1: PHÂN VAI DIỄN VIÊN
     with subtab_cast_map:
         st.subheader("🎭 BẢNG PHÂN VAI LỒNG TIẾNG (GLOBAL DATABASE)")
         st.markdown("Nơi thiết lập mặc định nhân vật Tiếng Anh nào sẽ do diễn viên lồng tiếng Việt nào đảm nhận cho Mai Han Team.")
@@ -72,31 +78,87 @@ def render_tab4():
                 st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
         else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
+    # SUBTAB 2: BẢNG MÀU CỐ ĐỊNH & THIẾT LẬP/CHỈNH SỬA
     with subtab_color_map:
         st.subheader("🎨 BẢNG MÀU CHỮ & HIGHLIGHT CỐ ĐỊNH")
-        st.markdown("Nơi cấu hình màu chữ và màu highlight cố định cho các nhân vật đặc biệt (VD: ALL màu đỏ nền vàng).")
+        st.markdown("Nơi cấu hình màu chữ và màu highlight cố định cho các nhân vật đặc biệt.")
         fixed_color_dict = st.session_state.get('fixed_speaker_colors', {})
 
-        col_col1, col_col2, col_col3, col_col4 = st.columns([1.8, 1.5, 1.5, 1.2])
-        with col_col1:
-            new_color_spk = st.text_input("Tên Nhân vật Cố định:", placeholder="VD: ALL, CORY...", key=f"add_color_spk_{st.session_state.get('color_input_key', 0)}").strip().upper()
-        with col_col2:
-            enable_tc = st.checkbox("Tô Màu Chữ", value=True, key=f"chk_tc_{st.session_state.get('color_input_key', 0)}")
-            new_text_hex = st.color_picker("Chọn Màu Chữ:", "#FF0000", key=f"add_tc_picker_{st.session_state.get('color_input_key', 0)}") if enable_tc else None
-        with col_col3:
-            enable_hc = st.checkbox("Tô Highlight Nền", value=False, key=f"chk_hc_{st.session_state.get('color_input_key', 0)}")
-            new_hl_hex = st.color_picker("Chọn Màu Highlight:", "#FFFF00", key=f"add_hc_picker_{st.session_state.get('color_input_key', 0)}") if enable_hc else None
-        with col_col4:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("➕ Thêm Quy Tắc Màu", use_container_width=True, type="primary", key="btn_add_fixed_color"):
-                if new_color_spk:
-                    tc_tuple = hex_to_rgb(new_text_hex) if enable_tc else None
-                    hc_tuple = hex_to_rgb(new_hl_hex) if enable_hc else None
-                    st.session_state['fixed_speaker_colors'][new_color_spk] = {"text_color": tc_tuple, "highlight_color": hc_tuple}
-                    save_json_db(SPEAKER_COLOR_DB_FILE, st.session_state['fixed_speaker_colors'])
-                    st.session_state['color_input_key'] = st.session_state.get('color_input_key', 0) + 1
-                    st.success(f"✅ Đã lưu màu cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
+        st.markdown("#### ⚙️ Thiết Lập & Chỉnh Sửa Màu Nhân Vật")
+        
+        mode_choice = st.radio(
+            "Chọn thao tác:",
+            options=["✏️ Chỉnh sửa màu nhân vật ĐÃ CÓ trong danh sách", "➕ Thêm quy tắc màu cho nhân vật MỚI"],
+            horizontal=True,
+            key="color_mode_radio"
+        )
 
+        # CHẾ ĐỘ 1: CHỈNH SỬA MÀU VAI ĐÃ CÓ
+        if "Chỉnh sửa" in mode_choice and fixed_color_dict:
+            existing_spks = sorted(list(fixed_color_dict.keys()))
+            col_e1, col_e2, col_e3, col_e4 = st.columns([2, 1.5, 1.5, 1.2])
+            
+            with col_e1:
+                selected_edit_spk = st.selectbox(
+                    "Chọn Nhân vật cần đổi màu:",
+                    options=existing_spks,
+                    key="sel_edit_color_spk"
+                )
+            
+            curr_cfg = fixed_color_dict.get(selected_edit_spk, {})
+            curr_tc = curr_cfg.get("text_color") if isinstance(curr_cfg, dict) else curr_cfg
+            curr_hc = curr_cfg.get("highlight_color") if isinstance(curr_cfg, dict) else None
+
+            default_tc_hex = rgb_to_hex(curr_tc, "#FF0000")
+            default_hc_hex = rgb_to_hex(curr_hc, "#FFFF00")
+
+            with col_e2:
+                edit_tc_enabled = st.checkbox("Tô Màu Chữ", value=(curr_tc is not None), key=f"chk_edit_tc_{selected_edit_spk}")
+                edit_tc_hex = st.color_picker("Màu Chữ:", value=default_tc_hex, key=f"picker_edit_tc_{selected_edit_spk}") if edit_tc_enabled else None
+
+            with col_e3:
+                edit_hc_enabled = st.checkbox("Tô Highlight Nền", value=(curr_hc is not None), key=f"chk_edit_hc_{selected_edit_spk}")
+                edit_hc_hex = st.color_picker("Màu Highlight:", value=default_hc_hex, key=f"picker_edit_hc_{selected_edit_spk}") if edit_hc_enabled else None
+
+            with col_e4:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("💾 Cập Nhật Màu", use_container_width=True, type="primary", key="btn_update_color"):
+                    tc_tuple = hex_to_rgb(edit_tc_hex) if edit_tc_enabled else None
+                    hc_tuple = hex_to_rgb(edit_hc_hex) if edit_hc_enabled else None
+                    
+                    st.session_state['fixed_speaker_colors'][selected_edit_spk] = {
+                        "text_color": tc_tuple,
+                        "highlight_color": hc_tuple
+                    }
+                    save_json_db(SPEAKER_COLOR_DB_FILE, st.session_state['fixed_speaker_colors'])
+                    st.success(f"✅ Đã cập nhật màu mới cho nhân vật `{selected_edit_spk}`!")
+                    time.sleep(0.8); st.rerun()
+
+        # CHẾ ĐỘ 2: THÊM MÀU CHO NHÂN VẬT MỚI
+        else:
+            col_col1, col_col2, col_col3, col_col4 = st.columns([1.8, 1.5, 1.5, 1.2])
+            with col_col1:
+                new_color_spk = st.text_input("Tên Nhân vật Mới:", placeholder="VD: ALL, CORY...", key=f"add_color_spk_{st.session_state.get('color_input_key', 0)}").strip().upper()
+            with col_col2:
+                enable_tc = st.checkbox("Tô Màu Chữ", value=True, key=f"chk_tc_{st.session_state.get('color_input_key', 0)}")
+                new_text_hex = st.color_picker("Chọn Màu Chữ:", "#FF0000", key=f"add_tc_picker_{st.session_state.get('color_input_key', 0)}") if enable_tc else None
+            with col_col3:
+                enable_hc = st.checkbox("Tô Highlight Nền", value=False, key=f"chk_hc_{st.session_state.get('color_input_key', 0)}")
+                new_hl_hex = st.color_picker("Chọn Màu Highlight:", "#FFFF00", key=f"add_hc_picker_{st.session_state.get('color_input_key', 0)}") if enable_hc else None
+            with col_col4:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("➕ Thêm Quy Tắc Màu", use_container_width=True, type="primary", key="btn_add_fixed_color"):
+                    if new_color_spk:
+                        tc_tuple = hex_to_rgb(new_text_hex) if enable_tc else None
+                        hc_tuple = hex_to_rgb(new_hl_hex) if enable_hc else None
+                        st.session_state['fixed_speaker_colors'][new_color_spk] = {"text_color": tc_tuple, "highlight_color": hc_tuple}
+                        save_json_db(SPEAKER_COLOR_DB_FILE, st.session_state['fixed_speaker_colors'])
+                        st.session_state['color_input_key'] = st.session_state.get('color_input_key', 0) + 1
+                        st.success(f"✅ Đã lưu màu cho `{new_color_spk}`!"); time.sleep(0.8); st.rerun()
+
+        st.markdown("---")
+
+        # BẢNG HIỂN THỊ MẪU MÀU THỰC TẾ & NÚT XÓA
         if fixed_color_dict:
             color_rows = []
             for spk, cfg in sorted(fixed_color_dict.items()):
@@ -109,13 +171,12 @@ def render_tab4():
                     "Nhân vật": spk,
                     "Mẫu màu thực tế": f"{spk}: Ví dụ câu thoại",
                     "Màu chữ (RGB)": tc_str,
-                    "Màu Highlight": hc_str,
+                    "Màu Highlight (RGB)": hc_str,
                     "Xóa": False
                 })
 
             df_colors = pd.DataFrame(color_rows)
 
-            # Thuật toán tô màu trực tiếp vào ô xem trước
             def style_color_table(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
                 for i, row in df.iterrows():
@@ -146,7 +207,7 @@ def render_tab4():
                     "Nhân vật": st.column_config.TextColumn("Nhân vật", disabled=True),
                     "Mẫu màu thực tế": st.column_config.TextColumn("🎨 Mẫu màu hiển thị thực tế (Visual Preview)", disabled=True),
                     "Màu chữ (RGB)": st.column_config.TextColumn("Màu chữ (RGB)", disabled=True),
-                    "Màu Highlight": st.column_config.TextColumn("Màu Highlight (RGB)", disabled=True),
+                    "Màu Highlight (RGB)": st.column_config.TextColumn("Màu Highlight (RGB)", disabled=True),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True, use_container_width=True, key="fixed_colors_editor_table"
@@ -160,4 +221,4 @@ def render_tab4():
                         new_colors[spk_k] = fixed_color_dict.get(spk_k, {})
                 st.session_state['fixed_speaker_colors'] = new_colors
                 save_json_db(SPEAKER_COLOR_DB_FILE, new_colors)
-                st.success("✅ Đã cập nhật Bảng Màu Cố Định!"); time.sleep(1); st.rerun()
+                st.success("✅ Đã cập nhật Bảng Màu Cố Định!"); time.sleep(0.8); st.rerun()
