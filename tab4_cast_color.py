@@ -102,15 +102,51 @@ def render_tab4():
             for spk, cfg in sorted(fixed_color_dict.items()):
                 tc = cfg.get("text_color") if isinstance(cfg, dict) else cfg
                 hc = cfg.get("highlight_color") if isinstance(cfg, dict) else None
-                color_rows.append({"Nhân vật": spk, "Màu chữ (RGB)": str(tc), "Màu Highlight": str(hc), "Xóa": False})
+                tc_str = str(list(tc)) if tc else "Mặc định"
+                hc_str = str(list(hc)) if hc else "Không có"
+                
+                color_rows.append({
+                    "Nhân vật": spk,
+                    "Mẫu màu thực tế": f"{spk}: Ví dụ câu thoại",
+                    "Màu chữ (RGB)": tc_str,
+                    "Màu Highlight": hc_str,
+                    "Xóa": False
+                })
 
             df_colors = pd.DataFrame(color_rows)
+
+            # Thuật toán tô màu trực tiếp vào ô xem trước
+            def style_color_table(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                for i, row in df.iterrows():
+                    spk = row["Nhân vật"]
+                    cfg = fixed_color_dict.get(spk, {})
+                    tc = cfg.get("text_color") if isinstance(cfg, dict) else cfg
+                    hc = cfg.get("highlight_color") if isinstance(cfg, dict) else None
+
+                    cell_css = "font-weight: bold; border-radius: 4px; padding: 4px 8px; "
+                    if tc and isinstance(tc, (tuple, list)) and len(tc) >= 3:
+                        cell_css += f"color: rgb({tc[0]}, {tc[1]}, {tc[2]}); "
+                    else:
+                        cell_css += "color: #000000; "
+
+                    if hc and isinstance(hc, (tuple, list)) and len(hc) >= 3:
+                        cell_css += f"background-color: rgb({hc[0]}, {hc[1]}, {hc[2]}); "
+                    else:
+                        cell_css += "background-color: #F8FAFC; "
+
+                    styles.at[i, "Mẫu màu thực tế"] = cell_css
+                return styles
+
+            styled_colors_df = df_colors.style.apply(style_color_table, axis=None)
+
             edited_colors_df = st.data_editor(
-                df_colors,
+                styled_colors_df,
                 column_config={
                     "Nhân vật": st.column_config.TextColumn("Nhân vật", disabled=True),
-                    "Màu chữ (RGB)": st.column_config.TextColumn("Màu chữ", disabled=True),
-                    "Màu Highlight": st.column_config.TextColumn("Màu Highlight", disabled=True),
+                    "Mẫu màu thực tế": st.column_config.TextColumn("🎨 Mẫu màu hiển thị thực tế (Visual Preview)", disabled=True),
+                    "Màu chữ (RGB)": st.column_config.TextColumn("Màu chữ (RGB)", disabled=True),
+                    "Màu Highlight": st.column_config.TextColumn("Màu Highlight (RGB)", disabled=True),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True, use_container_width=True, key="fixed_colors_editor_table"
