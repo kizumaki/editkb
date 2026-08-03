@@ -257,37 +257,30 @@ def generate_vibrant_rgb_colors(count=200):
 
 FONT_COLORS_RGB_200 = generate_vibrant_rgb_colors(200)
 
-# ==========================================
-# THUẬT TOÁN TRA CỨU MÀU NHÂN VẬT CHUẨN
-# ==========================================
 def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors):
     spk_upper = speaker_name.strip().upper()
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     
-    # 1. Tra cứu ưu tiên trong Bảng màu cố định (fixed_speaker_colors)
     if spk_upper in fixed_colors:
         cfg = fixed_colors[spk_upper]
         tc = cfg.get("text_color") if isinstance(cfg, dict) else cfg
         hc = cfg.get("highlight_color") if isinstance(cfg, dict) else None
-        
-        text_rgb = RGBColor(tc[0], tc[1], tc[2]) if tc and isinstance(tc, (tuple, list)) and len(tc) >= 3 else None
-        hl_rgb = RGBColor(hc[0], hc[1], hc[2]) if hc and isinstance(hc, (tuple, list)) and len(hc) >= 3 else None
+        text_rgb = RGBColor(tc[0], tc[1], tc[2]) if tc and len(tc) >= 3 else None
+        hl_rgb = RGBColor(hc[0], hc[1], hc[2]) if hc and len(hc) >= 3 else None
         return text_rgb, hl_rgb
     
-    # 2. Tra cứu trong cache phiên làm việc hiện tại
     if spk_upper in speaker_color_map:
-        return speaker_color_map[spk_upper]
+        cached = speaker_color_map[spk_upper]
+        if isinstance(cached, tuple): return cached[0], cached[1]
+        return cached, None
 
-    # 3. Nếu chưa có màu cố định -> Cấp màu nổi bật ngẫu nhiên không trùng
-    if used_colors:
-        color_object = used_colors.pop()
+    if used_colors: color_object = used_colors.pop()
     else:
         r, g, b = random.choice(FONT_COLORS_RGB_200)
         color_object = RGBColor(r, g, b)
         
-    res = (color_object, None)
-    speaker_color_map[spk_upper] = res
-    return res
+    speaker_color_map[spk_upper] = color_object
+    return color_object, None
 
 def get_speaker_color(speaker_name, speaker_color_map, used_colors):
     spk_color, _ = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
@@ -295,17 +288,13 @@ def get_speaker_color(speaker_name, speaker_color_map, used_colors):
 
 def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
     if text_color_tuple:
-        if isinstance(text_color_tuple, RGBColor):
-            run.font.color.rgb = text_color_tuple
-        elif isinstance(text_color_tuple, (tuple, list)) and len(text_color_tuple) >= 3:
-            run.font.color.rgb = RGBColor(text_color_tuple[0], text_color_tuple[1], text_color_tuple[2])
-            
+        r, g, b = text_color_tuple
+        run.font.color.rgb = RGBColor(r, g, b)
     if highlight_color_tuple:
-        if isinstance(highlight_color_tuple, (tuple, list, RGBColor)) and len(highlight_color_tuple) >= 3:
-            hr, hg, hb = highlight_color_tuple[0], highlight_color_tuple[1], highlight_color_tuple[2]
-            hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
-            shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
-            run._r.get_or_add_rPr().append(shd_xml)
+        hr, hg, hb = highlight_color_tuple
+        hex_fill = f"{hr:02X}{hg:02X}{hb:02X}"
+        shd_xml = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_fill}"/>')
+        run._r.get_or_add_rPr().append(shd_xml)
 
 def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, normalize_spaces=True, capitalize_first=True, remove_leading_dash=True):
     if not text or not isinstance(text, str): return ""
@@ -313,12 +302,19 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
     res = re.sub(r'\{\\[^}]*\}', '', res)
     res = re.sub(r'\\N', '\n', res, flags=re.IGNORECASE)
     
-    if remove_leading_dash:
-        res = re.sub(r'^\s*[-–—]\s*', '', res)
-        res = re.sub(r'(\n)\s*[-–—]\s*', r'\1', res)
+    if strip_all_tags:
+        res = re.sub(r'<[^>]*>', '', res)
+    else:
+        res = re.sub(r'<(?!/?(i|b|u)\b)[^>]*>', '', res, flags=re.IGNORECASE)
         
+    # CHỈ XÓA GẠCH ĐẦU DÒNG LẺ, BẢO VỆ TUYỆT ĐỐI CÁC KÝ HIỆU BIÊN TẬP NHƯ (-), (-)./, (c)
+    if remove_leading_dash:
+        res = re.sub(r'^\s*[-–—]\s+(?=[A-Za-zÀ-ỹ0-9])', '', res)
+        res = re.sub(r'(\n)\s*[-–—]\s+(?=[A-Za-zÀ-ỹ0-9])', r'\1', res)
+        
+    # SỬA DẤU CÂU NHƯNG BẢO VỆ KÝ HIỆU (-)./, (-), (c), /
     if fix_punctuation:
-        res = re.sub(r'\s+([,!?:;\.\)])', r'\1', res)
+        res = re.sub(r'(?<!\()\s+([,!?:;\.\)])', r'\1', res)
         res = re.sub(r'([,!?:;])([A-Za-zÀ-ỹ0-9])', r'\1 \2', res)
         res = re.sub(r'(\.\.\.)([A-Za-zÀ-ỹ0-9])', r'\1 \2', res)
         res = re.sub(r'"\s*(.*?)\s*"', r'"\1"', res)
@@ -327,17 +323,7 @@ def clean_and_normalize_text(text, strip_all_tags=False, fix_punctuation=True, n
         res = re.sub(r'[ \t]+', ' ', res)
         res = re.sub(r'\s*\n\s*', '\n', res)
         res = res.strip()
-
-    # CHỈ CHUYỂN NGOẶC ĐƠN THÀNH <i>(...)</i> KHI KHÔNG PHẢI VĂN BẢN EXCEL (strip_all_tags=False)
-    if not strip_all_tags:
-        res = re.sub(r'<i>\s*\((.*?)\)\s*</i>', r'(\1)', res)
-        res = re.sub(r'\((.*?)\)', r'<i>(\1)</i>', res)
-        res = re.sub(r'<i>\s*<i>', '<i>', res)
-        res = re.sub(r'</i>\s*</i>', '</i>', res)
-    else:
-        # NẾU LÀ EXCEL (strip_all_tags=True), LÀM SẠCH HOÀN TOÀN MÃ HTML ĐỂ KHÔNG BỊ RÁC CHỮ
-        res = re.sub(r'<[^>]*>', '', res)
-
+        
     if capitalize_first and res:
         lines = res.split('\n')
         cap_lines = []
@@ -384,17 +370,14 @@ def find_all_speaker_tags(text, custom_speakers=None, non_speakers=None):
     non_speakers_upper = {s.upper() for s in non_speakers}.union({s.upper() for s in DEFAULT_NON_SPEAKER_PHRASES})
     
     custom_names_upper = {s.upper(): s for s in custom_speakers if s.strip()}
-    pattern = r"([A-Za-z0-9À-ỹ \t&\-\(\)\.]{1,35}):\s*"
+    pattern = r"([A-Za-z0-9À-ỹ \t&\-\(\)\.\/]{1,45}):\s*"
     
     matches = []
     for m in re.finditer(pattern, text):
-        # BỎ QUA NẾU DẤU HAI CHẤM : NẰM TRONG NGOẶC ĐƠN () HOẶC NGOẶC VUÔNG []
         col_pos = m.end() - 1
         prefix_to_colon = text[:col_pos]
-        open_p = prefix_to_colon.count('(') - prefix_to_colon.count(')')
-        open_b = prefix_to_colon.count('[') - prefix_to_colon.count(']')
-        if open_p > 0 or open_b > 0:
-            continue
+        if (prefix_to_colon.count('(') - prefix_to_colon.count(')')) > 0: continue
+        if (prefix_to_colon.count('[') - prefix_to_colon.count(']')) > 0: continue
 
         raw_prefix = m.group(1)
         extracted_spk = None
@@ -411,13 +394,13 @@ def find_all_speaker_tags(text, custom_speakers=None, non_speakers=None):
                     
         if extracted_spk: continue
             
-        match_tail = re.search(r"(?:^|[^\w]|(?<=[a-zà-ỹ]))([A-ZÀ-Ỹ0-9][A-Za-z0-9À-ỹ \t&\-\(\)\.]{0,24})$", raw_prefix)
+        match_tail = re.search(r"(?:^|[^\w]|(?<=[a-zà-ỹ]))([A-ZÀ-Ỹ0-9][A-Za-z0-9À-ỹ \t&\-\(\)\.\/]{0,30})$", raw_prefix)
         if match_tail:
             cand = match_tail.group(1).strip(".,!?:;- ")
-            if cand and len(cand) <= 25 and not cand.isdigit():
+            if cand and len(cand) <= 35 and not cand.isdigit():
                 if not (cand.startswith('(') or cand.endswith(')')):
                     if cand.upper() not in non_speakers_upper:
-                        if len(cand.split()) <= 4:
+                        if len(cand.split()) <= 6:
                             start_idx = len(raw_prefix) - len(match_tail.group(1))
                             if is_valid_speaker_boundary(raw_prefix, start_idx):
                                 spk_start = m.start(1) + start_idx
@@ -436,10 +419,12 @@ def find_all_speaker_tags(text, custom_speakers=None, non_speakers=None):
 
 def is_valid_speaker_name(name):
     clean = name.strip()
-    if not clean or len(clean) > 25 or clean.isdigit() or re.match(r'^\d+[\d\s:]*$', clean): return False
-    if clean.startswith('(') or clean.endswith(')') or clean.upper() in DEFAULT_NON_SPEAKER_PHRASES: return False
-    if any(char in clean for char in ['/', '?', '!', ',', '.', '-->', '(', ')']): return False
-    if len(clean.split()) > 4: return False
+    if not clean or len(clean) > 35 or clean.isdigit() or re.match(r'^\d+[\d\s:]*$', clean): return False
+    if clean.startswith('(') or clean.endswith(')'): return False
+    non_speakers_upper = st.session_state.get('custom_non_speakers', set())
+    if clean.upper() in non_speakers_upper or clean.upper() in DEFAULT_NON_SPEAKER_PHRASES: return False
+    if any(char in clean for char in ['?', '!', ',', '-->']): return False
+    if len(clean.split()) > 6: return False
     return True
 
 def get_paragraph_text_with_html(paragraph):
@@ -809,7 +794,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
                 r_spk.font.color.rgb = RGBColor(79, 70, 229)
                 
             if enable_colors and spk_h:
-                apply_speaker_styling_to_run(r_spk, spk_c, spk_h)
+                apply_speaker_styling_to_run(r_spk, (spk_c[0], spk_c[1], spk_c[2]) if spk_c else None, (spk_h[0], spk_h[1], spk_h[2]))
 
             p_line.add_run("\t")
         else:
@@ -1051,14 +1036,8 @@ def generate_english_audio(text_to_speak, accent='com'):
 
 def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
-    phonetic_db = st.session_state.get('custom_phonetics', {})
-    def replace_match(m):
-        eng_word = m.group(1)
-        if eng_word.upper() in phonetic_db or is_candidate_english_word(eng_word): return eng_word
-        return m.group(0)
-    pattern = r'\b[\w\s-]+\s*\(([A-Za-z0-9\'-]+)\)'
-    cleaned_text = re.sub(pattern, replace_match, text)
-    return re.sub(r'\s+', ' ', cleaned_text).strip()
+    # BẢO TỒN 100% KÝ HIỆU (-)./, (-), (c), / VÀ MỌI TỪ VỰNG TIẾNG VIỆT/TIẾNG ANH
+    return re.sub(r'[ \t]+', ' ', text).strip()
 
 def add_text_run_with_html(paragraph, text, highlight=None):
     if not text: return
@@ -1086,7 +1065,7 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     current_text = re.sub(r'\t+', ' ', current_text).strip()
     if not current_text: return
     
-    phonetic_db = st.session_state['custom_phonetics']
+    phonetic_db = st.session_state.get('custom_phonetics', {})
     if not enable_phonetic:
         add_text_run_with_html(paragraph, current_text)
         return
@@ -1099,8 +1078,21 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
 
     if eng_phonetic_regex:
         matches = list(eng_phonetic_regex.finditer(current_text))
-        last_end = 0
+        
+        # SMART PHONETICS: BỎ QUA TỪ TIẾNG ANH ĐÃ NẰM TRONG NGOẶC (...) NÊN KHÔNG BỊ LẶP PHIÊN ÂM
+        valid_matches = []
         for match in matches:
+            start, end = match.span()
+            prefix = current_text[:start]
+            suffix = current_text[end:]
+            open_p = prefix.count('(') - prefix.count(')')
+            close_p = suffix.count(')') - suffix.count('(')
+            if open_p > 0 and close_p > 0:
+                continue
+            valid_matches.append(match)
+
+        last_end = 0
+        for match in valid_matches:
             eng_word_original = match.group(0)
             start, end = match.span()
             if start > last_end: add_text_run_with_html(paragraph, current_text[last_end:start])
@@ -1119,16 +1111,36 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
     ass_text = re.sub(r'<u>', r'{\\u1}', ass_text, flags=re.IGNORECASE)
     ass_text = re.sub(r'</u>', r'{\\u0}', ass_text, flags=re.IGNORECASE)
     
-    phonetic_db = st.session_state['custom_phonetics']
+    phonetic_db = st.session_state.get('custom_phonetics', {})
     if enable_phonetic:
         sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
         if sorted_eng_keys:
             pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
             eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
-            def replace_eng(m):
-                orig = m.group(0); pho = phonetic_db.get(orig.upper(), orig)
-                return f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
-            ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
+            
+            matches = list(eng_phonetic_regex.finditer(ass_text))
+            valid_matches = []
+            for match in matches:
+                start, end = match.span()
+                prefix = ass_text[:start]
+                suffix = ass_text[end:]
+                open_p = prefix.count('(') - prefix.count(')')
+                close_p = suffix.count(')') - suffix.count('(')
+                if open_p > 0 and close_p > 0:
+                    continue
+                valid_matches.append(match)
+
+            out = ""
+            last_end = 0
+            for match in valid_matches:
+                orig = match.group(0)
+                start, end = match.span()
+                out += ass_text[last_end:start]
+                pho = phonetic_db.get(orig.upper(), orig)
+                out += f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
+                last_end = end
+            out += ass_text[last_end:]
+            ass_text = out
 
     is_all = (speaker_name.strip().upper() == "ALL")
     spk_hex = "&H0000FF&" if is_all else (rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&")
@@ -1210,7 +1222,7 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         elif enable_colors:
             if spk_color: run_speaker.font.color.rgb = spk_color
             if spk_hl:
-                apply_speaker_styling_to_run(run_speaker, spk_color, spk_hl)
+                apply_speaker_styling_to_run(run_speaker, (spk_color[0], spk_color[1], spk_color[2]) if spk_color else None, (spk_hl[0], spk_hl[1], spk_hl[2]))
             
         is_first_time = False
         if enable_cast and not is_all:
@@ -1299,7 +1311,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 elif enable_colors:
                     if spk_color: r_spk_name.font.color.rgb = spk_color
                     if spk_hl:
-                        apply_speaker_styling_to_run(r_spk_name, spk_color, spk_hl)
+                        apply_speaker_styling_to_run(r_spk_name, (spk_color[0], spk_color[1], spk_color[2]) if spk_color else None, (spk_hl[0], spk_hl[1], spk_hl[2]))
                     
                 actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
                 if actor and not is_all:
