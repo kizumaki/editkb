@@ -1463,7 +1463,41 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
 
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
     speaker_color_map = {}
+def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12):
+    doc = Document()
+    p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
     
+    p_sub = doc.add_paragraph(f"Video: {video_title}")
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
+    
+    doc.add_paragraph()
+    TAB_STOP = Inches(1.0)
+    for item in dialogue_list:
+        if item.get("timecode"):
+            p_tc = doc.add_paragraph(item["timecode"])
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
+            p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+            
+        p_line = doc.add_paragraph()
+        p_line.paragraph_format.left_indent = TAB_STOP
+        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        
+        r_spk = p_line.add_run(f"{item['speaker']}:")
+        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
+        r_spk.font.color.rgb = RGBColor(79, 70, 229)
+        p_line.add_run("\t")
+        r_text = p_line.add_run(item['text'])
+        r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(font_size_pt)
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
+        
+    for p in doc.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf    
     # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & LOẠI TRỪ MÀU CỐ ĐỊNH KHỎI DANH SÁCH MÀU NGẪU NHIÊN
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     fixed_rgb_set = {tuple(v.get("text_color")) for v in fixed_colors.values() if isinstance(v, dict) and v.get("text_color")}
