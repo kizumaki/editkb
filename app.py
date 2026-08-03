@@ -178,6 +178,16 @@ DEFAULT_NON_SPEAKER_PHRASES = {
 VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
 VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
 
+def hex_to_rgb(hex_str):
+    if not hex_str or not isinstance(hex_str, str) or not hex_str.startswith('#'):
+        return None
+    h = hex_str.lstrip('#')
+    if len(h) != 6: return None
+    try:
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+    except ValueError:
+        return None
+
 def normalize_speaker_color_db(db_data):
     normalized = {}
     if not isinstance(db_data, dict): return normalized
@@ -987,8 +997,8 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
             r_spk = p_line.add_run(f"{spk}:")
             r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
             if enable_colors:
-                cfg = get_speaker_color_config(spk, speaker_color_map, available_rgb_tuples)
-                apply_speaker_styling_to_run(r_spk, cfg.get("text_color"), cfg.get("highlight_color"))
+                spk_cfg = get_speaker_color_config(spk, speaker_color_map, available_rgb_tuples)
+                apply_speaker_styling_to_run(r_spk, spk_cfg.get("text_color"), spk_cfg.get("highlight_color"))
             p_line.add_run("\t")
         else:
             p_line.add_run("\t")
@@ -1218,303 +1228,6 @@ def extract_phrases_from_file(file_io, file_name):
                     phrases.update([part.strip() for part in parts if part.strip()])
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return phrases
-
-# --- HÀM TÁCH BỐ CỤC FORMATTING CHO THOẠI VÀ BẢNG WORD ---
-def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, available_rgb_tuples, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
-    text = re.sub(r'\t+', ' ', text).strip()
-    TAB_STOP_POSITION = Inches(1.0)
-    
-    speaker_tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
-    
-    if not speaker_tags:
-        new_paragraph = document.add_paragraph()
-        new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-        new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-        new_paragraph.add_run('\t')
-        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
-        apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
-        return None, text
-
-    last_processed_index = 0
-    ass_line_result = ""
-    pure_dialogue_list = []
-    
-    for i in range(len(speaker_tags)):
-        start_pos, end_pos, speaker_name, raw_m = speaker_tags[i]
-        
-        leading_content = text[last_processed_index:start_pos].strip()
-        if leading_content:
-            continuation_paragraph = document.add_paragraph()
-            continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-            continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-            continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-            continuation_paragraph.add_run('\t')
-            continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
-            apply_html_and_phonetic_to_paragraph(continuation_paragraph, leading_content, enable_phonetic)
-            pure_dialogue_list.append(leading_content)
-            
-        stats_counter[speaker_name] += 1
-        next_match_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(text)
-            
-        content = re.sub(r'^\s*[\t\s]+', '', text[end_pos:next_match_start]).strip()
-        actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-        
-        if not actor_name:
-            first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
-            if first_word and first_word in st.session_state['custom_cast_mapping'].values():
-                actor_name = first_word; st.session_state['custom_cast_mapping'][speaker_name.upper()] = actor_name
-
-        if actor_name and content.startswith(actor_name):
-            content = content[len(actor_name):].strip()
-            
-        if content: pure_dialogue_list.append(content)
-
-        if actor_name:
-            if actor_name not in actor_dialogue_map: actor_dialogue_map[actor_name] = []
-            actor_dialogue_map[actor_name].append({"speaker": speaker_name, "timecode": current_timecode, "text": content})
-
-        new_paragraph = document.add_paragraph()
-        new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
-        new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-        
-        is_all = (speaker_name.strip().upper() == "ALL")
-        spk_text = f"{speaker_name}:"
-        
-        # 🎨 LẤY CẤU HÌNH MÀU CHỮ LẪN HIGHLIGHT NỀN CHO NHÂN VẬT
-        spk_cfg = get_speaker_color_config(speaker_name, speaker_color_map, available_rgb_tuples)
-        tc_tuple = spk_cfg.get("text_color")
-        hc_tuple = spk_cfg.get("highlight_color")
-        
-        run_speaker = new_paragraph.add_run(spk_text)
-        run_speaker.font.bold = True
-        
-        if enable_colors:
-            apply_speaker_styling_to_run(run_speaker, tc_tuple, hc_tuple)
-            
-        is_first_time = False
-        if enable_cast and not is_all:
-            if speaker_name not in seen_speakers_first_time:
-                seen_speakers_first_time.add(speaker_name); is_first_time = True
-                if actor_name:
-                    run_actor = new_paragraph.add_run(f" {actor_name}")
-                    run_actor.font.bold = True; run_actor.font.color.rgb = RED_COLOR
-
-        new_paragraph.add_run('\t')
-        if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
-        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
-        
-        spk_color_for_ass = RGBColor(tc_tuple[0], tc_tuple[1], tc_tuple[2]) if tc_tuple else RED_COLOR
-        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color_for_ass, enable_colors, enable_phonetic, enable_cast, is_first_time)
-        last_processed_index = next_match_start
-
-    pure_dialogue_text = " ".join(pure_dialogue_list)
-    return ass_line_result, pure_dialogue_text
-
-def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
-    speaker_color_map = {}
-    
-    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP
-    fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = {tuple(v.get("text_color")) for v in fixed_colors.values() if isinstance(v, dict) and v.get("text_color")}
-    
-    # Sinh 200 màu rực rỡ HOÀN TOÀN KHÔNG TRÙNG LẶP với các màu cố định
-    available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
-    random.shuffle(available_rgb_tuples)
-
-    stats_counter = Counter(); seen_speakers_first_time = set()
-    actor_dialogue_map = {}; qc_warnings = []        
-    
-    custom_speakers = st.session_state.get('custom_speakers', set())
-    custom_non_speakers = st.session_state.get('custom_non_speakers', set())
-
-    original_document = Document(io.BytesIO(uploaded_file.getvalue()))
-    raw_paragraphs = [p for p in original_document.paragraphs]
-    processed_strings = preprocess_raw_paragraphs(raw_paragraphs, custom_speakers, custom_non_speakers)
-    
-    first_timecode_idx = 0
-    for idx, text in enumerate(processed_strings):
-        if TIMECODE_REGEX.match(text): first_timecode_idx = idx; break
-            
-    header_zone = processed_strings[:first_timecode_idx] if first_timecode_idx > 0 else []
-    body_zone = processed_strings[first_timecode_idx:] if first_timecode_idx > 0 else processed_strings
-    
-    for h_line in header_zone:
-        if ":" in h_line and not h_line.lower().startswith("srt conversion"):
-            parts = h_line.split(":", 1)
-            spk_k = parts[0].strip().upper(); act_v = parts[1].strip().upper()
-            if is_valid_speaker_name(spk_k) and act_v and act_v not in NON_SPEAKER_PHRASES:
-                st.session_state['custom_cast_mapping'][spk_k] = act_v
-
-    document = Document()
-    title_text_raw = file_name_without_ext.upper()
-    title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace("_FINAL", "").replace(" (GỐC)", "").strip()
-    title_paragraph = document.add_paragraph(title_text)
-    title_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_paragraph.runs[0].font.name = 'Times New Roman'; title_paragraph.runs[0].font.size = Pt(20); title_paragraph.runs[0].bold = True
-    
-    unique_speakers = []; assigned_actors = []; unassigned_speakers = []
-    for text in body_zone:
-        if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
-        spk_tags = find_all_speaker_tags(text, custom_speakers, custom_non_speakers)
-        for _, _, speaker_name, _ in spk_tags:
-            if speaker_name not in unique_speakers:
-                unique_speakers.append(speaker_name)
-                act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
-                if act:
-                    if act not in assigned_actors: assigned_actors.append(act)
-                else:
-                    if speaker_name.upper() != "ALL": unassigned_speakers.append(speaker_name)
-                    
-    if unassigned_speakers: qc_warnings.append(f"⚠️ Phát hiện {len(unassigned_speakers)} nhân vật chưa gán diễn viên: {', '.join(unassigned_speakers)}")
-            
-    if unique_speakers:
-        if enable_cast:
-            header_vai = document.add_paragraph()
-            r_vai = header_vai.add_run("VAI: ")
-            r_vai.font.name = 'Times New Roman'; r_vai.font.size = Pt(font_size_pt); r_vai.font.bold = True
-            header_vai.paragraph_format.space_before = Pt(0); header_vai.paragraph_format.space_after = Pt(0)
-
-            for spk in unique_speakers:
-                p_spk = document.add_paragraph()
-                p_spk.paragraph_format.space_before = Pt(0); p_spk.paragraph_format.space_after = Pt(0)
-                is_all = (spk.strip().upper() == "ALL")
-                
-                spk_cfg = get_speaker_color_config(spk, speaker_color_map, available_rgb_tuples)
-                tc_tuple = spk_cfg.get("text_color")
-                hc_tuple = spk_cfg.get("highlight_color")
-                
-                r_spk_name = p_spk.add_run(f"{spk}: ")
-                r_spk_name.font.name = 'Times New Roman'; r_spk_name.font.size = Pt(font_size_pt); r_spk_name.font.bold = True
-                
-                if enable_colors:
-                    apply_speaker_styling_to_run(r_spk_name, tc_tuple, hc_tuple)
-                    
-                actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
-                if actor and not is_all:
-                    r_actor = p_spk.add_run(actor)
-                    r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(font_size_pt); r_actor.font.bold = True
-                    r_actor.font.color.rgb = RED_COLOR
-        else:
-            speaker_list_text = "VAI: " + ", ".join(unique_speakers)
-            p = document.add_paragraph(speaker_list_text)
-            p.runs[0].font.name = 'Times New Roman'; p.runs[0].font.size = Pt(font_size_pt); p.runs[0].bold = True
-            p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
-    
-    document.add_paragraph()
-    start_index = len(document.paragraphs); total_paras = len(body_zone)
-    progress_bar = st.progress(0); status_text = st.empty()
-    ass_dialogues = []; srt_dialogues = []; current_timecode_line = None; srt_counter = 1; max_video_time_sec = 0.0
-
-    for idx, text in enumerate(body_zone):
-        if idx % max(1, total_paras // 10) == 0:
-            progress = int((idx / total_paras) * 100)
-            progress_bar.progress(progress)
-            status_text.text(f"Đang phân tích & xử lý {idx}/{total_paras}...")
-
-        if not text or text.upper() == title_text.upper(): continue
-        if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
-            
-        if TIMECODE_REGEX.match(text):
-            current_timecode_line = text
-            dur, t1, t2 = calculate_duration_sec(text)
-            if t2 > max_video_time_sec: max_video_time_sec = t2
-            new_paragraph = document.add_paragraph(text)
-            new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(font_size_pt)
-            new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
-        else:
-            cleaned_text = clean_and_normalize_text(text, strip_all_tags=False)
-            if is_resync: cleaned_text = normalize_phonetics_in_text(cleaned_text)
-            
-            ass_formatted_line, pure_dialogue_text = format_and_split_dialogue(
-                document, cleaned_text, enable_colors, enable_phonetic, enable_cast, 
-                speaker_color_map, available_rgb_tuples, stats_counter, seen_speakers_first_time,
-                actor_dialogue_map, current_timecode_line, custom_speakers, custom_non_speakers,
-                font_size_pt=font_size_pt
-            )
-            
-            if current_timecode_line and pure_dialogue_text:
-                dur, _, _ = calculate_duration_sec(current_timecode_line)
-                clean_chars = len(re.sub(r'</?[ibuIBU]>', '', pure_dialogue_text).strip())
-                cps = clean_chars / dur if dur > 0 else 0
-                if cps > 20 and clean_chars > 0: 
-                    qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{pure_dialogue_text[:45]}...\"")
-            
-            if current_timecode_line and ass_formatted_line:
-                start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
-                if start_ass and end_ass:
-                    ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{ass_formatted_line}")
-                    srt_dialogues.append(f"{srt_counter}\n{current_timecode_line}\n{re.sub(r'{\\.*?}', '', ass_formatted_line)}\n")
-                    srt_counter += 1
-
-    progress_bar.progress(100); status_text.text("Xử lý hoàn tất!"); time.sleep(0.5)
-    progress_bar.empty(); status_text.empty()
-            
-    for paragraph in document.paragraphs[start_index:]:
-        paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-        paragraph.paragraph_format.space_before = Pt(0); paragraph.paragraph_format.space_after = Pt(0)
-        for run in paragraph.runs:
-            run.font.name = 'Times New Roman'
-            if run.font.size is None or is_resync: run.font.size = Pt(font_size_pt)
-        
-    docx_file = io.BytesIO(); document.save(docx_file); docx_file.seek(0)
-    
-    ass_header = f"""[Script Info]
-Title: {title_text}
-ScriptType: v4.00+
-WrapStyle: 0
-ScaledBorderAndShadow: yes
-YCbCr Matrix: None
-PlayResX: 1920
-PlayResY: 1080
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Times New Roman,45,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,10,10,30,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-    ass_content = ass_header + "\n".join(ass_dialogues)
-    ass_file = io.BytesIO(ass_content.encode('utf-8'))
-    
-    srt_content = "\n".join(srt_dialogues)
-    srt_file = io.BytesIO(srt_content.encode('utf-8-sig'))
-    
-    actor_zip_bytes = io.BytesIO()
-    with zipfile.ZipFile(actor_zip_bytes, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for act_name, dialogues in actor_dialogue_map.items():
-            act_buf = generate_actor_docx(title_text, act_name, dialogues, font_size_pt=font_size_pt)
-            zip_file.writestr(f"Kich_Ban_{act_name}.docx", act_buf.getvalue())
-    actor_zip_bytes.seek(0)
-    
-    actor_stats_breakdown = {}
-    for act_name, dialogues in actor_dialogue_map.items():
-        line_cnt = len(dialogues)
-        word_cnt = sum(len(re.sub(r'</?[ibuIBU]>', '', d['text']).split()) for d in dialogues)
-        actor_stats_breakdown[act_name] = {"lines": line_cnt, "words": word_cnt}
-    
-    video_duration_min = round_seconds_to_int_minutes(max_video_time_sec)
-    
-    stats = {
-        "total_speakers": len(unique_speakers),
-        "total_lines": sum(stats_counter.values()),
-        "top_speaker": stats_counter.most_common(1)[0] if stats_counter else ("Không có", 0),
-        "actors_list": assigned_actors,
-        "actor_dialogue_map": actor_dialogue_map,
-        "actor_stats_breakdown": actor_stats_breakdown,
-        "video_duration_min": video_duration_min,
-        "video_title": title_text,
-        "qc_warnings": qc_warnings
-    }
-    
-    return docx_file, ass_file, srt_file, actor_zip_bytes, stats
-
-def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
-    name_without_ext = os.path.splitext(original_filename)[0]
-    cleaned = re.sub(r'(CONVERTED_|FORMATTED_|\s*\(.*\)$|_edit$|_resync$|_final$)', '', name_without_ext, flags=re.IGNORECASE).strip()
-    return f"{cleaned}{tag}{ext}"
 
 # --- HERO BANNER HEADER ---
 st.markdown(f"""
@@ -2388,7 +2101,7 @@ with tab_cast_db:
                     st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
             else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
-    # SUBTAB 2: BẢNG MÀU CHỮ LẪN HIGHLIGHT CỐ ĐỊNH (UPDATE VỚI ĐẦY ĐỦ HIGHLIGHT OPTION)
+    # SUBTAB 2: BẢNG MÀU CHỮ LẪN HIGHLIGHT CỐ ĐỊNH (XEM TRỰC QUAN MÀU THỰC TẾ & COLOR COLUMN)
     with subtab_color_map:
         with st.container(border=True):
             st.subheader("🎨 BẢNG MÀU CHỮ & HIGHLIGHT CỐ ĐỊNH (FIXED COLOR & HIGHLIGHT)")
@@ -2408,15 +2121,8 @@ with tab_cast_db:
                 st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                 if st.button("➕ Thêm Quy Tắc Màu", use_container_width=True, type="primary", key="btn_add_fixed_color"):
                     if new_color_spk:
-                        tc_tuple = None
-                        if enable_tc and new_text_hex:
-                            h = new_text_hex.lstrip('#')
-                            tc_tuple = (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-                            
-                        hc_tuple = None
-                        if enable_hc and new_hl_hex:
-                            hh = new_hl_hex.lstrip('#')
-                            hc_tuple = (int(hh[0:2], 16), int(hh[2:4], 16), int(hh[4:6], 16))
+                        tc_tuple = hex_to_rgb(new_text_hex) if enable_tc else None
+                        hc_tuple = hex_to_rgb(new_hl_hex) if enable_hc else None
                             
                         st.session_state['fixed_speaker_colors'][new_color_spk] = {
                             "text_color": tc_tuple,
@@ -2426,9 +2132,27 @@ with tab_cast_db:
                         st.session_state['color_input_key'] += 1
                         st.success(f"✅ Đã lưu cấu hình Màu Chữ & Highlight cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
 
+            # 👁️ TRÌNH XEM TRƯỚC MÀU THỰC TẾ TRỰC QUAN (LIVE PREVIEW CARD)
+            st.markdown("##### 👁️ Xem trước màu hiển thị thực tế trên kịch bản lồng tiếng:")
+            p_tc = new_text_hex if (enable_tc and new_text_hex) else "#0F172A"
+            p_bg = new_hl_hex if (enable_hc and new_hl_hex) else "transparent"
+            spk_disp_name = new_color_spk if new_color_spk else "TÊN_NHÂN_VẬT"
+
+            st.markdown(f"""
+            <div style="padding: 12px 18px; border: 1px dashed #0284C7; border-radius: 8px; background-color: #F8FAFC; margin-bottom: 15px;">
+                <span style="color: {p_tc}; background-color: {p_bg}; font-family: 'Times New Roman', serif; font-size: 16px; font-weight: bold; padding: 2px 8px; border-radius: 4px;">
+                    {spk_disp_name}:
+                </span>
+                <span style="font-family: 'Times New Roman', serif; font-size: 16px; color: #0F172A;">
+                    &nbsp;&nbsp;&t; Mẫu câu thoại hiển thị thực tế khi xuất ra kịch bản Word lồng tiếng.
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
         st.markdown("---")
         with st.container(border=True):
             st.markdown("#### 📑 Danh Sách Bảng Màu & Highlight Cố Định Đã Lưu Kho")
+            st.caption("💡 Mẹo: Bạn có thể nhìn trực tiếp ô màu bên dưới và bấm vào ô màu để chỉnh sửa trực tiếp trong bảng!")
             fixed_color_dict = st.session_state['fixed_speaker_colors']
 
             color_db_table = []
@@ -2440,8 +2164,8 @@ with tab_cast_db:
                     tc = tuple(cfg) if isinstance(cfg, (list, tuple)) else (255, 0, 0)
                     hc = None
                     
-                tc_hex = f"#{tc[0]:02X}{tc[1]:02X}{tc[2]:02X}" if tc else "Không tô"
-                hc_hex = f"#{hc[0]:02X}{hc[1]:02X}{hc[2]:02X}" if hc else "Không tô"
+                tc_hex = f"#{tc[0]:02X}{tc[1]:02X}{tc[2]:02X}" if tc else None
+                hc_hex = f"#{hc[0]:02X}{hc[1]:02X}{hc[2]:02X}" if hc else None
                 
                 color_db_table.append({
                     "Nhân vật Cố định": spk_k,
@@ -2455,8 +2179,8 @@ with tab_cast_db:
                 df_color_db,
                 column_config={
                     "Nhân vật Cố định": st.column_config.TextColumn("Tên Nhân vật", disabled=True),
-                    "Màu Chữ (Hex)": st.column_config.TextColumn("Màu chữ", disabled=True),
-                    "Highlight Nền (Hex)": st.column_config.TextColumn("Highlight Nền", disabled=True),
+                    "Màu Chữ (Hex)": st.column_config.ColorColumn("Màu chữ (Xem & Sửa trực tiếp)"),
+                    "Highlight Nền (Hex)": st.column_config.ColorColumn("Highlight Nền (Xem & Sửa trực tiếp)"),
                     "Xóa": st.column_config.CheckboxColumn("Xóa?")
                 },
                 hide_index=True, use_container_width=True, key="fixed_color_db_editor_table"
@@ -2467,7 +2191,12 @@ with tab_cast_db:
                 for _, row in edited_color_db_df.iterrows():
                     if not row["Xóa"]:
                         spk_k = str(row["Nhân vật Cố định"]).upper().strip()
-                        new_fixed_map[spk_k] = fixed_color_dict[spk_k]
+                        tc_hex = row["Màu Chữ (Hex)"]
+                        hc_hex = row["Highlight Nền (Hex)"]
+                        new_fixed_map[spk_k] = {
+                            "text_color": hex_to_rgb(tc_hex),
+                            "highlight_color": hex_to_rgb(hc_hex)
+                        }
                 st.session_state['fixed_speaker_colors'] = new_fixed_map
                 save_json_db(SPEAKER_COLOR_DB_FILE, new_fixed_map)
                 st.success("✅ Đã lưu cập nhật Bảng Màu Cố Định vào Database!"); time.sleep(1); st.rerun()
