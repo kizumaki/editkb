@@ -49,33 +49,33 @@ DEFAULT_CAST_MAPPING = {
     "JACKSON OLSON": "THÔNG", "DANNY": "QUANG", "KYLE": "QUANG", "BILL": "HITA", "TIM": "HITA"
 }
 
-# 🎨 BẢNG MÀU CỐ ĐỊNH BÓC TÁCH CHÍNH XÁC TỪ FILE VAI - MAU.XLSX CỦA MAI HAN TEAM
+# 🎨 BẢNG MÀU CỐ ĐỊNH TỪ FILE VAI - MAU.XLSX (TẤT CẢ LÀ TUPLE RGB CHUẨN)
 DEFAULT_FIXED_SPEAKER_COLORS = {
-    "BEN AZELART": [21, 96, 130],
-    "BETHANY": [255, 192, 0],
-    "BRI": [116, 166, 123],
-    "CALEB": [116, 56, 25],
-    "CHASE": [255, 0, 255],
-    "CHUNKZ": [21, 96, 130],
-    "COBY": [255, 0, 255],
-    "CODY": [233, 113, 50],
-    "CORY": [255, 0, 0],
-    "DAKA": [110, 196, 229],
-    "GARRETT": [243, 243, 243],
-    "JOSH": [160, 43, 147],
-    "KEELEY": [255, 192, 0],
-    "LARRY": [243, 243, 243],
-    "LOGAN": [216, 170, 211],
-    "NATHAN": [21, 96, 130],
-    "NICK": [255, 0, 0],
-    "PRESTON": [255, 0, 0],
-    "RILEY": [116, 166, 123],
-    "SCOTT": [233, 113, 50],
-    "SPARKY": [116, 56, 25],
-    "STEPHEN": [0, 51, 204],
-    "STEVEN": [0, 255, 255],
-    "TYLER": [160, 43, 147],
-    "YOMI": [0, 153, 153]
+    "BEN AZELART": (21, 96, 130),
+    "BETHANY": (255, 192, 0),
+    "BRI": (116, 166, 123),
+    "CALEB": (116, 56, 25),
+    "CHASE": (255, 0, 255),
+    "CHUNKZ": (21, 96, 130),
+    "COBY": (255, 0, 255),
+    "CODY": (233, 113, 50),
+    "CORY": (255, 0, 0),
+    "DAKA": (110, 196, 229),
+    "GARRETT": (243, 243, 243),
+    "JOSH": (160, 43, 147),
+    "KEELEY": (255, 192, 0),
+    "LARRY": (243, 243, 243),
+    "LOGAN": (216, 170, 211),
+    "NATHAN": (21, 96, 130),
+    "NICK": (255, 0, 0),
+    "PRESTON": (255, 0, 0),
+    "RILEY": (116, 166, 123),
+    "SCOTT": (233, 113, 50),
+    "SPARKY": (116, 56, 25),
+    "STEPHEN": (0, 51, 204),
+    "STEVEN": (0, 255, 255),
+    "TYLER": (160, 43, 147),
+    "YOMI": (0, 153, 153)
 }
 
 DEFAULT_SOUTH_VIETNAM_PHONETICS = {
@@ -181,10 +181,9 @@ def load_json_db(filepath, default_data=None):
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, dict) and isinstance(default_data, dict):
-                    # Convert list RGBs back to tuples if needed
                     res = {}
                     for k, v in data.items():
-                        if isinstance(v, list) and len(v) == 3: res[k] = tuple(v)
+                        if isinstance(v, (list, tuple)) and len(v) == 3: res[k] = tuple(v)
                         else: res[k] = v
                     return res
                 return set(data) if isinstance(data, list) and isinstance(default_data, set) else data
@@ -196,10 +195,9 @@ def save_json_db(filepath, data_container):
         with open(filepath, "w", encoding="utf-8") as f:
             if isinstance(data_container, set): json.dump(list(data_container), f, ensure_ascii=False, indent=2)
             elif isinstance(data_container, dict):
-                # Convert tuple RGBs to lists for JSON
                 out_dict = {}
                 for k, v in data_container.items():
-                    if isinstance(v, tuple): out_dict[k] = list(v)
+                    if isinstance(v, (tuple, list)): out_dict[k] = list(v)
                     else: out_dict[k] = v
                 json.dump(out_dict, f, ensure_ascii=False, indent=2)
             else: json.dump(data_container, f, ensure_ascii=False, indent=2)
@@ -423,7 +421,7 @@ else:
 # ==========================================
 def generate_vibrant_rgb_colors_excluding(excluded_rgbs, count=200):
     colors = []
-    used_set = set(excluded_rgbs)
+    used_set = set(tuple(x) for x in excluded_rgbs)
     attempts = 0
     while len(colors) < count and attempts < 10000:
         attempts += 1
@@ -446,9 +444,10 @@ def get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples):
     spk_upper = speaker_name.strip().upper()
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     
-    # 1. Nếu là nhân vật cố định ➔ Trả về đúng màu cố định đã ấn định từ VAI - MAU.xlsx
+    # 1. Nếu là nhân vật cố định ➔ Trả về đúng màu cố định từ VAI - MAU.xlsx
     if spk_upper in fixed_colors:
-        r, g, b = fixed_colors[spk_upper]
+        val = fixed_colors[spk_upper]
+        r, g, b = val[0], val[1], val[2]
         return RGBColor(r, g, b)
         
     # 2. Nếu là nhân vật vãng lai / tạm thời ➔ Sinh màu ngẫu nhiên KHÔNG TRÙNG với màu cố định & không trùng lẫn nhau
@@ -939,7 +938,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     # Chuẩn bị màu nhân vật cho Tab 6
     speaker_color_map = {}
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = set(fixed_colors.values())
+    fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
     available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
     random.shuffle(available_rgb_tuples)
 
@@ -1201,9 +1200,9 @@ def extract_phrases_from_file(file_io, file_name):
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
     speaker_color_map = {}
     
-    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP
+    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP (SỬA LỖI LIST TYPE NGUYÊN NHÂN TẠO LỖI)
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
-    fixed_rgb_set = set(fixed_colors.values())
+    fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
     
     # Sinh 200 màu rực rỡ HOÀN TOÀN KHÔNG TRÙNG LẶP với 25 màu cố định
     available_rgb_tuples = generate_vibrant_rgb_colors_excluding(fixed_rgb_set, 200)
@@ -1413,7 +1412,7 @@ tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_
     "🎬 Xử lý Kịch bản Gốc", 
     "🔄 Re-Sync Kịch Bản Biên Tập",
     "📋 Theo dõi & Báo cáo Lương",
-    "🎭 Bảng Phân Vai & Màu Sắc Lồng Tiếng", 
+    "🎭 Bảng Phân Vai & Mã Màu", 
     "📚 Kho Database Phiên Âm Giọng Nam",
     "🔀 Đối Chiếu 2 File Tiếng Anh & QC Dịch",
     "🔎 Soát Bất Nhất Thuật Ngữ & Xưng Hô",
@@ -2270,18 +2269,18 @@ with tab_cast_db:
                     st.success(f"✅ Đã lưu cập nhật thành công! (Đã xóa {deleted_cast_count} vai)"); time.sleep(1); st.rerun()
             else: st.info("Không tìm thấy vai lồng tiếng nào khớp với từ khóa tìm kiếm.")
 
-    # SUBTAB 2: BẢNG MÀU NHÂN VẬT CỐ ĐỊNH
+    # SUBTAB 2: BẢNG MÀU NHÂN VẬT CỐ ĐỊNH (CÓ TÍCH HỢP COLOR PICKER TRỰC QUAN)
     with subtab_color_map:
         with st.container(border=True):
             st.subheader("🎨 BẢNG MÀU NHÂN VẬT CỐ ĐỊNH (FIXED CHARACTER COLORS)")
             st.markdown("Quản lý danh sách nhân vật cốt lõi có MÀU SẮC ẨN ĐỊNH cố định cho tất cả các kịch bản Tab 1 & Tab 2.")
 
-            st.markdown("#### ➕ Bổ sung Nhân vật Cố định mới")
+            st.markdown("#### ➕ Bổ sung / Sửa Màu Nhân vật Cố định")
             col_col1, col_col2, col_col3 = st.columns([2, 2, 1.2])
             with col_col1:
-                new_color_spk = st.text_input("Tên Nhân vật Cố định:", placeholder="VD: MRBEAST...", key=f"add_color_spk_{st.session_state['color_input_key']}").strip().upper()
+                new_color_spk = st.text_input("Tên Nhân vật Cố định:", placeholder="VD: CORY, NICK...", key=f"add_color_spk_{st.session_state['color_input_key']}").strip().upper()
             with col_col2:
-                new_color_hex = st.color_picker("Chọn Màu Cố Định:", "#FF0000", key=f"add_color_picker_{st.session_state['color_input_key']}")
+                new_color_hex = st.color_picker("Chọn Bảng Màu Trực Quan:", "#FF0000", key=f"add_color_picker_{st.session_state['color_input_key']}")
             with col_col3:
                 st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                 if st.button("➕ Thêm Màu Cố Định", use_container_width=True, type="primary", key="btn_add_fixed_color"):
@@ -2291,16 +2290,16 @@ with tab_cast_db:
                         st.session_state['fixed_speaker_colors'][new_color_spk] = (r, g, b)
                         save_json_db(SPEAKER_COLOR_DB_FILE, st.session_state['fixed_speaker_colors'])
                         st.session_state['color_input_key'] += 1
-                        st.success(f"✅ Đã gán màu cố định cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
+                        st.success(f"✅ Đã gán màu cố định `{new_color_hex}` cho `{new_color_spk}`!"); time.sleep(1); st.rerun()
 
         st.markdown("---")
         with st.container(border=True):
-            st.markdown("#### 📑 Bảng 25 Nhân Vật Cố Định Đã Thiết Lập")
+            st.markdown("#### 📑 Danh Sách 25 Nhân Vật Cố Định Đã Lưu Kho (Trích xuất từ VAI - MAU.xlsx)")
             fixed_color_dict = st.session_state['fixed_speaker_colors']
 
             color_db_table = []
             for spk_k, rgb_v in sorted(fixed_color_dict.items()):
-                r, g, b = rgb_v
+                r, g, b = rgb_v[0], rgb_v[1], rgb_v[2]
                 hex_str = f"#{r:02X}{g:02X}{b:02X}"
                 color_db_table.append({
                     "Nhân vật Cố định": spk_k,
@@ -2782,7 +2781,7 @@ with tab_consistency:
                 else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
 
 # ==========================================
-# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (UPDATED STATE BINDING & FIXED ACTION BUTTON)
+# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (UPDATED SESSION STATE BINDING)
 # ==========================================
 with tab_cleaner:
     st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
@@ -2793,7 +2792,7 @@ with tab_cleaner:
         "📁 Dọn Dẹp & Chuẩn Hóa File Hàng Loạt (.srt / .docx)"
     ])
 
-    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP (ĐÃ CẬP NHẬT GÁN TRỰC TIẾP STATE KEY)
+    # 1. PHÂN KHU 1: XỬ LÝ VĂN BẢN TRỰC TIẾP
     with subtab_paste_clean:
         st.markdown("#### 1. Chọn Quy Tắc Giặt Sạch Văn Bản")
         col_opt1, col_opt2, col_opt3, col_opt4 = st.columns(4)
@@ -2818,7 +2817,7 @@ with tab_cleaner:
                 key="textarea_raw_clean_input"
             )
             
-            # NÚT THỰC THI THIẾT LẬP SESSION STATE TRỰC TIẾP
+            # NÚT THỰC THI THIẾT LẬP SESSION STATE TRỰC TIẾP (SỬA LỖI STREAMLIT RE-RENDER)
             btn_do_clean = st.button("🧹 THỰC THI DỌN DẸP VĂN BẢN", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
 
         if btn_do_clean and input_raw_text:
@@ -3059,8 +3058,8 @@ with tab_tools:
                                 zip_buf.seek(0)
                                 st.success(f"✅ Đã chuyển đổi thành công {len(batch_docx_files)} file!")
                                 st.download_button(
-                                    label="📦 Tải Trọn Bộ SRT (.ZIP)", data=zip_buf.getvalue(),
-                                    file_name="SRT_Files.zip", mime="application/zip", use_container_width=True
+                                    label="📦 Tải Trọn Bộ Word (.ZIP)", data=zip_buf.getvalue(),
+                                    file_name="Word_Files.zip", mime="application/zip", use_container_width=True
                                 )
                         except Exception as e: st.error(f"Lỗi: {e}")
 
