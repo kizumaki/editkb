@@ -49,7 +49,7 @@ DEFAULT_CAST_MAPPING = {
     "JACKSON OLSON": "THÔNG", "DANNY": "QUANG", "KYLE": "QUANG", "BILL": "HITA", "TIM": "HITA"
 }
 
-# 🎨 BẢNG MÀU CỐ ĐỊNH TỪ FILE VAI - MAU.XLSX (TẤT CẢ LÀ TUPLE RGB CHUẨN)
+# 🎨 BẢNG MÀU CỐ ĐỊNH CHÍNH XÁC TỪ FILE VAI - MAU.XLSX CỦA MAI HAN TEAM
 DEFAULT_FIXED_SPEAKER_COLORS = {
     "BEN AZELART": (21, 96, 130),
     "BETHANY": (255, 192, 0),
@@ -935,7 +935,6 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     document.add_paragraph()
     TAB_STOP = Inches(1.0)
     
-    # Chuẩn bị màu nhân vật cho Tab 6
     speaker_color_map = {}
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
@@ -1197,10 +1196,223 @@ def extract_phrases_from_file(file_io, file_name):
     except Exception as e: st.error(f"Lỗi đọc file: {e}")
     return phrases
 
+def normalize_phonetics_in_text(text):
+    text = re.sub(r'\t+', ' ', text)
+    phonetic_db = st.session_state.get('custom_phonetics', {})
+    def replace_match(m):
+        eng_word = m.group(1)
+        if eng_word.upper() in phonetic_db or is_candidate_english_word(eng_word): return eng_word
+        return m.group(0)
+    pattern = r'\b[\w\s-]+\s*\(([A-Za-z0-9\'-]+)\)'
+    cleaned_text = re.sub(pattern, replace_match, text)
+    return re.sub(r'\s+', ' ', cleaned_text).strip()
+
+def add_text_run_with_html(paragraph, text, highlight=None):
+    if not text: return
+    tag_regex = re.compile(r'(</?[ibuIBU]>)')
+    parts = tag_regex.split(text)
+    
+    is_italic = False; is_bold = False; is_underline = False
+    for part in parts:
+        if not part: continue
+        lower_part = part.lower()
+        if lower_part == '<i>': is_italic = True
+        elif lower_part == '</i>': is_italic = False
+        elif lower_part == '<b>': is_bold = True
+        elif lower_part == '</b>': is_bold = False
+        elif lower_part == '<u>': is_underline = True
+        elif lower_part == '</u>': is_underline = False
+        else:
+            run = paragraph.add_run(part)
+            if is_italic: run.font.italic = True
+            if is_bold: run.font.bold = True
+            if is_underline: run.font.underline = True
+            if highlight: run.font.highlight_color = highlight
+
+def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
+    current_text = re.sub(r'\t+', ' ', current_text).strip()
+    if not current_text: return
+    
+    phonetic_db = st.session_state['custom_phonetics']
+    if not enable_phonetic:
+        add_text_run_with_html(paragraph, current_text)
+        return
+
+    sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
+    if sorted_eng_keys:
+        pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+        eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
+    else: eng_phonetic_regex = None
+
+    if eng_phonetic_regex:
+        matches = list(eng_phonetic_regex.finditer(current_text))
+        last_end = 0
+        for match in matches:
+            eng_word_original = match.group(0)
+            start, end = match.span()
+            if start > last_end: add_text_run_with_html(paragraph, current_text[last_end:start])
+            pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
+            add_text_run_with_html(paragraph, f"{pho_text} ", highlight=WD_COLOR_INDEX.YELLOW)
+            add_text_run_with_html(paragraph, f"({eng_word_original})", highlight=WD_COLOR_INDEX.YELLOW)
+            last_end = end
+        if last_end < len(current_text): add_text_run_with_html(paragraph, current_text[last_end:])
+    else: add_text_run_with_html(paragraph, current_text)
+
+def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
+    text = re.sub(r'\t+', ' ', text).strip()
+    ass_text = re.sub(r'</?[bB]>', '', text)
+    ass_text = re.sub(r'<i>', r'{\\i1}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'</i>', r'{\\i0}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'<u>', r'{\\u1}', ass_text, flags=re.IGNORECASE)
+    ass_text = re.sub(r'</u>', r'{\\u0}', ass_text, flags=re.IGNORECASE)
+    
+    phonetic_db = st.session_state['custom_phonetics']
+    if enable_phonetic:
+        sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
+        if sorted_eng_keys:
+            pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+            eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
+            def replace_eng(m):
+                orig = m.group(0); pho = phonetic_db.get(orig.upper(), orig)
+                return f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
+            ass_text = eng_phonetic_regex.sub(replace_eng, ass_text)
+
+    is_all = (speaker_name.strip().upper() == "ALL")
+    spk_hex = "&H0000FF&" if is_all else (rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&")
+    prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
+    
+    if enable_cast and is_first_time and actor_name and not is_all:
+        prefix_ass += f"{{\\c&H0000FF&}}{{\\b1}} {actor_name}{{\\b0}}"
+        
+    full_ass_line = f"{prefix_ass}{{\\c&HFFFFFF&}} {ass_text}"
+    return full_ass_line
+
+def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, available_rgb_tuples, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
+    text = re.sub(r'\t+', ' ', text).strip()
+    TAB_STOP_POSITION = Inches(1.0)
+    
+    speaker_tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
+    
+    if not speaker_tags:
+        new_paragraph = document.add_paragraph()
+        new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
+        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
+        new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
+        new_paragraph.add_run('\t')
+        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
+        apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
+        return None, text
+
+    last_processed_index = 0
+    ass_line_result = ""
+    pure_dialogue_list = []
+    
+    for i in range(len(speaker_tags)):
+        start_pos, end_pos, speaker_name, raw_m = speaker_tags[i]
+        
+        leading_content = text[last_processed_index:start_pos].strip()
+        if leading_content:
+            continuation_paragraph = document.add_paragraph()
+            continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
+            continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
+            continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
+            continuation_paragraph.add_run('\t')
+            continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
+            apply_html_and_phonetic_to_paragraph(continuation_paragraph, leading_content, enable_phonetic)
+            pure_dialogue_list.append(leading_content)
+            
+        stats_counter[speaker_name] += 1
+        next_match_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(text)
+            
+        content = re.sub(r'^\s*[\t\s]+', '', text[end_pos:next_match_start]).strip()
+        actor_name = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+        
+        if not actor_name:
+            first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
+            if first_word and first_word in st.session_state['custom_cast_mapping'].values():
+                actor_name = first_word; st.session_state['custom_cast_mapping'][speaker_name.upper()] = actor_name
+
+        if actor_name and content.startswith(actor_name):
+            content = content[len(actor_name):].strip()
+            
+        if content: pure_dialogue_list.append(content)
+
+        if actor_name:
+            if actor_name not in actor_dialogue_map: actor_dialogue_map[actor_name] = []
+            actor_dialogue_map[actor_name].append({"speaker": speaker_name, "timecode": current_timecode, "text": content})
+
+        new_paragraph = document.add_paragraph()
+        new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
+        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
+        new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
+        
+        is_all = (speaker_name.strip().upper() == "ALL")
+        spk_text = f"{speaker_name}:"
+        spk_color = RED_COLOR if is_all else get_speaker_color(speaker_name, speaker_color_map, available_rgb_tuples)
+        run_speaker = new_paragraph.add_run(spk_text); run_speaker.font.bold = True
+        
+        if is_all:
+            run_speaker.font.color.rgb = RED_COLOR; run_speaker.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        elif enable_colors: run_speaker.font.color.rgb = spk_color
+            
+        is_first_time = False
+        if enable_cast and not is_all:
+            if speaker_name not in seen_speakers_first_time:
+                seen_speakers_first_time.add(speaker_name); is_first_time = True
+                if actor_name:
+                    run_actor = new_paragraph.add_run(f" {actor_name}")
+                    run_actor.font.bold = True; run_actor.font.color.rgb = RED_COLOR
+
+        new_paragraph.add_run('\t')
+        if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
+        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
+        
+        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
+        last_processed_index = next_match_start
+
+    pure_dialogue_text = " ".join(pure_dialogue_list)
+    return ass_line_result, pure_dialogue_text
+
+def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12):
+    doc = Document()
+    p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
+    
+    p_sub = doc.add_paragraph(f"Video: {video_title}")
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
+    
+    doc.add_paragraph()
+    TAB_STOP = Inches(1.0)
+    for item in dialogue_list:
+        if item.get("timecode"):
+            p_tc = doc.add_paragraph(item["timecode"])
+            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
+            p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+            
+        p_line = doc.add_paragraph()
+        p_line.paragraph_format.left_indent = TAB_STOP
+        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        
+        r_spk = p_line.add_run(f"{item['speaker']}:")
+        r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
+        r_spk.font.color.rgb = RGBColor(79, 70, 229)
+        p_line.add_run("\t")
+        r_text = p_line.add_run(item['text'])
+        r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(font_size_pt)
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
+        
+    for p in doc.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf
+
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
     speaker_color_map = {}
     
-    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP (SỬA LỖI LIST TYPE NGUYÊN NHÂN TẠO LỖI)
+    # 🎨 CẤU HÌNH BẢNG MÀU CỐ ĐỊNH & KHÔNG TRÙNG LẶP (ĐÃ ÉP KIỂU TUPLE TRÁNH LỖI SET ELEMENT)
     fixed_colors = st.session_state.get('fixed_speaker_colors', DEFAULT_FIXED_SPEAKER_COLORS)
     fixed_rgb_set = {tuple(v) for v in fixed_colors.values()}
     
@@ -1727,6 +1939,7 @@ with tab_resync:
             st.markdown("---")
             if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG (14PT)", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
+                    # Chú ý: font_size_pt=14 dành riêng cho Re-Sync theo yêu cầu
                     r_docx, r_ass, r_srt, r_zip, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True, font_size_pt=14)
                     
                     st.session_state['r_processed_docx'] = r_docx
@@ -2781,7 +2994,7 @@ with tab_consistency:
                 else: st.info("Không phát hiện thuật ngữ Tiếng Anh nào lặp lại nhiều lần trong kịch bản này.")
 
 # ==========================================
-# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (UPDATED SESSION STATE BINDING)
+# TAB 8: DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ
 # ==========================================
 with tab_cleaner:
     st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
@@ -2817,7 +3030,6 @@ with tab_cleaner:
                 key="textarea_raw_clean_input"
             )
             
-            # NÚT THỰC THI THIẾT LẬP SESSION STATE TRỰC TIẾP (SỬA LỖI STREAMLIT RE-RENDER)
             btn_do_clean = st.button("🧹 THỰC THI DỌN DẸP VĂN BẢN", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
 
         if btn_do_clean and input_raw_text:
