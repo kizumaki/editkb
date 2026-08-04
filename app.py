@@ -106,7 +106,7 @@ enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, hel
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
 
-# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (GIAO DIỆN SỔ XUỐNG BÓC TÁCH LINH HOẠT)
+# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (DÙNG BẢNG ẢO CHỐNG ĐƠ TRÌNH DUYỆT 100%)
 with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=False):
     st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
     
@@ -144,20 +144,27 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         st.session_state['bulk_eng_results'] = sorted(list(all_english_words), key=lambda x: x.upper())
         st.success(f"✅ Đã quét xong {len(bulk_files)} file!")
 
-    # 1. BẢNG TÊN VAI MỚI - DẠNG SỔ XUỐNG BẤM CHỌN / LOẠI TRỪ
+    # 1. BẢNG TÊN VAI MỚI - BẢNG HIỂN THỊ SIÊU NHẸ (Virtual Scroll)
     if 'bulk_spk_results' in st.session_state and st.session_state['bulk_spk_results']:
         st.markdown("---")
         st.markdown("##### 👤 Tên Vai Mới Phát Hiện")
         new_spks = [s for s, c in st.session_state['bulk_spk_results'].items() if s not in st.session_state.get('custom_speakers', set())]
         
         if new_spks:
-            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới. Bạn có thể mở danh sách sổ xuống để kiểm tra và bấm bỏ chọn `x` những từ rác:")
-            selected_spks = st.multiselect(
-                "Danh sách tên vai (Bấm x để loại trừ từ rác):",
-                options=new_spks,
-                default=new_spks,
-                key="bulk_multiselect_spks"
+            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới. Bỏ tích chọn `[ ]` những từ rác trực tiếp trong bảng:")
+            df_spks = pd.DataFrame({"Lưu": [True] * len(new_spks), "Tên Vai": new_spks})
+            edited_spk_df = st.data_editor(
+                df_spks,
+                column_config={
+                    "Lưu": st.column_config.CheckboxColumn("Lưu?", default=True),
+                    "Tên Vai": st.column_config.TextColumn("Tên Vai", disabled=True)
+                },
+                hide_index=True,
+                height=220,
+                use_container_width=True,
+                key="data_editor_spks"
             )
+            selected_spks = edited_spk_df[edited_spk_df["Lưu"] == True]["Tên Vai"].tolist()
             
             if st.button(f"➕ Thêm ({len(selected_spks)}) Vai đã chọn vào Whitelist", use_container_width=True):
                 if selected_spks:
@@ -171,7 +178,7 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         else:
             st.info("Tất cả tên vai đều đã có trong Whitelist.")
 
-    # 2. BẢNG TỪ TIẾNG ANH MỚI - DẠNG SỔ XUỐNG BẤM CHỌN / LOẠI TRỪ
+    # 2. BẢNG TỪ TIẾNG ANH MỚI - BẢNG HIỂN THỊ SIÊU NHẸ (Virtual Scroll)
     if 'bulk_eng_results' in st.session_state and st.session_state['bulk_eng_results']:
         st.markdown("---")
         st.markdown("##### 🔤 Từ Tiếng Anh Mới Phát Hiện")
@@ -179,13 +186,20 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         new_words = [w for w in st.session_state['bulk_eng_results'] if w.upper() not in existing_pho]
         
         if new_words:
-            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới. Mở danh sách sổ xuống để chọn từ chuẩn cần làm phiên âm:")
-            selected_words = st.multiselect(
-                "Danh sách từ Tiếng Anh (Bấm x để loại trừ từ không cần thiết):",
-                options=new_words,
-                default=new_words,
-                key="bulk_multiselect_eng"
+            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới. Bỏ tích chọn `[ ]` những từ rác trực tiếp trong bảng:")
+            df_words = pd.DataFrame({"Lưu": [True] * len(new_words), "Từ Tiếng Anh": new_words})
+            edited_eng_df = st.data_editor(
+                df_words,
+                column_config={
+                    "Lưu": st.column_config.CheckboxColumn("Lưu?", default=True),
+                    "Từ Tiếng Anh": st.column_config.TextColumn("Từ Tiếng Anh", disabled=True)
+                },
+                hide_index=True,
+                height=220,
+                use_container_width=True,
+                key="data_editor_eng"
             )
+            selected_words = edited_eng_df[edited_eng_df["Lưu"] == True]["Từ Tiếng Anh"].tolist()
             
             if st.button(f"➕ Thêm ({len(selected_words)}) Từ đã chọn vào Kho Phiên Âm", use_container_width=True):
                 if selected_words:
