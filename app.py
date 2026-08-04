@@ -39,6 +39,7 @@ st.set_page_config(
 # ==========================================
 if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
 if 'resync_uploader_key' not in st.session_state: st.session_state['resync_uploader_key'] = 0
+if 'bulk_uploader_key' not in st.session_state: st.session_state['bulk_uploader_key'] = 0
 if 'spk_input_key' not in st.session_state: st.session_state['spk_input_key'] = 0
 if 'ns_input_key' not in st.session_state: st.session_state['ns_input_key'] = 0
 if 'pho_input_key' not in st.session_state: st.session_state['pho_input_key'] = 0
@@ -91,6 +92,9 @@ if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, 
         if key in st.session_state: del st.session_state[key]
     st.session_state['uploader_key'] += 1
     st.session_state['resync_uploader_key'] += 1
+    st.session_state['bulk_uploader_key'] += 1
+    if 'bulk_spk_results' in st.session_state: del st.session_state['bulk_spk_results']
+    if 'bulk_eng_results' in st.session_state: del st.session_state['bulk_eng_results']
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -102,14 +106,23 @@ enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, hel
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
 
-# Tính năng mới: QUÉT KHO SRT/SCRIPT TỔNG HỢP Ở SIDEBAR
+# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (CÓ NÚT DỌN DẸP RIÊNG)
 with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=False):
     st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
+    
+    if st.button("🗑️ Dọn dẹp danh sách file", key="btn_clear_bulk_scan", use_container_width=True):
+        st.session_state['bulk_uploader_key'] += 1
+        if 'bulk_spk_results' in st.session_state: del st.session_state['bulk_spk_results']
+        if 'bulk_eng_results' in st.session_state: del st.session_state['bulk_eng_results']
+        st.success("🧹 Đã làm sạch danh sách file!")
+        time.sleep(0.5)
+        st.rerun()
+
     bulk_files = st.file_uploader(
         "Kéo thả danh sách file vào đây:", 
         type=["srt", "docx", "txt", "xlsx"], 
         accept_multiple_files=True,
-        key="bulk_srt_scanner"
+        key=f"bulk_srt_scanner_{st.session_state['bulk_uploader_key']}"
     )
     
     if bulk_files and st.button("🚀 Bóc tách Tổng hợp", key="btn_run_bulk_scan", use_container_width=True):
