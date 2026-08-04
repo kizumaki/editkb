@@ -412,12 +412,13 @@ def is_valid_speaker_name(name):
     if len(clean.split()) > 6: return False
     return True
 
+# HÀM KIỂM TRA TÊN DIỄN VIÊN CHUẨN XÁC (CHO PHÉP CHỨA DẤU CHẤM VÀ DẤU GẠCH NỐI NHƯ C.DŨNG, A.TRUNG)
 def is_valid_actor_name_strict(act_str):
     if not act_str: return False
     clean = act_str.strip().upper()
     if not clean or clean in DEFAULT_NON_SPEAKER_PHRASES: return False
-    if any(char in clean for char in ['(', ')', '[', ']', '/', '\\', '-', '.']): return False
-    if len(clean) > 25 or clean.isdigit(): return False
+    if any(char in clean for char in ['(', ')', '[', ']', '/', '\\', ',', ':', '-->']): return False
+    if len(clean) > 30 or clean.isdigit(): return False
     return True
 
 def get_paragraph_text_with_html(paragraph):
@@ -1386,7 +1387,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 st.session_state['custom_cast_mapping'][spk_k] = act_v
 
     document = Document()
-    # Cấu hình lề trang 0.5" chuẩn Page Setup
+    # Cấu hình lề trang 0.5" (1.27 cm) cho cả 4 chiều chuẩn Page Setup
     for section in document.sections:
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.5)
