@@ -76,8 +76,6 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     
             if 'r_processed_docx' in st.session_state:
                 st.markdown("---")
-                
-                # BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC)
                 r_qc_warns = st.session_state['resync_stats'].get("qc_warnings", [])
                 if r_qc_warns:
                     with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
@@ -85,7 +83,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                         for w in r_qc_warns[:10]: st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
                         if len(r_qc_warns) > 10: st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
                 
-                # BÁO CÁO SO SÁNH ĐỘ TOÀN VẸN (DIFF CHECK: EDIT VS FINAL)
+                # BÁO CÁO SO SÁNH ĐỘ TOÀN VẸN (DIFF CHECK)
                 integrity = st.session_state['resync_stats'].get("integrity_report", {})
                 if integrity:
                     with st.expander("🛡️ BÁO CÁO SO SÁNH ĐỘ TOÀN VẸN (FILE EDIT VS FINAL)", expanded=True):
