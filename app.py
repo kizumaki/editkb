@@ -106,7 +106,7 @@ enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, hel
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
 
-# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (CÓ NÚT DỌN DẸP RIÊNG)
+# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (GIAO DIỆN SỔ XUỐNG BÓC TÁCH LINH HOẠT)
 with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=False):
     st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
     
@@ -144,23 +144,34 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         st.session_state['bulk_eng_results'] = sorted(list(all_english_words), key=lambda x: x.upper())
         st.success(f"✅ Đã quét xong {len(bulk_files)} file!")
 
+    # 1. BẢNG TÊN VAI MỚI - DẠNG SỔ XUỐNG BẤM CHỌN / LOẠI TRỪ
     if 'bulk_spk_results' in st.session_state and st.session_state['bulk_spk_results']:
         st.markdown("---")
         st.markdown("##### 👤 Tên Vai Mới Phát Hiện")
         new_spks = [s for s, c in st.session_state['bulk_spk_results'].items() if s not in st.session_state.get('custom_speakers', set())]
         
         if new_spks:
-            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới:")
-            st.code(", ".join(new_spks), language="text")
-            if st.button("➕ Thêm Vai Mới vào Whitelist", use_container_width=True):
-                st.session_state['custom_speakers'].update(new_spks)
-                save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                st.success("🎉 Đã lưu vào Whitelist!")
-                time.sleep(1)
-                st.rerun()
+            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới. Bạn có thể mở danh sách sổ xuống để kiểm tra và bấm bỏ chọn `x` những từ rác:")
+            selected_spks = st.multiselect(
+                "Danh sách tên vai (Bấm x để loại trừ từ rác):",
+                options=new_spks,
+                default=new_spks,
+                key="bulk_multiselect_spks"
+            )
+            
+            if st.button(f"➕ Thêm ({len(selected_spks)}) Vai đã chọn vào Whitelist", use_container_width=True):
+                if selected_spks:
+                    st.session_state['custom_speakers'].update(selected_spks)
+                    save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
+                    st.success(f"🎉 Đã lưu {len(selected_spks)} tên vai vào Whitelist!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Bạn chưa chọn tên vai nào!")
         else:
             st.info("Tất cả tên vai đều đã có trong Whitelist.")
 
+    # 2. BẢNG TỪ TIẾNG ANH MỚI - DẠNG SỔ XUỐNG BẤM CHỌN / LOẠI TRỪ
     if 'bulk_eng_results' in st.session_state and st.session_state['bulk_eng_results']:
         st.markdown("---")
         st.markdown("##### 🔤 Từ Tiếng Anh Mới Phát Hiện")
@@ -168,15 +179,24 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         new_words = [w for w in st.session_state['bulk_eng_results'] if w.upper() not in existing_pho]
         
         if new_words:
-            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới:")
-            st.code(", ".join(new_words), language="text")
-            if st.button("➕ Thêm vào Kho Phiên Âm", use_container_width=True):
-                for w in new_words:
-                    st.session_state['custom_phonetics'][w.upper()] = w
-                save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
-                st.success("🎉 Đã lưu vào Kho Phiên Âm!")
-                time.sleep(1)
-                st.rerun()
+            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới. Mở danh sách sổ xuống để chọn từ chuẩn cần làm phiên âm:")
+            selected_words = st.multiselect(
+                "Danh sách từ Tiếng Anh (Bấm x để loại trừ từ không cần thiết):",
+                options=new_words,
+                default=new_words,
+                key="bulk_multiselect_eng"
+            )
+            
+            if st.button(f"➕ Thêm ({len(selected_words)}) Từ đã chọn vào Kho Phiên Âm", use_container_width=True):
+                if selected_words:
+                    for w in selected_words:
+                        st.session_state['custom_phonetics'][w.upper()] = w
+                    save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
+                    st.success(f"🎉 Đã lưu {len(selected_words)} từ vào Kho Phiên Âm!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Bạn chưa chọn từ nào!")
         else:
             st.info("Tất cả từ Tiếng Anh đều đã có trong Database Phiên Âm.")
 
