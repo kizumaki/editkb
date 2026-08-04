@@ -459,6 +459,12 @@ def clean_file_name_for_output(original_filename, tag="_edit", ext=".docx"):
 
 def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12):
     doc = Document()
+    for section in doc.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
     p_title = doc.add_paragraph(f"KỊCH BẢN THU ÂM - DIỄN VIÊN: {actor_name}")
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(16); p_title.runs[0].bold = True
@@ -726,6 +732,12 @@ def generate_qc_dual_excel(df_aligned):
 
 def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enable_phonetic=True, enable_cast=True, hide_default_spk=True, fallback_spk_name="Unknown", font_size_pt=12):
     document = Document()
+    for section in document.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
     p_title = document.add_paragraph(title_text.upper())
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_title.runs[0].font.name = 'Times New Roman'; p_title.runs[0].font.size = Pt(20); p_title.runs[0].bold = True
@@ -836,6 +848,11 @@ def process_srt_to_docx(uploaded_file, file_name_without_ext):
     srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
     blocks = re.split(r'\n\s*\n', srt_content.strip())
     document = Document()
+    for section in document.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
 
     for block in blocks:
         lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
@@ -1060,7 +1077,6 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
         add_text_run_with_html(paragraph, current_text)
         return
 
-    # Bước 1: Nhận diện cụm Phiên-âm đã có sẵn dạng "Gốp (Golf)" hoặc "Đút-Pờ-phéc (Dude Perfect)"
     paren_eng_regex = re.compile(r'\(([A-Za-z0-9\s\'\-\.]{1,40})\)')
     existing_pairs = []
     
@@ -1092,7 +1108,6 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
                 "eng_text": eng_text, "type": "existing_pair"
             })
 
-    # Bước 2: Nhận diện từ Tiếng Anh độc lập chưa có phiên âm
     sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True) if phonetic_db else []
     standalone_matches = []
     
@@ -1371,6 +1386,13 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 st.session_state['custom_cast_mapping'][spk_k] = act_v
 
     document = Document()
+    # Cấu hình lề trang 0.5" chuẩn Page Setup
+    for section in document.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
     title_text_raw = file_name_without_ext.upper()
     title_text = title_text_raw.replace("CONVERTED_", "").replace("FORMATTED_", "").replace("_EDIT", "").replace("_RESYNC", "").replace("_FINAL", "").replace(" (GỐC)", "").strip()
     title_paragraph = document.add_paragraph(title_text)
