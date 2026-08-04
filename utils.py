@@ -265,6 +265,10 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
     speaker_color_map[spk_upper] = res
     return res[0], res[1]
 
+def get_speaker_color(speaker_name, speaker_color_map, used_colors):
+    spk_color, _ = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
+    return spk_color if spk_color else RGBColor(0, 0, 0)
+
 def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
     if text_color_tuple:
         if isinstance(text_color_tuple, RGBColor):
@@ -1023,6 +1027,115 @@ def generate_english_audio(text_to_speak, accent='com'):
 def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
     return re.sub(r'[ \t]+', ' ', text).strip()
+
+def add_text_run_with_html(paragraph, text, highlight=None):
+    if not text: return
+    tag_regex = re.compile(r'(</?[ibuIBU]>)')
+    parts = tag_regex.split(text)
+    
+    is_italic = False; is_bold = False; is_underline = False
+    for part in parts:
+        if not part: continue
+        lower_part = part.lower()
+        if lower_part == '<i>': is_italic = True
+        elif lower_part == '</i>': is_italic = False
+        elif lower_part == '<b>': is_bold = True
+        elif lower_part == '</b>': is_bold = False
+        elif lower_part == '<u>': is_underline = True
+        elif lower_part == '</u>': is_underline = False
+        else:
+            run = paragraph.add_run(part)
+            if is_italic: run.font.italic = True
+            if is_bold: run.font.bold = True
+            if is_underline: run.font.underline = True
+            if highlight: run.font.highlight_color = highlight
+
+# HÀM PHIÊN ÂM VÀ TÔ MÀU VÀNG DÀNH CHO PARAGRAPH
+def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
+    current_text = re.sub(r'\t+', ' ', current_text).strip()
+    if not current_text: return
+    
+    phonetic_db = st.session_state.get('custom_phonetics', DEFAULT_SOUTH_VIETNAM_PHONETICS)
+    if not enable_phonetic:
+        add_text_run_with_html(paragraph, current_text)
+        return
+
+    # Bước 1: Nhận diện cụm Phiên-âm đã có sẵn dạng "Gốp (Golf)" hoặc "Đút-Pờ-phéc (Dude Perfect)"
+    paren_eng_regex = re.compile(r'\(([A-Za-z0-9\s\'\-\.]{1,40})\)')
+    existing_pairs = []
+    
+    for m in paren_eng_regex.finditer(current_text):
+        eng_text = m.group(1).strip()
+        start_paren = m.start(); end_paren = m.end()
+        
+        if not re.search(r'[A-Za-z]', eng_text): continue
+            
+        eng_upper = eng_text.upper()
+        prefix = current_text[:start_paren]
+        
+        if eng_upper in phonetic_db:
+            expected_pho = phonetic_db[eng_upper]
+            if prefix.rstrip().endswith(expected_pho):
+                pho_start = prefix.rstrip().rfind(expected_pho)
+                existing_pairs.append({
+                    "start": pho_start, "end": end_paren, "pho_text": expected_pho,
+                    "eng_text": eng_text, "type": "existing_pair"
+                })
+                continue
+                
+        pre_match = re.search(r'([A-Za-zÀ-ỹ0-9\-]+)\s*$', prefix)
+        if pre_match:
+            pho_text = pre_match.group(1)
+            pho_start = start_paren - (len(prefix) - prefix.rfind(pho_text))
+            existing_pairs.append({
+                "start": pho_start, "end": end_paren, "pho_text": pho_text,
+                "eng_text": eng_text, "type": "existing_pair"
+            })
+
+    # Bước 2: Nhận diện từ Tiếng Anh độc lập chưa có phiên âm
+    sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True) if phonetic_db else []
+    standalone_matches = []
+    
+    if sorted_eng_keys:
+        pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
+        eng_regex = re.compile(pattern_str, re.IGNORECASE)
+        
+        for match in eng_regex.finditer(current_text):
+            m_start, m_end = match.span()
+            overlap = False
+            for p in existing_pairs:
+                if not (m_end <= p["start"] or m_start >= p["end"]):
+                    overlap = True; break
+            if not overlap:
+                standalone_matches.append({
+                    "start": m_start, "end": m_end, "eng_text": match.group(0),
+                    "pho_text": phonetic_db.get(match.group(0).upper(), match.group(0)),
+                    "type": "standalone"
+                })
+
+    all_matches = sorted(existing_pairs + standalone_matches, key=lambda x: x["start"])
+    filtered_matches = []
+    last_e = -1
+    for item in all_matches:
+        if item["start"] >= last_e:
+            filtered_matches.append(item)
+            last_e = item["end"]
+
+    last_idx = 0
+    for item in filtered_matches:
+        if item["start"] > last_idx:
+            add_text_run_with_html(paragraph, current_text[last_idx:item["start"]])
+        if item["type"] == "existing_pair":
+            pair_str = current_text[item["start"]:item["end"]]
+            add_text_run_with_html(paragraph, pair_str, highlight=WD_COLOR_INDEX.YELLOW)
+        else:
+            pho = item["pho_text"]
+            eng = item["eng_text"]
+            add_text_run_with_html(paragraph, f"{pho} ({eng})", highlight=WD_COLOR_INDEX.YELLOW)
+        last_idx = item["end"]
+        
+    if last_idx < len(current_text):
+        add_text_run_with_html(paragraph, current_text[last_idx:])
 
 def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
