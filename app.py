@@ -4,12 +4,14 @@ import os
 import re
 import time
 import pandas as pd
+from collections import Counter
 
 from utils import (
     load_json_db, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, 
     PHONETIC_DB_FILE, CAST_DB_FILE, TRACKER_DB_FILE, RATES_DB_FILE, 
     PRONOUN_REL_DB_FILE, SPEAKER_COLOR_DB_FILE, DEFAULT_CAST_MAPPING, 
-    DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS, extract_phrases_from_file
+    DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS, extract_phrases_from_file,
+    scan_candidate_speakers, scan_english_words_in_dialogue
 )
 
 from tab1_script import render_tab1
@@ -99,6 +101,71 @@ enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, hel
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
+
+# Tính năng mới: QUÉT KHO SRT/SCRIPT TỔNG HỢP Ở SIDEBAR
+with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=False):
+    st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
+    bulk_files = st.file_uploader(
+        "Kéo thả danh sách file vào đây:", 
+        type=["srt", "docx", "txt", "xlsx"], 
+        accept_multiple_files=True,
+        key="bulk_srt_scanner"
+    )
+    
+    if bulk_files and st.button("🚀 Bóc tách Tổng hợp", key="btn_run_bulk_scan", use_container_width=True):
+        all_candidate_speakers = Counter()
+        all_english_words = set()
+        
+        custom_spks = st.session_state.get('custom_speakers', set())
+        custom_non_spks = st.session_state.get('custom_non_speakers', set())
+        
+        with st.spinner(f"Đang quét {len(bulk_files)} file..."):
+            for uploaded_file in bulk_files:
+                spk_cand = scan_candidate_speakers(uploaded_file, custom_spks, custom_non_spks)
+                all_candidate_speakers.update(spk_cand)
+                
+                eng_words = scan_english_words_in_dialogue(uploaded_file, custom_spks, custom_non_spks)
+                all_english_words.update(eng_words)
+        
+        st.session_state['bulk_spk_results'] = all_candidate_speakers
+        st.session_state['bulk_eng_results'] = sorted(list(all_english_words), key=lambda x: x.upper())
+        st.success(f"✅ Đã quét xong {len(bulk_files)} file!")
+
+    if 'bulk_spk_results' in st.session_state and st.session_state['bulk_spk_results']:
+        st.markdown("---")
+        st.markdown("##### 👤 Tên Vai Mới Phát Hiện")
+        new_spks = [s for s, c in st.session_state['bulk_spk_results'].items() if s not in st.session_state.get('custom_speakers', set())]
+        
+        if new_spks:
+            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới:")
+            st.code(", ".join(new_spks), language="text")
+            if st.button("➕ Thêm Vai Mới vào Whitelist", use_container_width=True):
+                st.session_state['custom_speakers'].update(new_spks)
+                save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
+                st.success("🎉 Đã lưu vào Whitelist!")
+                time.sleep(1)
+                st.rerun()
+        else:
+            st.info("Tất cả tên vai đều đã có trong Whitelist.")
+
+    if 'bulk_eng_results' in st.session_state and st.session_state['bulk_eng_results']:
+        st.markdown("---")
+        st.markdown("##### 🔤 Từ Tiếng Anh Mới Phát Hiện")
+        existing_pho = st.session_state.get('custom_phonetics', {})
+        new_words = [w for w in st.session_state['bulk_eng_results'] if w.upper() not in existing_pho]
+        
+        if new_words:
+            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới:")
+            st.code(", ".join(new_words), language="text")
+            if st.button("➕ Thêm vào Kho Phiên Âm", use_container_width=True):
+                for w in new_words:
+                    st.session_state['custom_phonetics'][w.upper()] = w
+                save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
+                st.success("🎉 Đã lưu vào Kho Phiên Âm!")
+                time.sleep(1)
+                st.rerun()
+        else:
+            st.info("Tất cả từ Tiếng Anh đều đã có trong Database Phiên Âm.")
 
 with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=False):
     manual_spk_input = st.text_area("Nhập thủ công:", height=80, key=f"spk_manual_{st.session_state['spk_input_key']}")
