@@ -1087,46 +1087,92 @@ def add_text_run_with_html(paragraph, text, highlight=None):
             if is_underline: run.font.underline = True
             if highlight: run.font.highlight_color = highlight
 
+# HÀM PHIÊN ÂM THÔNG MINH BẢO VỆ TÔ MÀU VÀNG CẢ FILE MỚI VÀ FILE ĐÃ RE-SYNC
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
     current_text = re.sub(r'\t+', ' ', current_text).strip()
     if not current_text: return
     
-    phonetic_db = st.session_state.get('custom_phonetics', {})
+    phonetic_db = st.session_state.get('custom_phonetics', DEFAULT_SOUTH_VIETNAM_PHONETICS)
     if not enable_phonetic:
         add_text_run_with_html(paragraph, current_text)
         return
 
-    sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
+    # Bước 1: Nhận diện cụm Phiên-âm đã có sẵn dạng "Gốp (Golf)" hoặc "Đút-Pờ-phéc (Dude Perfect)"
+    paren_eng_regex = re.compile(r'\(([A-Za-z0-9\s\'\-\.]{1,40})\)')
+    existing_pairs = []
+    
+    for m in paren_eng_regex.finditer(current_text):
+        eng_text = m.group(1).strip()
+        start_paren = m.start(); end_paren = m.end()
+        
+        if not re.search(r'[A-Za-z]', eng_text): continue
+            
+        eng_upper = eng_text.upper()
+        prefix = current_text[:start_paren]
+        
+        if eng_upper in phonetic_db:
+            expected_pho = phonetic_db[eng_upper]
+            if prefix.rstrip().endswith(expected_pho):
+                pho_start = prefix.rstrip().rfind(expected_pho)
+                existing_pairs.append({
+                    "start": pho_start, "end": end_paren, "pho_text": expected_pho,
+                    "eng_text": eng_text, "type": "existing_pair"
+                })
+                continue
+                
+        pre_match = re.search(r'([A-Za-zÀ-ỹ0-9\-]+)\s*$', prefix)
+        if pre_match:
+            pho_text = pre_match.group(1)
+            pho_start = start_paren - (len(prefix) - prefix.rfind(pho_text))
+            existing_pairs.append({
+                "start": pho_start, "end": end_paren, "pho_text": pho_text,
+                "eng_text": eng_text, "type": "existing_pair"
+            })
+
+    # Bước 2: Nhận diện từ Tiếng Anh độc lập chưa có phiên âm
+    sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True) if phonetic_db else []
+    standalone_matches = []
+    
     if sorted_eng_keys:
         pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
-        eng_phonetic_regex = re.compile(pattern_str, re.IGNORECASE)
-    else: eng_phonetic_regex = None
-
-    if eng_phonetic_regex:
-        matches = list(eng_phonetic_regex.finditer(current_text))
+        eng_regex = re.compile(pattern_str, re.IGNORECASE)
         
-        valid_matches = []
-        for match in matches:
-            start, end = match.span()
-            prefix = current_text[:start]
-            suffix = current_text[end:]
-            open_p = prefix.count('(') - prefix.count(')')
-            close_p = suffix.count(')') - suffix.count('(')
-            if open_p > 0 and close_p > 0:
-                continue
-            valid_matches.append(match)
+        for match in eng_regex.finditer(current_text):
+            m_start, m_end = match.span()
+            overlap = False
+            for p in existing_pairs:
+                if not (m_end <= p["start"] or m_start >= p["end"]):
+                    overlap = True; break
+            if not overlap:
+                standalone_matches.append({
+                    "start": m_start, "end": m_end, "eng_text": match.group(0),
+                    "pho_text": phonetic_db.get(match.group(0).upper(), match.group(0)),
+                    "type": "standalone"
+                })
 
-        last_end = 0
-        for match in valid_matches:
-            eng_word_original = match.group(0)
-            start, end = match.span()
-            if start > last_end: add_text_run_with_html(paragraph, current_text[last_end:start])
-            pho_text = phonetic_db.get(eng_word_original.upper(), eng_word_original)
-            add_text_run_with_html(paragraph, f"{pho_text} ", highlight=WD_COLOR_INDEX.YELLOW)
-            add_text_run_with_html(paragraph, f"({eng_word_original})", highlight=WD_COLOR_INDEX.YELLOW)
-            last_end = end
-        if last_end < len(current_text): add_text_run_with_html(paragraph, current_text[last_end:])
-    else: add_text_run_with_html(paragraph, current_text)
+    all_matches = sorted(existing_pairs + standalone_matches, key=lambda x: x["start"])
+    filtered_matches = []
+    last_e = -1
+    for item in all_matches:
+        if item["start"] >= last_e:
+            filtered_matches.append(item)
+            last_e = item["end"]
+
+    last_idx = 0
+    for item in filtered_matches:
+        if item["start"] > last_idx:
+            add_text_run_with_html(paragraph, current_text[last_idx:item["start"]])
+        if item["type"] == "existing_pair":
+            pair_str = current_text[item["start"]:item["end"]]
+            add_text_run_with_html(paragraph, pair_str, highlight=WD_COLOR_INDEX.YELLOW)
+        else:
+            pho = item["pho_text"]
+            eng = item["eng_text"]
+            add_text_run_with_html(paragraph, f"{pho} ({eng})", highlight=WD_COLOR_INDEX.YELLOW)
+        last_idx = item["end"]
+        
+    if last_idx < len(current_text):
+        add_text_run_with_html(paragraph, current_text[last_idx:])
 
 def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
@@ -1268,11 +1314,8 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     pure_dialogue_text = " ".join(pure_dialogue_list)
     return ass_line_result, pure_dialogue_text
 
-# HÀM BẢO VỆ ĐỐI SOÁT TOÀN VẸN RE-SYNC (CHỐNG LỖI NAMEERROR)
 def check_resync_integrity(body_zone, srt_dialogues):
-    input_tcs = []
-    input_dialogues = []
-    curr_tc = None
+    input_tcs = []; input_dialogues = []; curr_tc = None
     for text in body_zone:
         if TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text):
             curr_tc = text; input_tcs.append(text)
@@ -1280,8 +1323,7 @@ def check_resync_integrity(body_zone, srt_dialogues):
             clean_txt = re.sub(r'</?[ibuIBU]>', '', text).strip()
             if clean_txt: input_dialogues.append({"timecode": curr_tc, "text": clean_txt})
                 
-    output_tcs = []
-    output_dialogues = []
+    output_tcs = []; output_dialogues = []
     for srt_block in srt_dialogues:
         lines = srt_block.strip().split('\n')
         if len(lines) >= 3:
@@ -1318,10 +1360,8 @@ def check_resync_integrity(body_zone, srt_dialogues):
             })
 
     return {
-        "tc_in_cnt": tc_in_cnt,
-        "tc_out_cnt": tc_out_cnt,
-        "line_in_cnt": len(input_dialogues),
-        "line_out_cnt": len(output_dialogues),
+        "tc_in_cnt": tc_in_cnt, "tc_out_cnt": tc_out_cnt,
+        "line_in_cnt": len(input_dialogues), "line_out_cnt": len(output_dialogues),
         "diff_issues": diff_issues
     }
 
@@ -1503,7 +1543,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     
     video_duration_min = round_seconds_to_int_minutes(max_video_time_sec)
     
-    # Tính toán báo cáo so sánh độ toàn vẹn an toàn
     try:
         integrity_report = check_resync_integrity(body_zone, srt_dialogues)
     except Exception:
