@@ -1268,62 +1268,6 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     pure_dialogue_text = " ".join(pure_dialogue_list)
     return ass_line_result, pure_dialogue_text
 
-def check_resync_integrity(body_zone, srt_dialogues):
-    input_tcs = []
-    input_dialogues = []
-    curr_tc = None
-    for text in body_zone:
-        if TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text):
-            curr_tc = text; input_tcs.append(text)
-        elif curr_tc and text and not text.lower().startswith("srt conversion") and not text.lower().startswith("vai:"):
-            clean_txt = re.sub(r'</?[ibuIBU]>', '', text).strip()
-            if clean_txt: input_dialogues.append({"timecode": curr_tc, "text": clean_txt})
-                
-    output_tcs = []
-    output_dialogues = []
-    for srt_block in srt_dialogues:
-        lines = srt_block.strip().split('\n')
-        if len(lines) >= 3:
-            tc = lines[1]; txt = "\n".join(lines[2:])
-            output_tcs.append(tc); output_dialogues.append({"timecode": tc, "text": txt})
-            
-    tc_in_cnt = len(input_tcs); tc_out_cnt = len(output_tcs)
-    diff_issues = []
-    
-    if tc_in_cnt != tc_out_cnt:
-        diff_issues.append({
-            "Loại Cảnh Báo": "🔴 Mất Timecode",
-            "Mốc Thời Gian": "Toàn file",
-            "Chi Tiết So Sánh": f"File Edit có {tc_in_cnt} mốc timecode nhưng File Final có {tc_out_cnt} mốc."
-        })
-        
-    min_len = min(len(input_dialogues), len(output_dialogues))
-    for idx in range(min_len):
-        in_item = input_dialogues[idx]; out_item = output_dialogues[idx]
-        if in_item["timecode"] != out_item["timecode"]:
-            diff_issues.append({
-                "Loại Cảnh Báo": "🔵 Lệch Mốc Timecode",
-                "Mốc Thời Gian": in_item["timecode"],
-                "Chi Tiết So Sánh": f"File Edit: '{in_item['timecode']}' vs Final: '{out_item['timecode']}'"
-            })
-            break
-        
-        in_len = len(in_item["text"]); out_len = len(out_item["text"])
-        if in_len > 10 and out_len < in_len * 0.7:
-            diff_issues.append({
-                "Loại Cảnh Báo": "⚠️ Sụt Giảm Ký Tự / Mất Chữ",
-                "Mốc Thời Gian": in_item["timecode"],
-                "Chi Tiết So Sánh": f"Gốc ({in_len} ký tự) -> Final ({out_len} ký tự): '{out_item['text'][:40]}...'"
-            })
-
-    return {
-        "tc_in_cnt": tc_in_cnt,
-        "tc_out_cnt": tc_out_cnt,
-        "line_in_cnt": len(input_dialogues),
-        "line_out_cnt": len(output_dialogues),
-        "diff_issues": diff_issues
-    }
-
 def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12):
     speaker_color_map = {}; used_colors = [RGBColor(r, g, b) for r, g, b in FONT_COLORS_RGB_200]
     random.shuffle(used_colors); stats_counter = Counter(); seen_speakers_first_time = set()
