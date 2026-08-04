@@ -218,27 +218,6 @@ def hex_to_rgb(hex_str):
         except ValueError: return None
     return None
 
-def generate_vibrant_rgb_colors_excluding(excluded_rgbs, count=200):
-    colors = []
-    used_set = set(tuple(x) for x in excluded_rgbs if x)
-    attempts = 0
-    while len(colors) < count and attempts < 10000:
-        attempts += 1
-        h = random.random(); s = 0.9; v = 0.8
-        i = int(h * 6.0); f = h * 6.0 - i; p = v * (1.0 - s); q = v * (1.0 - s * f); t = v * (1.0 - s * (1.0 - f))
-        if i % 6 == 0: r, g, b = v, t, p
-        elif i % 6 == 1: r, g, b = q, v, p
-        elif i % 6 == 2: r, g, b = p, v, t
-        elif i % 6 == 3: r, g, b = p, q, v
-        elif i % 6 == 4: r, g, b = t, p, v
-        else: r, g, b = v, p, q
-        r_int, g_int, b_int = int(r * 255), int(g * 255), int(b * 255)
-        rgb_tuple = (r_int, g_int, b_int)
-        if rgb_tuple not in used_set:
-            used_set.add(rgb_tuple)
-            colors.append(rgb_tuple)
-    return colors
-
 def generate_vibrant_rgb_colors(count=200):
     colors = set()
     while len(colors) < count:
@@ -285,10 +264,6 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
     res = (color_object, None)
     speaker_color_map[spk_upper] = res
     return res[0], res[1]
-
-def get_speaker_color(speaker_name, speaker_color_map, used_colors):
-    spk_color, _ = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
-    return spk_color if spk_color else RGBColor(0, 0, 0)
 
 def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
     if text_color_tuple:
@@ -489,27 +464,33 @@ def generate_actor_docx(video_title, actor_name, dialogue_list, font_size_pt=12)
     p_sub.runs[0].font.name = 'Times New Roman'; p_sub.runs[0].font.size = Pt(12); p_sub.runs[0].font.italic = True
     
     doc.add_paragraph()
-    TAB_STOP = Inches(1.0)
+    TAB_STOP = Inches(1.25)
     for item in dialogue_list:
         if item.get("timecode"):
             p_tc = doc.add_paragraph(item["timecode"])
-            p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
+            p_tc.paragraph_format.left_indent = Inches(0)
+            p_tc.paragraph_format.first_line_indent = Inches(0)
             p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+            p_tc.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+            r_tc = p_tc.runs[0]
+            r_tc.font.name = 'Times New Roman'; r_tc.font.size = Pt(font_size_pt); r_tc.font.bold = True
             
         p_line = doc.add_paragraph()
         p_line.paragraph_format.left_indent = TAB_STOP
-        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.first_line_indent = Inches(-1.25)
         p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(0)
+        p_line.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         
         r_spk = p_line.add_run(f"{item['speaker']}:")
         r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
         r_spk.font.color.rgb = RGBColor(79, 70, 229)
-        p_line.add_run("\t")
+        
+        r_tab = p_line.add_run("\t")
+        r_tab.font.name = 'Times New Roman'; r_tab.font.size = Pt(font_size_pt)
+        
         r_text = p_line.add_run(item['text'])
         r_text.font.name = 'Times New Roman'; r_text.font.size = Pt(font_size_pt)
-        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
-        
-    for p in doc.paragraphs: p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         
     buf = io.BytesIO(); doc.save(buf); buf.seek(0)
     return buf
@@ -672,22 +653,6 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             off_window_text = ""
             off_spk = ""
 
-        vn_text_combined = ""
-        vn_spk = ""
-        if df_vn is not None and not df_vn.empty:
-            best_vn_matches = []
-            for idx_vn, row_vn in df_vn.iterrows():
-                s_vn = timecode_to_sec(row_vn['Start'])
-                e_vn = timecode_to_sec(row_vn['End'])
-                overlap_vn = calculate_time_overlap(s_mh, e_mh, s_vn, e_vn)
-                if overlap_vn > 0.1:
-                    best_vn_matches.append((overlap_vn, row_vn))
-            if best_vn_matches:
-                vn_text_combined = " ".join([str(m[1]['Dialogue']) for m in best_vn_matches if pd.notna(m[1]['Dialogue'])])
-                vn_spk = best_vn_matches[0][1]['Speaker']
-        else:
-            vn_spk = str(row_mh['Speaker']) if pd.notna(row_mh['Speaker']) else ""
-
         qc_status = "🟢 Khớp chuẩn"
         qc_details = "Nội dung Tiếng Anh khớp chuẩn nghĩa"
         
@@ -721,7 +686,6 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
 
         spk_display_mh = str(row_mh['Speaker']) if pd.notna(row_mh['Speaker']) and str(row_mh['Speaker']) != "Unknown" else fallback_spk
         spk_display_off = off_spk if off_spk and off_spk != "Unknown" else fallback_spk
-        spk_display_vn = vn_spk if vn_spk and vn_spk != "Unknown" else fallback_spk
 
         aligned_rows.append({
             "Stt": idx_mh + 1,
@@ -730,14 +694,11 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             "End": row_mh['End'],
             "Tiếng Anh Mai Han (AI/Heard)": f"{spk_display_mh}: {row_mh['Dialogue']}",
             "Tiếng Anh Khách (Official)": f"{spk_display_off}: {off_text_combined}" if spk_display_off else off_text_combined,
-            "Dịch Tiếng Việt (Cần Sửa)": f"{spk_display_vn}: {vn_text_combined}" if spk_display_vn else vn_text_combined,
             "Speaker_MH": spk_display_mh,
             "Is_Explicit_MH": is_explicit_mh,
             "Speaker_Off": spk_display_off,
-            "Speaker_VN": spk_display_vn,
             "Dialogue_MH": row_mh['Dialogue'],
             "Dialogue_Off": off_text_combined,
-            "Dialogue_VN": vn_text_combined,
             "Trạng thái QC": qc_status,
             "Ghi chú QC": qc_details
         })
@@ -776,22 +737,28 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
         p.paragraph_format.space_before = Pt(0); p.paragraph_format.space_after = Pt(6)
 
     document.add_paragraph()
-    TAB_STOP = Inches(1.0)
+    TAB_STOP = Inches(1.25)
     
     for idx, row in df_aligned.iterrows():
         tc_line = row['Timecode']
         spk = row['Speaker_MH'] if row['Speaker_MH'] else "Unknown"
-        diag = row['Dialogue_VN'] if row['Dialogue_VN'] else ""
+        diag = row.get('Dialogue_MH', '')
         is_explicit = row.get('Is_Explicit_MH', True)
         
         p_tc = document.add_paragraph(tc_line)
-        p_tc.runs[0].font.name = 'Times New Roman'; p_tc.runs[0].font.size = Pt(font_size_pt); p_tc.runs[0].bold = True
+        p_tc.paragraph_format.left_indent = Inches(0)
+        p_tc.paragraph_format.first_line_indent = Inches(0)
         p_tc.paragraph_format.space_before = Pt(0); p_tc.paragraph_format.space_after = Pt(0)
+        p_tc.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        r_tc = p_tc.runs[0]
+        r_tc.font.name = 'Times New Roman'; r_tc.font.size = Pt(font_size_pt); r_tc.font.bold = True
         
         p_line = document.add_paragraph()
         p_line.paragraph_format.left_indent = TAB_STOP
-        p_line.paragraph_format.first_line_indent = Inches(-1.0)
+        p_line.paragraph_format.first_line_indent = Inches(-1.25)
         p_line.paragraph_format.tab_stops.add_tab_stop(TAB_STOP, WD_TAB_ALIGNMENT.LEFT)
+        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(0)
+        p_line.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         
         should_show_spk = True
         if hide_default_spk and (not is_explicit or spk.upper() == fallback_spk_name.upper() or spk.upper() == "UNKNOWN"):
@@ -802,27 +769,19 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
             r_spk.font.name = 'Times New Roman'; r_spk.font.size = Pt(font_size_pt); r_spk.font.bold = True
             
             spk_c, spk_h = get_speaker_color_and_highlight(spk, {}, FONT_COLORS_RGB_200.copy())
-            if enable_colors and spk_c:
-                r_spk.font.color.rgb = spk_c
-            elif enable_colors:
-                r_spk.font.color.rgb = RGBColor(79, 70, 229)
+            if enable_colors and spk_c: r_spk.font.color.rgb = spk_c
+            elif enable_colors: r_spk.font.color.rgb = RGBColor(79, 70, 229)
                 
             if enable_colors and spk_h:
                 apply_speaker_styling_to_run(r_spk, (spk_c[0], spk_c[1], spk_c[2]) if spk_c else None, (spk_h[0], spk_h[1], spk_h[2]))
 
-            p_line.add_run("\t")
+            r_tab = p_line.add_run("\t")
+            r_tab.font.name = 'Times New Roman'; r_tab.font.size = Pt(font_size_pt)
         else:
-            p_line.add_run("\t")
+            r_tab = p_line.add_run("\t")
+            r_tab.font.name = 'Times New Roman'; r_tab.font.size = Pt(font_size_pt)
 
         if diag: apply_html_and_phonetic_to_paragraph(p_line, diag, enable_phonetic)
-            
-        p_line.paragraph_format.space_before = Pt(0); p_line.paragraph_format.space_after = Pt(4)
-        
-    for p in document.paragraphs:
-        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-        for r in p.runs:
-            r.font.name = 'Times New Roman'
-            if r.font.size is None: r.font.size = Pt(font_size_pt)
         
     buf = io.BytesIO(); document.save(buf); buf.seek(0)
     return buf
@@ -1065,115 +1024,6 @@ def normalize_phonetics_in_text(text):
     text = re.sub(r'\t+', ' ', text)
     return re.sub(r'[ \t]+', ' ', text).strip()
 
-def add_text_run_with_html(paragraph, text, highlight=None):
-    if not text: return
-    tag_regex = re.compile(r'(</?[ibuIBU]>)')
-    parts = tag_regex.split(text)
-    
-    is_italic = False; is_bold = False; is_underline = False
-    for part in parts:
-        if not part: continue
-        lower_part = part.lower()
-        if lower_part == '<i>': is_italic = True
-        elif lower_part == '</i>': is_italic = False
-        elif lower_part == '<b>': is_bold = True
-        elif lower_part == '</b>': is_bold = False
-        elif lower_part == '<u>': is_underline = True
-        elif lower_part == '</u>': is_underline = False
-        else:
-            run = paragraph.add_run(part)
-            if is_italic: run.font.italic = True
-            if is_bold: run.font.bold = True
-            if is_underline: run.font.underline = True
-            if highlight: run.font.highlight_color = highlight
-
-# HÀM PHIÊN ÂM THÔNG MINH BẢO VỆ TÔ MÀU VÀNG CẢ FILE MỚI VÀ FILE ĐÃ RE-SYNC
-def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
-    current_text = re.sub(r'\t+', ' ', current_text).strip()
-    if not current_text: return
-    
-    phonetic_db = st.session_state.get('custom_phonetics', DEFAULT_SOUTH_VIETNAM_PHONETICS)
-    if not enable_phonetic:
-        add_text_run_with_html(paragraph, current_text)
-        return
-
-    # Bước 1: Nhận diện cụm Phiên-âm đã có sẵn dạng "Gốp (Golf)" hoặc "Đút-Pờ-phéc (Dude Perfect)"
-    paren_eng_regex = re.compile(r'\(([A-Za-z0-9\s\'\-\.]{1,40})\)')
-    existing_pairs = []
-    
-    for m in paren_eng_regex.finditer(current_text):
-        eng_text = m.group(1).strip()
-        start_paren = m.start(); end_paren = m.end()
-        
-        if not re.search(r'[A-Za-z]', eng_text): continue
-            
-        eng_upper = eng_text.upper()
-        prefix = current_text[:start_paren]
-        
-        if eng_upper in phonetic_db:
-            expected_pho = phonetic_db[eng_upper]
-            if prefix.rstrip().endswith(expected_pho):
-                pho_start = prefix.rstrip().rfind(expected_pho)
-                existing_pairs.append({
-                    "start": pho_start, "end": end_paren, "pho_text": expected_pho,
-                    "eng_text": eng_text, "type": "existing_pair"
-                })
-                continue
-                
-        pre_match = re.search(r'([A-Za-zÀ-ỹ0-9\-]+)\s*$', prefix)
-        if pre_match:
-            pho_text = pre_match.group(1)
-            pho_start = start_paren - (len(prefix) - prefix.rfind(pho_text))
-            existing_pairs.append({
-                "start": pho_start, "end": end_paren, "pho_text": pho_text,
-                "eng_text": eng_text, "type": "existing_pair"
-            })
-
-    # Bước 2: Nhận diện từ Tiếng Anh độc lập chưa có phiên âm
-    sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True) if phonetic_db else []
-    standalone_matches = []
-    
-    if sorted_eng_keys:
-        pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
-        eng_regex = re.compile(pattern_str, re.IGNORECASE)
-        
-        for match in eng_regex.finditer(current_text):
-            m_start, m_end = match.span()
-            overlap = False
-            for p in existing_pairs:
-                if not (m_end <= p["start"] or m_start >= p["end"]):
-                    overlap = True; break
-            if not overlap:
-                standalone_matches.append({
-                    "start": m_start, "end": m_end, "eng_text": match.group(0),
-                    "pho_text": phonetic_db.get(match.group(0).upper(), match.group(0)),
-                    "type": "standalone"
-                })
-
-    all_matches = sorted(existing_pairs + standalone_matches, key=lambda x: x["start"])
-    filtered_matches = []
-    last_e = -1
-    for item in all_matches:
-        if item["start"] >= last_e:
-            filtered_matches.append(item)
-            last_e = item["end"]
-
-    last_idx = 0
-    for item in filtered_matches:
-        if item["start"] > last_idx:
-            add_text_run_with_html(paragraph, current_text[last_idx:item["start"]])
-        if item["type"] == "existing_pair":
-            pair_str = current_text[item["start"]:item["end"]]
-            add_text_run_with_html(paragraph, pair_str, highlight=WD_COLOR_INDEX.YELLOW)
-        else:
-            pho = item["pho_text"]
-            eng = item["eng_text"]
-            add_text_run_with_html(paragraph, f"{pho} ({eng})", highlight=WD_COLOR_INDEX.YELLOW)
-        last_idx = item["end"]
-        
-    if last_idx < len(current_text):
-        add_text_run_with_html(paragraph, current_text[last_idx:])
-
 def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time):
     text = re.sub(r'\t+', ' ', text).strip()
     ass_text = re.sub(r'</?[bB]>', '', text)
@@ -1225,17 +1075,21 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
 
 def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, enable_cast, speaker_color_map, used_colors, stats_counter, seen_speakers_first_time, actor_dialogue_map, current_timecode, custom_speakers, non_speakers, font_size_pt=12):
     text = re.sub(r'\t+', ' ', text).strip()
-    TAB_STOP_POSITION = Inches(1.0)
+    TAB_STOP_POSITION = Inches(1.25)
     
     speaker_tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
     
     if not speaker_tags:
         new_paragraph = document.add_paragraph()
         new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
+        new_paragraph.paragraph_format.first_line_indent = Inches(-1.25)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-        new_paragraph.add_run('\t')
         new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
+        new_paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+        
+        r_tab = new_paragraph.add_run('\t')
+        r_tab.font.name = 'Times New Roman'; r_tab.font.size = Pt(font_size_pt)
+        
         apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
         return None, text
 
@@ -1250,10 +1104,14 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         if leading_content:
             continuation_paragraph = document.add_paragraph()
             continuation_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-            continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
+            continuation_paragraph.paragraph_format.first_line_indent = Inches(-1.25)
             continuation_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
-            continuation_paragraph.add_run('\t')
             continuation_paragraph.paragraph_format.space_before = Pt(0); continuation_paragraph.paragraph_format.space_after = Pt(0)
+            continuation_paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+            
+            r_tab = continuation_paragraph.add_run('\t')
+            r_tab.font.name = 'Times New Roman'; r_tab.font.size = Pt(font_size_pt)
+            
             apply_html_and_phonetic_to_paragraph(continuation_paragraph, leading_content, enable_phonetic)
             pure_dialogue_list.append(leading_content)
             
@@ -1280,14 +1138,19 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
 
         new_paragraph = document.add_paragraph()
         new_paragraph.paragraph_format.left_indent = TAB_STOP_POSITION
-        new_paragraph.paragraph_format.first_line_indent = Inches(-1.0)
+        new_paragraph.paragraph_format.first_line_indent = Inches(-1.25)
         new_paragraph.paragraph_format.tab_stops.add_tab_stop(TAB_STOP_POSITION, WD_TAB_ALIGNMENT.LEFT)
+        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
+        new_paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         
         is_all = (speaker_name.strip().upper() == "ALL")
         spk_text = f"{speaker_name}:"
         
         spk_color, spk_hl = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
-        run_speaker = new_paragraph.add_run(spk_text); run_speaker.font.bold = True
+        run_speaker = new_paragraph.add_run(spk_text)
+        run_speaker.font.bold = True
+        run_speaker.font.name = 'Times New Roman'
+        run_speaker.font.size = Pt(font_size_pt)
         
         if is_all:
             run_speaker.font.color.rgb = RED_COLOR; run_speaker.font.highlight_color = WD_COLOR_INDEX.YELLOW
@@ -1303,10 +1166,12 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
                 if actor_name and is_valid_actor_name_strict(actor_name):
                     run_actor = new_paragraph.add_run(f" {actor_name}")
                     run_actor.font.bold = True; run_actor.font.color.rgb = RED_COLOR
+                    run_actor.font.name = 'Times New Roman'; run_actor.font.size = Pt(font_size_pt)
 
-        new_paragraph.add_run('\t')
+        run_tab = new_paragraph.add_run('\t')
+        run_tab.font.name = 'Times New Roman'; run_tab.font.size = Pt(font_size_pt)
+        
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
-        new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
         
         ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
         last_processed_index = next_match_start
@@ -1467,8 +1332,13 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             dur, t1, t2 = calculate_duration_sec(text)
             if t2 > max_video_time_sec: max_video_time_sec = t2
             new_paragraph = document.add_paragraph(text)
-            new_paragraph.runs[0].font.bold = True; new_paragraph.runs[0].font.name = 'Times New Roman'; new_paragraph.runs[0].font.size = Pt(font_size_pt)
+            new_paragraph.paragraph_format.left_indent = Inches(0)
+            new_paragraph.paragraph_format.first_line_indent = Inches(0)
             new_paragraph.paragraph_format.space_before = Pt(0); new_paragraph.paragraph_format.space_after = Pt(0)
+            new_paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+            
+            r_tc = new_paragraph.runs[0]
+            r_tc.font.bold = True; r_tc.font.name = 'Times New Roman'; r_tc.font.size = Pt(font_size_pt)
         else:
             cleaned_text = clean_and_normalize_text(text, strip_all_tags=False)
             if is_resync: cleaned_text = normalize_phonetics_in_text(cleaned_text)
@@ -1499,7 +1369,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
             
     for paragraph in document.paragraphs[start_index:]:
         paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-        paragraph.paragraph_format.space_before = Pt(0); paragraph.paragraph_format.space_after = Pt(0)
         for run in paragraph.runs:
             run.font.name = 'Times New Roman'
             if run.font.size is None or is_resync: run.font.size = Pt(font_size_pt)
