@@ -106,7 +106,7 @@ enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, hel
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
 
-# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (DÙNG BẢNG ẢO CHỐNG ĐƠ TRÌNH DUYỆT 100%)
+# KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (THÊM NÚT CHỌN TẤT CẢ & BỎ CHỌN SIÊU TỐC)
 with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=False):
     st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
     
@@ -144,15 +144,32 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         st.session_state['bulk_eng_results'] = sorted(list(all_english_words), key=lambda x: x.upper())
         st.success(f"✅ Đã quét xong {len(bulk_files)} file!")
 
-    # 1. BẢNG TÊN VAI MỚI - BẢNG HIỂN THỊ SIÊU NHẸ (Virtual Scroll)
+    # 1. BẢNG TÊN VAI MỚI - BẢNG BẢO VỆ SIÊU NHẸ CÓ NÚT "CHỌN TẤT CẢ" VÀ "BỎ CHỌN"
     if 'bulk_spk_results' in st.session_state and st.session_state['bulk_spk_results']:
         st.markdown("---")
         st.markdown("##### 👤 Tên Vai Mới Phát Hiện")
         new_spks = [s for s, c in st.session_state['bulk_spk_results'].items() if s not in st.session_state.get('custom_speakers', set())]
         
         if new_spks:
-            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới. Bỏ tích chọn `[ ]` những từ rác trực tiếp trong bảng:")
-            df_spks = pd.DataFrame({"Lưu": [True] * len(new_spks), "Tên Vai": new_spks})
+            st.caption(f"Tìm thấy **{len(new_spks)}** tên vai mới:")
+            
+            # Khởi tạo trạng thái chọn tất cả / bỏ chọn
+            if 'spk_select_all_state' not in st.session_state:
+                st.session_state['spk_select_all_state'] = True
+            if 'spk_editor_version' not in st.session_state:
+                st.session_state['spk_editor_version'] = 0
+
+            col_spk_1, col_spk_2 = st.columns(2)
+            if col_spk_1.button("✅ Chọn tất cả", key="btn_spk_all", use_container_width=True):
+                st.session_state['spk_select_all_state'] = True
+                st.session_state['spk_editor_version'] += 1
+                st.rerun()
+            if col_spk_2.button("❌ Bỏ chọn", key="btn_spk_none", use_container_width=True):
+                st.session_state['spk_select_all_state'] = False
+                st.session_state['spk_editor_version'] += 1
+                st.rerun()
+
+            df_spks = pd.DataFrame({"Lưu": [st.session_state['spk_select_all_state']] * len(new_spks), "Tên Vai": new_spks})
             edited_spk_df = st.data_editor(
                 df_spks,
                 column_config={
@@ -162,7 +179,7 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
                 hide_index=True,
                 height=220,
                 use_container_width=True,
-                key="data_editor_spks"
+                key=f"data_editor_spks_{st.session_state['spk_editor_version']}"
             )
             selected_spks = edited_spk_df[edited_spk_df["Lưu"] == True]["Tên Vai"].tolist()
             
@@ -178,7 +195,7 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         else:
             st.info("Tất cả tên vai đều đã có trong Whitelist.")
 
-    # 2. BẢNG TỪ TIẾNG ANH MỚI - BẢNG HIỂN THỊ SIÊU NHẸ (Virtual Scroll)
+    # 2. BẢNG TỪ TIẾNG ANH MỚI - BẢNG BẢO VỆ SIÊU NHẸ CÓ NÚT "CHỌN TẤT CẢ" VÀ "BỎ CHỌN"
     if 'bulk_eng_results' in st.session_state and st.session_state['bulk_eng_results']:
         st.markdown("---")
         st.markdown("##### 🔤 Từ Tiếng Anh Mới Phát Hiện")
@@ -186,8 +203,25 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         new_words = [w for w in st.session_state['bulk_eng_results'] if w.upper() not in existing_pho]
         
         if new_words:
-            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới. Bỏ tích chọn `[ ]` những từ rác trực tiếp trong bảng:")
-            df_words = pd.DataFrame({"Lưu": [True] * len(new_words), "Từ Tiếng Anh": new_words})
+            st.caption(f"Tìm thấy **{len(new_words)}** từ Tiếng Anh mới:")
+            
+            # Khởi tạo trạng thái chọn tất cả / bỏ chọn
+            if 'eng_select_all_state' not in st.session_state:
+                st.session_state['eng_select_all_state'] = True
+            if 'eng_editor_version' not in st.session_state:
+                st.session_state['eng_editor_version'] = 0
+
+            col_eng_1, col_eng_2 = st.columns(2)
+            if col_eng_1.button("✅ Chọn tất cả", key="btn_eng_all", use_container_width=True):
+                st.session_state['eng_select_all_state'] = True
+                st.session_state['eng_editor_version'] += 1
+                st.rerun()
+            if col_eng_2.button("❌ Bỏ chọn", key="btn_eng_none", use_container_width=True):
+                st.session_state['eng_select_all_state'] = False
+                st.session_state['eng_editor_version'] += 1
+                st.rerun()
+
+            df_words = pd.DataFrame({"Lưu": [st.session_state['eng_select_all_state']] * len(new_words), "Từ Tiếng Anh": new_words})
             edited_eng_df = st.data_editor(
                 df_words,
                 column_config={
@@ -197,7 +231,7 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
                 hide_index=True,
                 height=220,
                 use_container_width=True,
-                key="data_editor_eng"
+                key=f"data_editor_eng_{st.session_state['eng_editor_version']}"
             )
             selected_words = edited_eng_df[edited_eng_df["Lưu"] == True]["Từ Tiếng Anh"].tolist()
             
