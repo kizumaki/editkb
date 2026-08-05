@@ -3,3 +3,4 @@ python-docx
 pandas
 openpyxl
 gTTS
+starlette<0.40.0
