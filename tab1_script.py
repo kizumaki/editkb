@@ -9,8 +9,15 @@ from utils import (
     generate_actor_docx, save_json_db, CAST_DB_FILE, PHONETIC_DB_FILE, 
     SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE, DEFAULT_NON_SPEAKER_PHRASES, clean_cell
 )
+from batch_tools import render_batch_processing
 
 def render_tab1(enable_colors, enable_phonetic, enable_cast):
+    work_mode = st.radio("Cách làm:", ["Một file (soát kỹ từng bước)", "Nhiều file cùng lúc"],
+                         horizontal=True, key="tab1_mode", label_visibility="collapsed")
+    if work_mode.startswith("Nhiều"):
+        render_batch_processing(False, enable_colors, enable_phonetic, enable_cast)
+        return
+
     col1, col2 = st.columns([1.6, 1])
 
     with col1:

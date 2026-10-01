@@ -9,7 +9,7 @@ import pandas as pd
 from collections import Counter
 
 from utils import (
-    init_databases, sheets_enabled, save_json_db, clear_kept_files, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE,
+    init_databases, sheets_enabled, save_json_db, clear_kept_files, build_backup_excel, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE,
     PHONETIC_DB_FILE, extract_phrases_from_file,
     scan_candidate_speakers, scan_english_words_in_dialogue
 )
@@ -91,7 +91,7 @@ if 'color_input_key' not in st.session_state: st.session_state['color_input_key'
 if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
 # Giữ giá trị các ô nhập quan trọng khi chuyển trang (Streamlit mặc định xoá ô của trang không mở)
-for _k in ("resync_project_week", "dual_default_spk", "dual_hide_default_spk", "textarea_clean_output"):
+for _k in ("resync_project_week", "dual_default_spk", "dual_hide_default_spk", "textarea_clean_output", "tab1_mode", "tab2_mode"):
     if _k in st.session_state: st.session_state[_k] = st.session_state[_k]
 
 # Tải toàn bộ kho dữ liệu (Google Sheets khi chạy online, file JSON khi chạy trên máy) — 1 lần mỗi phiên
@@ -125,7 +125,8 @@ if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
                      help="Xoá các file đã tải lên (ở mọi trang) và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'stats',
                 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip', 'resync_stats',
-                'dual_vn_edits', 'dual_vn_edits_sig', 'manual_cleaned_orig_len', 'manual_cleaned_res_len']:
+                'dual_vn_edits', 'dual_vn_edits_sig', 'manual_cleaned_orig_len', 'manual_cleaned_res_len',
+                'batch_result_goc', 'batch_result_resync']:
         if key in st.session_state: del st.session_state[key]
     st.session_state['textarea_clean_output'] = ""
     clear_kept_files()  # xoá các file đã tải ở mọi trang
@@ -324,6 +325,23 @@ with st.sidebar.expander("🚫 Cụm từ KHÔNG phải tên nhân vật", expan
             save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
             st.session_state['ns_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
+
+st.sidebar.markdown("---")
+with st.sidebar.expander("💾 Sao lưu dữ liệu", expanded=False):
+    st.caption("Tải về 1 file Excel chứa bản MỚI NHẤT của toàn bộ dữ liệu (phiên âm, phân vai, màu, xưng hô, lương...). "
+               "Nên tải định kỳ, ví dụ cuối mỗi tuần, và cất ở nơi an toàn.")
+    if st.button("📥 Chuẩn bị bản sao lưu", use_container_width=True, key="btn_prepare_backup"):
+        try:
+            with st.spinner("Đang đọc dữ liệu mới nhất..."):
+                st.session_state["_backup_file"] = build_backup_excel().getvalue()
+                st.session_state["_backup_time"] = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d_%Hh%M")
+        except Exception as e:
+            st.error(f"Chưa tạo được bản sao lưu: {e}")
+    if st.session_state.get("_backup_file"):
+        st.download_button("⬇️ Tải file sao lưu (.xlsx)", data=st.session_state["_backup_file"],
+                           file_name=f"SaoLuu_ScriptPro_{st.session_state['_backup_time']}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True, type="primary", key="dl_backup")
 
 # ==========================================
 # 4. DYNAMIC CSS INJECTION THEO SKINS

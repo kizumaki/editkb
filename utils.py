@@ -1600,6 +1600,62 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     pure_dialogue_text = " ".join(pure_dialogue_list)
     return "\\N".join(ass_line_parts), pure_dialogue_text
 
+def record_video_in_tracker(r_stats, fallback_title, project_week):
+    """Ghi (hoặc cập nhật) 1 video vào bảng theo dõi lương trong phiên. Gọi save_json_db sau đó để lưu."""
+    video_title = r_stats.get("video_title", fallback_title)
+    actors_list = r_stats.get("actors_list", [])
+    curr_def_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
+    entry_data = {
+        "video_title": video_title,
+        "actors": ", ".join(actors_list) if actors_list else "CHƯA CÓ THÔNG TIN",
+        "actor_breakdown": r_stats.get("actor_stats_breakdown", {}),
+        "total_lines": r_stats.get("total_lines", 0),
+        "video_duration_min": r_stats.get("video_duration_min", 1),
+        "date": time.strftime("%d/%m/%Y"),
+        "project_week": (project_week or "").strip() or "Tuần 1",
+        "custom_actor_rates": {a.upper(): curr_def_rate for a in actors_list},
+    }
+    tracker_list = st.session_state['dubbing_tracker']
+    existing_entry = next((item for item in tracker_list if str(item.get('video_title', '')).upper() == video_title.upper()), None)
+    if existing_entry:
+        # Giữ đơn giá riêng đã chỉnh trước đó; diễn viên mới thì lấy đơn giá mặc định
+        entry_data["custom_actor_rates"] = {**entry_data["custom_actor_rates"], **existing_entry.get("custom_actor_rates", {})}
+        existing_entry.update(entry_data)
+    else:
+        tracker_list.append(entry_data)
+    return video_title
+
+def read_all_data_fresh():
+    """Đọc bản MỚI NHẤT của toàn bộ kho (không dùng bản đang nhớ trong phiên) — dùng cho sao lưu."""
+    out = {}
+    if sheets_enabled():
+        sh = _get_spreadsheet()
+        existing = {ws.title for ws in sh.worksheets()}
+        wanted = [_tab_name(fp) for fp in DB_REGISTRY if _tab_name(fp) in existing]
+        raw = {}
+        if wanted:
+            resp = sh.values_batch_get([f"'{t}'" for t in wanted], params={"valueRenderOption": "UNFORMATTED_VALUE"})
+            raw = {t: vr.get("values", []) for t, vr in zip(wanted, resp.get("valueRanges", []))}
+        for fp, cfg in DB_REGISTRY.items():
+            t = _tab_name(fp)
+            out[fp] = _with_defaults(cfg, _rows_to_data(cfg, raw[t])) if t in raw else cfg["default"]()
+    else:
+        for fp, cfg in DB_REGISTRY.items():
+            d = _local_read(fp, cfg)
+            out[fp] = cfg["default"]() if d is None else _with_defaults(cfg, d)
+    return out
+
+def build_backup_excel():
+    """1 file Excel, mỗi kho dữ liệu là 1 trang tính (cùng định dạng với Google Sheets)."""
+    data = read_all_data_fresh()
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        for fp, cfg in DB_REGISTRY.items():
+            rows = _data_to_rows(cfg, data[fp])
+            pd.DataFrame(rows[1:], columns=rows[0]).to_excel(writer, index=False, sheet_name=_tab_name(fp)[:31])
+    buf.seek(0)
+    return buf
+
 def check_resync_integrity(body_zone, srt_dialogues):
     input_tcs = []; input_dialogues = []; curr_tc = None
     for text in body_zone:

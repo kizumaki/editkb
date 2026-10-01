@@ -5,10 +5,17 @@ import pandas as pd
 from utils import (
     kept_file_uploader,
     process_docx, clean_file_name_for_output, generate_actor_docx, 
-    save_json_db, TRACKER_DB_FILE
+    save_json_db, TRACKER_DB_FILE, record_video_in_tracker
 )
+from batch_tools import render_batch_processing
 
 def render_tab2(enable_colors, enable_phonetic, enable_cast):
+    work_mode = st.radio("Cách làm:", ["Một file (soát kỹ từng bước)", "Nhiều file cùng lúc"],
+                         horizontal=True, key="tab2_mode", label_visibility="collapsed")
+    if work_mode.startswith("Nhiều"):
+        render_batch_processing(True, enable_colors, enable_phonetic, enable_cast)
+        return
+
     col_r1, col_r2 = st.columns([1.6, 1])
     
     with col_r1:
@@ -45,35 +52,8 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     st.session_state['resync_stats'] = r_stats
                     st.session_state['_celebrate_tab2'] = True  # chỉ chúc mừng 1 lần ngay sau khi xử lý xong
                     
-                    video_title = r_stats.get("video_title", r_name_no_ext)
-                    actors_list = r_stats.get("actors_list", [])
-                    actors_str = ", ".join(actors_list) if actors_list else "CHƯA CÓ THÔNG TIN"
-                    actor_breakdown = r_stats.get("actor_stats_breakdown", {})
-                    total_lines = r_stats.get("total_lines", 0)
-                    video_dur_min = r_stats.get("video_duration_min", 1)
-                    
-                    today_str = time.strftime("%d/%m/%Y")
-                    assigned_week = project_week_input.strip() if project_week_input else "Tuần 1"
-                    
-                    tracker_list = st.session_state['dubbing_tracker']
-                    existing_entry = next((item for item in tracker_list if str(item.get('video_title', '')).upper() == video_title.upper()), None)
-                    
-                    curr_def_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
-                    custom_actor_rates = {a.upper(): curr_def_rate for a in actors_list}
-                    
-                    entry_data = {
-                        "video_title": video_title, "actors": actors_str, "actor_breakdown": actor_breakdown,
-                        "total_lines": total_lines, "video_duration_min": video_dur_min, "date": today_str,
-                        "project_week": assigned_week, "custom_actor_rates": custom_actor_rates
-                    }
-                    
-                    if existing_entry:
-                        if "custom_actor_rates" in existing_entry: entry_data["custom_actor_rates"] = existing_entry["custom_actor_rates"]
-                        existing_entry.update(entry_data)
-                    else: tracker_list.append(entry_data)
-                    
-                    st.session_state['dubbing_tracker'] = tracker_list
-                    save_json_db(TRACKER_DB_FILE, tracker_list)
+                    record_video_in_tracker(r_stats, r_name_no_ext, project_week_input)
+                    save_json_db(TRACKER_DB_FILE, st.session_state['dubbing_tracker'])
                     
                 except Exception as e: st.error(f"Lỗi xảy ra khi Re-Sync: {e}")
                     
