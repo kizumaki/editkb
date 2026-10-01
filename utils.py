@@ -193,8 +193,9 @@ SHORT_TIMECODE_REGEX = re.compile(r"^(?:\d{2}:)?\d{2}:\d{2}(?:[,.]\d{3})?\s*(?:-
 ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 RED_COLOR = RGBColor(255, 0, 0)
 
+
 # ==========================================
-# HÀM TỰ ĐỘNG ĐỒNG BỘ GOOGLE SHEETS
+# HÀM KẾT NỐI VÀ ĐỒNG BỘ GOOGLE SHEETS
 # ==========================================
 def get_gspread_client():
     try:
@@ -209,29 +210,30 @@ def get_gspread_client():
             )
             return gspread.authorize(creds)
     except Exception as e:
-        pass
+        print(f"Lỗi khởi tạo Credentials: {e}")
     return None
 
 def load_json_db(filepath, default_data=None):
-    gc = get_gspread_client()
-    spreadsheet_id = st.secrets.get("SPREADSHEET_ID") if "SPREADSHEET_ID" in st.secrets else None
-    tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
-    
-    if gc and spreadsheet_id:
-        try:
-            sh = gc.open_by_key(spreadsheet_id)
-            worksheet = sh.worksheet(tab_name)
-            records = worksheet.get_all_records()
-            
-            if isinstance(default_data, set):
-                return set([str(r["item"]).strip() for r in records if "item" in r and r["item"]])
-            elif isinstance(default_data, dict):
-                return {str(r["key"]).strip().upper(): str(r["value"]).strip() for r in records if "key" in r and "value" in r}
-            elif isinstance(default_data, list):
-                return records
-        except Exception:
-            pass
+    try:
+        if "SPREADSHEET_ID" in st.secrets and "gcp_service_account" in st.secrets:
+            gc = get_gspread_client()
+            if gc:
+                spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+                tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
+                sh = gc.open_by_key(spreadsheet_id)
+                worksheet = sh.worksheet(tab_name)
+                records = worksheet.get_all_records()
+                
+                if isinstance(default_data, set):
+                    return set([str(r["item"]).strip() for r in records if "item" in r and r["item"]])
+                elif isinstance(default_data, dict):
+                    return {str(r["key"]).strip().upper(): str(r["value"]).strip() for r in records if "key" in r and "value" in r}
+                elif isinstance(default_data, list):
+                    return records
+    except Exception as e:
+        print(f"Lỗi đọc Google Sheets ({filepath}): {e}")
 
+    # Fallback đọc local nếu Sheet bị lỗi
     if os.path.exists(filepath):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -241,38 +243,60 @@ def load_json_db(filepath, default_data=None):
     return default_data if default_data is not None else (set() if not isinstance(default_data, dict) else {})
 
 def save_json_db(filepath, data_container):
+    # Lưu file local trước để phòng hờ
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             if isinstance(data_container, set): json.dump(list(data_container), f, ensure_ascii=False, indent=2)
             else: json.dump(data_container, f, ensure_ascii=False, indent=2)
     except Exception: pass
 
-    gc = get_gspread_client()
-    spreadsheet_id = st.secrets.get("SPREADSHEET_ID") if "SPREADSHEET_ID" in st.secrets else None
-    tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
-
-    if gc and spreadsheet_id:
-        try:
-            sh = gc.open_by_key(spreadsheet_id)
-            try: worksheet = sh.worksheet(tab_name)
-            except Exception: worksheet = sh.add_worksheet(title=tab_name, rows=1000, cols=10)
+    try:
+        if "SPREADSHEET_ID" not in st.secrets:
+            st.warning("⚠️ Thiếu cấu hình SPREADSHEET_ID. Dữ liệu chỉ được lưu tạm thời trên web.")
+            return
             
-            worksheet.clear()
-            if isinstance(data_container, set):
-                rows = [["item"]] + [[item] for item in sorted(list(data_container))]
-            elif isinstance(data_container, dict):
-                rows = [["key", "value"]] + [[k, v] for k, v in data_container.items()]
-            elif isinstance(data_container, list):
-                if data_container:
-                    headers = list(data_container[0].keys())
-                    rows = [headers] + [[str(item.get(h, "")) for h in headers] for item in data_container]
-                else: rows = [["data"]]
-            else: return
+        if "gcp_service_account" not in st.secrets:
+            st.warning("⚠️ Thiếu cấu hình Tài khoản Service Account. Dữ liệu chỉ được lưu tạm thời trên web.")
+            return
+            
+        gc = get_gspread_client()
+        if not gc:
+            st.error("❌ Kết nối Google Sheets thất bại! Hãy kiểm tra lại file Secrets (chú ý định dạng ngoặc kép và dấu xuống dòng).")
+            return
+            
+        spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+        tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
+        
+        sh = gc.open_by_key(spreadsheet_id)
+        try: worksheet = sh.worksheet(tab_name)
+        except Exception: worksheet = sh.add_worksheet(title=tab_name, rows=1000, cols=10)
+        
+        worksheet.clear()
+        if isinstance(data_container, set):
+            rows = [["item"]] + [[item] for item in sorted(list(data_container))]
+        elif isinstance(data_container, dict):
+            rows = [["key", "value"]] + [[k, v] for k, v in data_container.items()]
+        elif isinstance(data_container, list):
+            if data_container:
+                headers = list(data_container[0].keys())
+                rows = [headers] + [[str(item.get(h, "")) for h in headers] for item in data_container]
+            else: rows = [["data"]]
+        else: return
 
+        # Thích ứng mọi phiên bản của thư viện gspread (v5.x và v6.0+)
+        try:
             worksheet.update("A1", rows)
-        except Exception as e:
-            st.warning(f"⚠️ Dữ liệu chưa lưu lên Google Sheet: {e}")
+        except TypeError:
+            worksheet.update(values=rows, range_name="A1")
+            
+        st.toast(f"✅ Đã đồng bộ an toàn lên Google Sheet ({tab_name})", icon="☁️")
+        
+    except Exception as e:
+        st.error(f"❌ Lỗi ghi dữ liệu lên Google Sheets: {e}")
 
+# ==========================================
+# CÁC HÀM XỬ LÝ KỊCH BẢN & PHỤ ĐỀ
+# ==========================================
 def hex_to_rgb(hex_str):
     if not hex_str: return None
     hex_str = str(hex_str).strip().lstrip('#')
@@ -755,6 +779,7 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
 
         spk_display_mh = str(row_mh['Speaker']) if pd.notna(row_mh['Speaker']) and str(row_mh['Speaker']) != "Unknown" else fallback_spk
         spk_display_off = off_spk if off_spk and off_spk != "Unknown" else fallback_spk
+        spk_display_vn = vn_spk if vn_spk and vn_spk != "Unknown" else fallback_spk
 
         aligned_rows.append({
             "Stt": idx_mh + 1,
@@ -763,11 +788,14 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             "End": row_mh['End'],
             "Tiếng Anh Mai Han (AI/Heard)": f"{spk_display_mh}: {row_mh['Dialogue']}",
             "Tiếng Anh Khách (Official)": f"{spk_display_off}: {off_text_combined}" if spk_display_off else off_text_combined,
+            "Dịch Tiếng Việt (Cần Sửa)": f"{spk_display_vn}: {vn_text_combined}" if spk_display_vn else vn_text_combined,
             "Speaker_MH": spk_display_mh,
             "Is_Explicit_MH": is_explicit_mh,
             "Speaker_Off": spk_display_off,
+            "Speaker_VN": spk_display_vn,
             "Dialogue_MH": row_mh['Dialogue'],
             "Dialogue_Off": off_text_combined,
+            "Dialogue_VN": vn_text_combined,
             "Trạng thái QC": qc_status,
             "Ghi chú QC": qc_details
         })
@@ -817,7 +845,7 @@ def generate_aligned_docx_file(df_aligned, title_text, enable_colors=True, enabl
     for idx, row in df_aligned.iterrows():
         tc_line = row['Timecode']
         spk = row['Speaker_MH'] if row['Speaker_MH'] else "Unknown"
-        diag = row.get('Dialogue_MH', '')
+        diag = row.get('Dialogue_VN', '')
         is_explicit = row.get('Is_Explicit_MH', True)
         
         p_tc = document.add_paragraph(tc_line)
@@ -1459,7 +1487,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     unique_speakers = []; assigned_actors = []; unassigned_speakers = []
     for text in body_zone:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
-        spk_tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
+        spk_tags = find_all_speaker_tags(text, custom_speakers, custom_non_speakers)
         for _, _, speaker_name, _ in spk_tags:
             if speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
