@@ -6,3 +6,4 @@ gTTS
 starlette<0.40.0
 gspread>=6.0
 google-auth
+requests

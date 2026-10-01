@@ -1,4 +1,6 @@
 import streamlit as st
+import requests
+from datetime import datetime, timedelta, timezone
 import io
 import os
 import re
@@ -15,15 +17,31 @@ from utils import (
     generate_pro_tools_csv, generate_cmx3600_edl
 )
 
+FALLBACK_VND_RATES = {  # chỉ dùng khi không lấy được tỷ giá mới
+    "VND": 1.0, "USD": 25400.0, "EUR": 27500.0, "GBP": 32000.0, "JPY": 165.0,
+    "CNY": 3500.0, "KRW": 18.5, "AUD": 16800.0, "CAD": 18200.0, "SGD": 18900.0
+}
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def get_vnd_rates():
+    """Tỷ giá đổi ra VND (1 đơn vị ngoại tệ = ? VND), lấy từ ExchangeRate-API miễn phí, nhớ 6 tiếng.
+    Trả về (bảng tỷ giá, thời điểm cập nhật); nếu lỗi trả về (bảng dự phòng, None)."""
+    try:
+        d = requests.get("https://open.er-api.com/v6/latest/USD", timeout=10).json()
+        if d.get("result") != "success": raise ValueError(d.get("error-type"))
+        usd = d["rates"]
+        rates = {c: usd["VND"] / usd[c] for c in FALLBACK_VND_RATES if c in usd}
+        when = datetime.fromtimestamp(d["time_last_update_unix"], timezone(timedelta(hours=7))).strftime("%H:%M %d/%m/%Y")
+        return rates, when
+    except Exception:
+        return dict(FALLBACK_VND_RATES), None
+
 def render_tab9():
-    subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
+    subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_other = st.tabs([
         "🎬 SRT ⇄ Word",
         "📊 SRT → Excel",
         "🎛️ Marker cho phần mềm thu âm",
-        "💵 Tiền tệ",
-        "📏 Khoảng cách",
-        "🚀 Vận tốc",
-        "⚖️ Khối lượng & nhiệt độ"
+        "🧮 Công cụ khác"
     ])
 
     # 1. BỘ CHUYỂN ĐỔI SUBTITLE KỊCH BẢN (SRT ⇄ DOCX)
@@ -272,92 +290,99 @@ def render_tab9():
                             mime="text/plain", type="primary", use_container_width=True
                         )
 
-    # 4. BỘ CHUYỂN ĐỔI TIỀN TỆ (CURRENCY)
-    with subtab_curr:
-        st.markdown("#### 💵 Quy Đổi Tiền Tệ Đa Ngoại Tệ")
-        rates = {
-            "VND": 1.0, "USD": 25400.0, "EUR": 27500.0, "GBP": 32000.0, "JPY": 165.0,
-            "CNY": 3500.0, "KRW": 18.5, "AUD": 16800.0, "CAD": 18200.0, "SGD": 18900.0
-        }
-        c_col1, c_col2, c_col3 = st.columns([2, 1.5, 1.5])
-        with c_col1: curr_amount = st.number_input("Số lượng tiền cần đổi:", value=100.0, min_value=0.0, step=10.0)
-        with c_col2: from_curr = st.selectbox("Từ đồng tiền:", options=list(rates.keys()), index=1)
-        with c_col3: to_curr = st.selectbox("Sang đồng tiền:", options=list(rates.keys()), index=0)
-            
-        amount_in_vnd = curr_amount * rates[from_curr]
-        result_curr = amount_in_vnd / rates[to_curr]
-        
+    with subtab_other:
+        other_tool = st.radio("Chọn công cụ:", options=["curr", "dist", "speed", "mass"], horizontal=True, key="other_tool_choice",
+                              format_func={"curr": "💵 Tiền tệ", "dist": "📏 Khoảng cách", "speed": "🚀 Vận tốc", "mass": "⚖️ Khối lượng & nhiệt độ"}.get)
         st.markdown("---")
-        st.markdown(f"### 🎯 Kết Quả: **{curr_amount:,.2f} {from_curr}** = **{result_curr:,.2f} {to_curr}**")
-        st.caption(f"Tỷ giá tham chiếu: 1 USD = {rates['USD']:,.0f} VND | 1 EUR = {rates['EUR']:,.0f} VND | 1 JPY = {rates['JPY']:,.1f} VND")
-
-    # 5. BỘ CHUYỂN ĐỔI KHOẢNG CÁCH (DISTANCE)
-    with subtab_dist:
-        st.markdown("#### 📏 Quy Đổi Đơn Vị Khoảng Cách")
-        dist_factors = {
-            "Millimet (mm)": 0.001, "Centimet (cm)": 0.01, "Mét (m)": 1.0, "Kilômét (km)": 1000.0,
-            "Inch (in)": 0.0254, "Foot (ft)": 0.3048, "Yard (yd)": 0.9144, "Dặm (Mile)": 1609.344
-        }
-        d_col1, d_col2, d_col3 = st.columns([2, 1.5, 1.5])
-        with d_col1: dist_val = st.number_input("Giá trị khoảng cách:", value=1.0, min_value=0.0, step=1.0)
-        with d_col2: from_dist = st.selectbox("Từ đơn vị:", options=list(dist_factors.keys()), index=3)
-        with d_col3: to_dist = st.selectbox("Sang đơn vị:", options=list(dist_factors.keys()), index=2)
+        # 4. BỘ CHUYỂN ĐỔI TIỀN TỆ (CURRENCY)
+        if other_tool == "curr":
+            st.markdown("#### 💵 Quy Đổi Tiền Tệ Đa Ngoại Tệ")
+            rates, rate_time = get_vnd_rates()
+            c_col1, c_col2, c_col3 = st.columns([2, 1.5, 1.5])
+            with c_col1: curr_amount = st.number_input("Số lượng tiền cần đổi:", value=100.0, min_value=0.0, step=10.0)
+            with c_col2: from_curr = st.selectbox("Từ đồng tiền:", options=list(rates.keys()), index=1)
+            with c_col3: to_curr = st.selectbox("Sang đồng tiền:", options=list(rates.keys()), index=0)
             
-        meters = dist_val * dist_factors[from_dist]
-        res_dist = meters / dist_factors[to_dist]
+            amount_in_vnd = curr_amount * rates[from_curr]
+            result_curr = amount_in_vnd / rates[to_curr]
         
-        st.markdown("---")
-        st.markdown(f"### 🎯 Kết Quả: **{dist_val:,.4f} {from_dist}** = **{res_dist:,.4f} {to_dist}**")
+            st.markdown("---")
+            st.markdown(f"### 🎯 Kết Quả: **{curr_amount:,.2f} {from_curr}** = **{result_curr:,.2f} {to_curr}**")
+            if rate_time:
+                st.caption(f"Tỷ giá thị trường quốc tế, cập nhật lúc **{rate_time}**: 1 USD = {rates['USD']:,.0f} VND | "
+                           f"1 EUR = {rates['EUR']:,.0f} VND | 1 JPY = {rates['JPY']:,.1f} VND. "
+                           "Có thể lệch nhẹ so với giá mua/bán của ngân hàng. "
+                           "[Rates By Exchange Rate API](https://www.exchangerate-api.com)")
+            else:
+                st.warning("⚠️ Không lấy được tỷ giá mới (mất kết nối). Đang dùng tỷ giá **cũ, chỉ để tham khảo**, đừng dùng để báo giá.")
 
-    # 6. BỘ CHUYỂN ĐỔI VẬN TỐC (SPEED)
-    with subtab_speed:
-        st.markdown("#### 🚀 Quy Đổi Đơn Vị Vận Tốc")
-        speed_factors = {
-            "Mét/giây (m/s)": 1.0, "Kilômét/giờ (km/h)": 1 / 3.6,
-            "Dặm/giờ (mph)": 0.44704, "Hải lý/giờ (Knot)": 0.514444
-        }
-        s_col1, s_col2, s_col3 = st.columns([2, 1.5, 1.5])
-        with s_col1: speed_val = st.number_input("Giá trị vận tốc:", value=100.0, min_value=0.0, step=5.0)
-        with s_col2: from_speed = st.selectbox("Từ đơn vị:", options=list(speed_factors.keys()), index=1)
-        with s_col3: to_speed = st.selectbox("Sang đơn vị:", options=list(speed_factors.keys()), index=0)
+        # 5. BỘ CHUYỂN ĐỔI KHOẢNG CÁCH (DISTANCE)
+        if other_tool == "dist":
+            st.markdown("#### 📏 Quy Đổi Đơn Vị Khoảng Cách")
+            dist_factors = {
+                "Millimet (mm)": 0.001, "Centimet (cm)": 0.01, "Mét (m)": 1.0, "Kilômét (km)": 1000.0,
+                "Inch (in)": 0.0254, "Foot (ft)": 0.3048, "Yard (yd)": 0.9144, "Dặm (Mile)": 1609.344
+            }
+            d_col1, d_col2, d_col3 = st.columns([2, 1.5, 1.5])
+            with d_col1: dist_val = st.number_input("Giá trị khoảng cách:", value=1.0, min_value=0.0, step=1.0)
+            with d_col2: from_dist = st.selectbox("Từ đơn vị:", options=list(dist_factors.keys()), index=3)
+            with d_col3: to_dist = st.selectbox("Sang đơn vị:", options=list(dist_factors.keys()), index=2)
             
-        ms_val = speed_val * speed_factors[from_speed]
-        res_speed = ms_val / speed_factors[to_speed]
+            meters = dist_val * dist_factors[from_dist]
+            res_dist = meters / dist_factors[to_dist]
         
-        st.markdown("---")
-        st.markdown(f"### 🎯 Kết Quả: **{speed_val:,.2f} {from_speed}** = **{res_speed:,.2f} {to_speed}**")
+            st.markdown("---")
+            st.markdown(f"### 🎯 Kết Quả: **{dist_val:,.4f} {from_dist}** = **{res_dist:,.4f} {to_dist}**")
 
-    # 7. KHỐI LƯỢNG & NHIỆT ĐỘ
-    with subtab_mass_temp:
-        m_col1, m_col2 = st.columns(2)
-        with m_col1:
-            with st.container(border=True):
-                st.markdown("##### ⚖️ Quy Đổi Khối Lượng")
-                mass_factors = {
-                    "Gram (g)": 0.001, "Kilôgram (kg)": 1.0, "Tấn": 1000.0,
-                    "Ounce (oz)": 0.0283495, "Pound (lb)": 0.453592
-                }
-                m_val = st.number_input("Khối lượng:", value=1.0, min_value=0.0, key="m_val_in")
-                m_from = st.selectbox("Từ:", options=list(mass_factors.keys()), index=1, key="m_from_sel")
-                m_to = st.selectbox("Sang:", options=list(mass_factors.keys()), index=4, key="m_to_sel")
+        # 6. BỘ CHUYỂN ĐỔI VẬN TỐC (SPEED)
+        if other_tool == "speed":
+            st.markdown("#### 🚀 Quy Đổi Đơn Vị Vận Tốc")
+            speed_factors = {
+                "Mét/giây (m/s)": 1.0, "Kilômét/giờ (km/h)": 1 / 3.6,
+                "Dặm/giờ (mph)": 0.44704, "Hải lý/giờ (Knot)": 0.514444
+            }
+            s_col1, s_col2, s_col3 = st.columns([2, 1.5, 1.5])
+            with s_col1: speed_val = st.number_input("Giá trị vận tốc:", value=100.0, min_value=0.0, step=5.0)
+            with s_col2: from_speed = st.selectbox("Từ đơn vị:", options=list(speed_factors.keys()), index=1)
+            with s_col3: to_speed = st.selectbox("Sang đơn vị:", options=list(speed_factors.keys()), index=0)
+            
+            ms_val = speed_val * speed_factors[from_speed]
+            res_speed = ms_val / speed_factors[to_speed]
+        
+            st.markdown("---")
+            st.markdown(f"### 🎯 Kết Quả: **{speed_val:,.2f} {from_speed}** = **{res_speed:,.2f} {to_speed}**")
+
+        # 7. KHỐI LƯỢNG & NHIỆT ĐỘ
+        if other_tool == "mass":
+            m_col1, m_col2 = st.columns(2)
+            with m_col1:
+                with st.container(border=True):
+                    st.markdown("##### ⚖️ Quy Đổi Khối Lượng")
+                    mass_factors = {
+                        "Gram (g)": 0.001, "Kilôgram (kg)": 1.0, "Tấn": 1000.0,
+                        "Ounce (oz)": 0.0283495, "Pound (lb)": 0.453592
+                    }
+                    m_val = st.number_input("Khối lượng:", value=1.0, min_value=0.0, key="m_val_in")
+                    m_from = st.selectbox("Từ:", options=list(mass_factors.keys()), index=1, key="m_from_sel")
+                    m_to = st.selectbox("Sang:", options=list(mass_factors.keys()), index=4, key="m_to_sel")
                 
-                kg_val = m_val * mass_factors[m_from]
-                res_mass = kg_val / mass_factors[m_to]
-                st.info(f"👉 **{m_val:,.2f} {m_from}** = **{res_mass:,.2f} {m_to}**")
+                    kg_val = m_val * mass_factors[m_from]
+                    res_mass = kg_val / mass_factors[m_to]
+                    st.info(f"👉 **{m_val:,.2f} {m_from}** = **{res_mass:,.2f} {m_to}**")
                 
-        with m_col2:
-            with st.container(border=True):
-                st.markdown("##### 🌡️ Quy Đổi Nhiệt Độ")
-                temp_val = st.number_input("Nhiệt độ:", value=37.0, key="temp_val_in")
-                t_from = st.selectbox("Từ:", options=["Độ C (°C)", "Độ F (°F)", "Kelvin (K)"], index=0, key="t_from_sel")
-                t_to = st.selectbox("Sang:", options=["Độ C (°C)", "Độ F (°F)", "Kelvin (K)"], index=1, key="t_to_sel")
+            with m_col2:
+                with st.container(border=True):
+                    st.markdown("##### 🌡️ Quy Đổi Nhiệt Độ")
+                    temp_val = st.number_input("Nhiệt độ:", value=37.0, key="temp_val_in")
+                    t_from = st.selectbox("Từ:", options=["Độ C (°C)", "Độ F (°F)", "Kelvin (K)"], index=0, key="t_from_sel")
+                    t_to = st.selectbox("Sang:", options=["Độ C (°C)", "Độ F (°F)", "Kelvin (K)"], index=1, key="t_to_sel")
                 
-                if "°C" in t_from: c_temp = temp_val
-                elif "°F" in t_from: c_temp = (temp_val - 32) * 5 / 9
-                else: c_temp = temp_val - 273.15
+                    if "°C" in t_from: c_temp = temp_val
+                    elif "°F" in t_from: c_temp = (temp_val - 32) * 5 / 9
+                    else: c_temp = temp_val - 273.15
                 
-                if "°C" in t_to: res_temp = c_temp
-                elif "°F" in t_to: res_temp = (c_temp * 9 / 5) + 32
-                else: res_temp = c_temp + 273.15
+                    if "°C" in t_to: res_temp = c_temp
+                    elif "°F" in t_to: res_temp = (c_temp * 9 / 5) + 32
+                    else: res_temp = c_temp + 273.15
                 
-                st.info(f"👉 **{temp_val:,.1f} {t_from}** = **{res_temp:,.1f} {t_to}**")
+                    st.info(f"👉 **{temp_val:,.1f} {t_from}** = **{res_temp:,.1f} {t_to}**")

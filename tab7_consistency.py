@@ -5,8 +5,8 @@ import pandas as pd
 from collections import Counter
 from utils import kept_file_uploader, PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df, is_candidate_english_word, clean_cell
 
-VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
-VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
+from pronoun_qc import (analyze as analyze_pronouns, SELF_TERMS as PRONOUN_SELF_TERMS, TARGET_TERMS as PRONOUN_TARGET_TERMS,
+                        THIRD_TERMS as PRONOUN_THIRD_TERMS, KINSHIP_TERMS as PRONOUN_KIN_TERMS)
 
 def render_tab7():
     st.subheader("Soát xưng hô & thuật ngữ")
@@ -78,65 +78,34 @@ def render_tab7():
             df_p_script = parse_any_script_file_to_df(uploaded_pronoun_script.getvalue(), uploaded_pronoun_script.name, c_spks_p, c_non_spks_p)
 
             if not df_p_script.empty:
-                pronoun_audit_rows = []
-                speaker_pronoun_stats = {}
+                lines = [{"stt": i + 1, "timecode": f"{r['Start']} --> {r['End']}",
+                          "speaker": str(r['Speaker']).strip(), "text": str(r['Dialogue']).strip()}
+                         for i, (_, r) in enumerate(df_p_script.iterrows())]
+                results, summary = analyze_pronouns(lines, st.session_state.get('custom_pronoun_rel', {}))
+                n_red = sum(1 for x in results if x["status"].startswith("🔴"))
+                n_yellow = sum(1 for x in results if x["status"].startswith("🟡"))
 
-                for idx, r in df_p_script.iterrows():
-                    spk = str(r['Speaker']).strip()
-                    diag = str(r['Dialogue']).strip()
-                    words = [w.lower() for w in re.findall(r'\b\w+\b', diag)]
+                col_pm1, col_pm2, col_pm3 = st.columns(3)
+                col_pm1.markdown(f'<div class="metric-card"><div class="metric-label">💬 Câu thoại đã quét</div><div class="metric-value">{len(results)}</div></div>', unsafe_allow_html=True)
+                col_pm2.markdown(f'<div class="metric-card"><div class="metric-label">🔴 Trái quy tắc đã lưu</div><div class="metric-value" style="color:#DC2626;">{n_red}</div></div>', unsafe_allow_html=True)
+                col_pm3.markdown(f'<div class="metric-card"><div class="metric-label">🟡 Lệch thói quen nhân vật</div><div class="metric-value" style="color:#D97706;">{n_yellow}</div></div>', unsafe_allow_html=True)
 
-                    found_self = [w for w in words if w in VN_SELF_PRONOUNS]
-                    found_target = [w for w in words if w in VN_TARGET_PRONOUNS]
+                st.markdown("##### 👥 Mỗi nhân vật đang xưng / gọi thế nào")
+                st.caption("Số trong ngoặc = số lần dùng. Từ thân tộc (anh/chị/em/ông/bà/con...) vừa để xưng vừa để gọi, "
+                           "nên app chỉ thống kê, không tự báo lỗi — người soát nhìn bảng này để phát hiện chỗ bất thường.")
+                st.dataframe(pd.DataFrame(summary), hide_index=True, use_container_width=True)
 
-                    if spk not in speaker_pronoun_stats:
-                        speaker_pronoun_stats[spk] = {"self": Counter(), "target": Counter()}
-
-                    for s_w in found_self: speaker_pronoun_stats[spk]["self"][s_w] += 1
-                    for t_w in found_target: speaker_pronoun_stats[spk]["target"][t_w] += 1
-
-                for idx, r in df_p_script.iterrows():
-                    spk = str(r['Speaker']).strip()
-                    diag = str(r['Dialogue']).strip()
-                    words = [w.lower() for w in re.findall(r'\b\w+\b', diag)]
-
-                    found_self = [w for w in words if w in VN_SELF_PRONOUNS]
-                    found_target = [w for w in words if w in VN_TARGET_PRONOUNS]
-
-                    top_self = speaker_pronoun_stats[spk]["self"].most_common(1)[0][0] if speaker_pronoun_stats[spk]["self"] else ""
-                    top_target = speaker_pronoun_stats[spk]["target"].most_common(1)[0][0] if speaker_pronoun_stats[spk]["target"] else ""
-
-                    is_unusual = False
-                    warn_msg = []
-
-                    if found_self and top_self and any(w != top_self for w in found_self):
-                        is_unusual = True
-                        warn_msg.append(f"Xưng '{', '.join(found_self)}' (Đa số xưng '{top_self}')")
-
-                    if found_target and top_target and any(w != top_target for w in found_target):
-                        is_unusual = True
-                        warn_msg.append(f"Gọi '{', '.join(found_target)}' (Đa số gọi '{top_target}')")
-
-                    status_str = "🟡 Nghi vấn lệch xưng hô" if is_unusual else "🟢 Ok"
-                    pronoun_audit_rows.append({
-                        "Stt": idx + 1, "Timecode": f"{r['Start']} --> {r['End']}",
-                        "Nhân vật": spk, "Câu thoại Tiếng Việt": diag,
-                        "Trạng thái": status_str, "Chi tiết QC": "; ".join(warn_msg) if warn_msg else "Xưng hô khớp với tần suất chính"
-                    })
-
-                df_p_audit = pd.DataFrame(pronoun_audit_rows)
-                unusual_cnt = sum(1 for st_v in df_p_audit['Trạng thái'] if '🟡' in str(st_v))
-
-                col_pm1, col_pm2 = st.columns(2)
-                with col_pm1:
-                    st.markdown(f'<div class="metric-card"><div class="metric-label">💬 Tổng số câu thoại đã quét</div><div class="metric-value">{len(df_p_audit)}</div></div>', unsafe_allow_html=True)
-                with col_pm2:
-                    st.markdown(f'<div class="metric-card"><div class="metric-label">🟡 Câu nghi vấn lệch xưng hô</div><div class="metric-value" style="color:#D97706;">{unusual_cnt}</div></div>', unsafe_allow_html=True)
-
-                st.markdown("##### 👁️ Bảng Báo Cáo Soát Lỗi Xưng Hô Chi Tiết")
-                p_filter = st.checkbox("🟡 Chỉ hiển thị các câu nghi vấn lệch xưng hô", value=True)
-                df_p_disp = df_p_audit[df_p_audit['Trạng thái'].str.contains('🟡', na=False)] if p_filter else df_p_audit
-                st.dataframe(df_p_disp[['Stt', 'Timecode', 'Nhân vật', 'Câu thoại Tiếng Việt', 'Trạng thái', 'Chi tiết QC']], hide_index=True, use_container_width=True)
+                st.markdown("##### 👁️ Chi tiết từng câu")
+                p_filter = st.checkbox("Chỉ hiện câu có vấn đề (🔴 / 🟡)", value=True, key="pronoun_only_issues")
+                rows = [{"Stt": x["stt"], "Timecode": x["timecode"], "Nhân vật": x["speaker"], "Câu thoại": x["text"],
+                         "Xưng hô tìm thấy": x["found"], "Trạng thái": x["status"], "Chi tiết": x["detail"]}
+                        for x in results if not p_filter or not x["status"].startswith("🟢")]
+                if rows: st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                else: st.success("Không phát hiện câu nào lệch xưng hô.")
+                with st.expander("ℹ️ App nhận diện những cách xưng hô nào?"):
+                    st.markdown(f"**Xưng:** {', '.join(PRONOUN_SELF_TERMS)}\n\n**Gọi:** {', '.join(PRONOUN_TARGET_TERMS)}\n\n"
+                                f"**Ngôi thứ ba:** {', '.join(PRONOUN_THIRD_TERMS)}\n\n**Thân tộc (chỉ thống kê):** {', '.join(PRONOUN_KIN_TERMS)}\n\n"
+                                "Thiếu từ nào thường gặp, báo người quản lý app để bổ sung.")
 
     with subtab_glossary:
         st.markdown("#### 📚 Soát Bất Nhất Thuật Ngữ & Bản Dịch Tiếng Việt")

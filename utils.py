@@ -211,8 +211,9 @@ DEFAULT_PRONOUN_REL = {
 }
 DEFAULT_PAYROLL_RATES = {"mode": "minute", "unit_rate": 30000}
 
-TRACKER_JSON_FIELDS = {"actor_breakdown", "custom_actor_rates"}
-TRACKER_NUM_FIELDS = {"total_lines", "video_duration_min"}
+ACCOUNTS_DB_FILE = "accounts.json"
+AUDIT_LOG_TAB = "nhat_ky"
+AUDIT_LOG_FILE = "nhat_ky.json"
 
 DB_REGISTRY = {
     NON_SPEAKER_DB_FILE: {"state_key": "custom_non_speakers", "kind": "set", "default": set},
@@ -222,8 +223,41 @@ DB_REGISTRY = {
     SPEAKER_COLOR_DB_FILE: {"state_key": "fixed_speaker_colors", "kind": "json_dict", "default": lambda: copy.deepcopy(DEFAULT_FIXED_SPEAKER_COLORS)},
     PRONOUN_REL_DB_FILE: {"state_key": "custom_pronoun_rel", "kind": "json_dict", "default": lambda: copy.deepcopy(DEFAULT_PRONOUN_REL)},
     RATES_DB_FILE: {"state_key": "payroll_rates", "kind": "json_dict", "default": lambda: dict(DEFAULT_PAYROLL_RATES), "lower_keys": True},
-    TRACKER_DB_FILE: {"state_key": "dubbing_tracker", "kind": "records", "default": list},
+    TRACKER_DB_FILE: {"state_key": "dubbing_tracker", "kind": "records", "default": list, "record_key": "video_title",
+                      "json_fields": {"actor_breakdown", "custom_actor_rates"}, "num_fields": {"total_lines", "video_duration_min"}},
+    ACCOUNTS_DB_FILE: {"state_key": "accounts", "kind": "records", "default": list, "record_key": "username",
+                       "json_fields": {"pages"}, "num_fields": set()},
 }
+
+def log_event(action, detail=""):
+    """Ghi 1 dòng nhật ký (ai, lúc nào, làm gì). Lỗi ghi nhật ký không được làm hỏng thao tác chính."""
+    from datetime import datetime, timedelta, timezone
+    row = [datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S"),
+           st.session_state.get("_user", {}).get("username", "(chưa đăng nhập)"), str(action), str(detail)[:500]]
+    try:
+        if sheets_enabled():
+            sh = _get_spreadsheet()
+            try: ws = sh.worksheet(AUDIT_LOG_TAB)
+            except gspread.WorksheetNotFound:
+                ws = sh.add_worksheet(title=AUDIT_LOG_TAB, rows=1000, cols=4)
+                ws.append_row(["thoi_gian", "nguoi_dung", "hanh_dong", "chi_tiet"], value_input_option="RAW")
+            ws.append_row(row, value_input_option="RAW")
+        else:
+            logs = json.load(open(AUDIT_LOG_FILE, encoding="utf-8")) if os.path.exists(AUDIT_LOG_FILE) else []
+            logs.append(row)
+            _local_write(AUDIT_LOG_FILE, logs)
+    except Exception:
+        pass
+
+def read_audit_log(limit=300):
+    """Trả về các dòng nhật ký mới nhất (mới nhất ở trên)."""
+    if sheets_enabled():
+        try: rows = _get_spreadsheet().worksheet(AUDIT_LOG_TAB).get_values()[1:]
+        except gspread.WorksheetNotFound: rows = []
+    else:
+        rows = json.load(open(AUDIT_LOG_FILE, encoding="utf-8")) if os.path.exists(AUDIT_LOG_FILE) else []
+    rows = [(list(r) + ["", "", "", ""])[:4] for r in rows[-limit:]]
+    return list(reversed(rows))
 
 def _tab_name(filepath):
     return os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
@@ -290,15 +324,15 @@ def _rows_to_data(cfg, rows):
         for i, h in enumerate(header):
             if not h: continue
             v = cell(r, i)
-            if h in TRACKER_JSON_FIELDS:
+            if h in cfg.get("json_fields", ()):
                 v = _decode_cell(v)
-                if not isinstance(v, dict): v = {}
-            elif h in TRACKER_NUM_FIELDS:
+                if not isinstance(v, (dict, list)): v = {}
+            elif h in cfg.get("num_fields", ()):
                 v = _to_number(v)
             else:
                 v = "" if v is None else str(v)
             item[h] = v
-        if item.get("video_title", "") != "": records.append(item)
+        if item.get(cfg["record_key"], "") != "": records.append(item)
     return records
 
 def _data_to_rows(cfg, data):
@@ -312,7 +346,7 @@ def _data_to_rows(cfg, data):
     for item in data:
         for h in item.keys():
             if h not in headers: headers.append(h)
-    if not headers: headers = ["video_title"]
+    if not headers: headers = [cfg["record_key"]]
     return [headers] + [[enc(item.get(h, "")) for h in headers] for item in data]
 
 def _with_defaults(cfg, data):
@@ -332,17 +366,15 @@ def _local_write(filepath, data):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(list(data) if isinstance(data, set) else data, f, ensure_ascii=False, indent=2)
 
-def _record_key(item):
-    return str(item.get("video_title", "")).strip().upper()
-
-def _three_way_merge(kind, base, local, remote):
+def _three_way_merge(kind, base, local, remote, key_field="video_title"):
     """Chỉ áp những gì phiên này đã THAY ĐỔI (so với lúc tải về) lên bản mới nhất trên kho."""
     if kind == "set":
         return (set(remote) | (local - base)) - (base - local)
     if kind == "records":
-        b = {_record_key(x): x for x in base}
-        l = {_record_key(x): x for x in local}
-        r = {_record_key(x): x for x in remote}
+        def rk(item): return str(item.get(key_field, "")).strip().upper()
+        b = {rk(x): x for x in base}
+        l = {rk(x): x for x in local}
+        r = {rk(x): x for x in remote}
         merged = _three_way_merge("dict", b, l, r)
         order = [k for k in r if k in merged] + [k for k in l if k in merged and k not in r]
         return [merged[k] for k in order]
@@ -405,7 +437,7 @@ def save_json_db(filepath, data_container):
                 remote = _with_defaults(cfg, _rows_to_data(cfg, remote_rows))
             except gspread.WorksheetNotFound:
                 ws, remote_rows, remote = None, [], cfg["default"]()
-            merged = _three_way_merge(kind, base, data_container, remote)
+            merged = _three_way_merge(kind, base, data_container, remote, cfg.get("record_key", "video_title"))
             rows = _data_to_rows(cfg, merged)
             # Ghi đè đúng 1 lần, phần thừa của bản cũ được ghi đè bằng ô trống (không xoá trắng trước)
             n_rows = max(len(rows), len(remote_rows))
@@ -420,7 +452,7 @@ def save_json_db(filepath, data_container):
         else:
             remote = _local_read(filepath, cfg)
             remote = cfg["default"]() if remote is None else _with_defaults(cfg, remote)
-            merged = _three_way_merge(kind, base, data_container, remote)
+            merged = _three_way_merge(kind, base, data_container, remote, cfg.get("record_key", "video_title"))
             _local_write(filepath, merged)
     except Exception as e:
         st.session_state["_db_save_error"] = f"❌ CHƯA LƯU ĐƯỢC dữ liệu '{tab}' (thay đổi vẫn còn trong phiên này, hãy bấm lưu lại sau ít phút). Chi tiết lỗi: {e}"
@@ -435,6 +467,7 @@ def save_json_db(filepath, data_container):
         merged = data_container
     st.session_state[cfg["state_key"]] = merged
     _set_base(filepath, merged)
+    log_event("Lưu dữ liệu", tab)
     return True
 
 # ==========================================
