@@ -1,6 +1,5 @@
 import streamlit as st
 import base64
-import hmac
 import os
 import re
 import time
@@ -24,6 +23,7 @@ from tab7_consistency import render_tab7
 from tab8_cleaner import render_tab8
 from tab9_tools import render_tab9
 from auth import require_login, render_user_box, render_accounts_page, has_perm, is_admin
+from ui_effects import inject_effects
 
 # ==========================================
 # 1. CẤU HÌNH TRANG CHỦ STREAMLIT
@@ -58,6 +58,7 @@ st.logo(_logo_for_bg, size="large")
 # ==========================================
 # Tải toàn bộ kho dữ liệu (Google Sheets khi chạy online, file JSON khi chạy trên máy) — 1 lần mỗi phiên
 init_databases()
+inject_effects(st.session_state.get("ui_motion", True), _logo_base64(_logo_for_bg))  # áp cả cho màn hình đăng nhập
 require_login(_logo_for_bg)
 
 # ==========================================
@@ -103,6 +104,8 @@ ui_theme_choice = st.sidebar.radio(
     index=0,
     help="Chỉ đổi màu dải băng đầu trang. Không ảnh hưởng đến file xuất ra."
 )
+st.sidebar.toggle("✨ Hiệu ứng chuyển động", value=True, key="ui_motion",
+                  help="Tắt nếu muốn giao diện đứng yên hoàn toàn (máy yếu hoặc thấy rối mắt).")
 
 if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
                      help="Xoá các file đã tải lên (ở mọi trang) và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
