@@ -1,5 +1,7 @@
 import streamlit as st
+import base64
 import hmac
+import os
 import re
 import time
 import pandas as pd
@@ -32,6 +34,24 @@ st.set_page_config(
 )
 
 # ==========================================
+# 1a. LOGO MAI HAN TEAM
+# ==========================================
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_BLUE = os.path.join(APP_DIR, "logo.png")         # logo màu gốc: dùng trên nền sáng
+LOGO_WHITE = os.path.join(APP_DIR, "logo_white.png")  # logo trắng: dùng trên nền tối / dải băng xanh
+
+def _is_dark_theme():
+    try: return st.context.theme.type == "dark"
+    except Exception: return False
+
+@st.cache_data(show_spinner=False)
+def _logo_base64(path):
+    with open(path, "rb") as f: return base64.b64encode(f.read()).decode()
+
+_logo_for_bg = LOGO_WHITE if _is_dark_theme() else LOGO_BLUE
+st.logo(_logo_for_bg, size="large")
+
+# ==========================================
 # 1b. MẬT KHẨU VÀO APP (đặt APP_PASSWORD trong mục Secrets của Streamlit)
 # ==========================================
 def _get_app_password():
@@ -40,8 +60,12 @@ def _get_app_password():
 
 _app_password = _get_app_password()
 if _app_password and not st.session_state.get("_authenticated"):
-    st.markdown("## 🔒 ScriptPro - Mai Han Team")
-    with st.form("login_form"):
+    _c_left, _c_mid, _c_right = st.columns([1, 1.2, 1])
+    with _c_mid:
+        st.image(_logo_for_bg, width=260)
+        st.markdown("#### 🔒 ScriptPro Enterprise Studio")
+        _login_box = st.container()
+    with _login_box, st.form("login_form"):
         _entered = st.text_input("Nhập mật khẩu để sử dụng:", type="password")
         if st.form_submit_button("Vào", type="primary"):
             if hmac.compare_digest(_entered.encode("utf-8"), _app_password.encode("utf-8")):
@@ -326,9 +350,9 @@ else:
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
         .hero-container {
-            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            background: linear-gradient(135deg, #183E80 0%, #2A63BA 100%);
             padding: 2.5rem 2rem; border-radius: 16px; color: white; margin-bottom: 2rem;
-            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
+            box-shadow: 0 10px 25px -5px rgba(42, 99, 186, 0.35);
         }
         .hero-title { font-size: 2.4rem; font-weight: 800; margin: 0; }
         .hero-subtitle { font-size: 1.05rem; opacity: 0.9; margin-top: 0.5rem; }
@@ -351,10 +375,23 @@ else:
 # 5. HERO BANNER
 # ==========================================
 st.markdown(f"""
+<style>
+    .hero-container {{ display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }}
+    .hero-logo {{ height: 110px; width: auto; flex-shrink: 0; }}
+    .hero-text {{ flex: 1; min-width: 260px; }}
+    @media (max-width: 640px) {{
+        .hero-logo {{ height: 72px; }}
+        .hero-title {{ font-size: 1.6rem; line-height: 1.25; }}
+        .hero-container {{ padding: 1.5rem 1.25rem; gap: 1rem; }}
+    }}
+</style>
 <div class="hero-container">
-    <div class="badge-pro">{ui_theme_choice}</div>
-    <div class="hero-title">🎬 ScriptPro Enterprise Studio</div>
-    <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
+    <img class="hero-logo" src="data:image/png;base64,{_logo_base64(LOGO_WHITE)}" alt="Mai Han Team">
+    <div class="hero-text">
+        <div class="badge-pro">{ui_theme_choice}</div>
+        <div class="hero-title">ScriptPro Enterprise Studio</div>
+        <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
