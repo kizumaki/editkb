@@ -9,12 +9,12 @@ VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "
 VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
 
 def render_tab7():
-    st.subheader("🔎 SOÁT BẤT NHẤT THUẬT NGỮ & QUAN HỆ XƯNG HÔ NHÂN VẬT")
+    st.subheader("Soát xưng hô & thuật ngữ")
     st.markdown("Vùng làm việc phát hiện các câu thoại bị sượng xưng hô hoặc bất nhất bản dịch thuật ngữ/tên món ăn.")
 
     subtab_pronoun, subtab_glossary = st.tabs([
-        "👥 Quản Lý & Soát Lỗi Xưng Hô Nhân Vật", 
-        "📚 Soát Bất Nhất Thuật Ngữ & Món Ăn/Tên Riêng"
+        "👥 Xưng hô nhân vật", 
+        "📚 Thuật ngữ & tên riêng"
     ])
 
     with subtab_pronoun:
@@ -58,7 +58,7 @@ def render_tab7():
                 hide_index=True, use_container_width=True, key="pronoun_rel_editor_table"
             )
 
-            if st.button("💾 LƯU BẢNG QUY TẮC XƯNG HÔ VÀO DATABASE", type="secondary", use_container_width=True):
+            if st.button("💾 Lưu bảng xưng hô", type="secondary", use_container_width=True):
                 new_rel_db = {}
                 for _, row in edited_rel_df.iterrows():
                     if not row["Xóa"]:

@@ -69,7 +69,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                         key="script_cast_editor_table"
                     )
 
-                    if st.button("💾 Lưu Bảng Phân Vai Kịch Bản Này Vào Database", type="secondary", use_container_width=True):
+                    if st.button("💾 Lưu phân vai của kịch bản này", type="secondary", use_container_width=True):
                         updated_cast_count = 0
                         for _, row in edited_cast_df.iterrows():
                             if row["Nạp vào Database"]:
@@ -83,8 +83,8 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                         time.sleep(1); st.rerun()
 
             with st.container(border=True):
-                st.markdown("### 🔍 Soát Lỗi Nhận Diện Tên Người Nói")
-                tab_spk, tab_non_spk = st.tabs(["🎭 Nhận diện là NGƯỜI NÓI", "🚫 Đang bị xem là TỪ NHIỄU"])
+                st.markdown("### 🔍 Kiểm tra tên người nói")
+                tab_spk, tab_non_spk = st.tabs(["🎭 Đang nhận là người nói", "🚫 Đang bị bỏ qua"])
                 
                 with tab_spk:
                     if detected_speakers:
@@ -94,7 +94,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                             options=[name for name in candidates.keys() if name.upper() not in non_spk_phrases],
                             key="select_to_ns"
                         )
-                        if st.button("➡️ Đưa vào Database TỪ NHIỄU", type="secondary"):
+                        if st.button("➡️ Chuyển sang \"không phải tên nhân vật\"", type="secondary"):
                             if to_move_to_ns:
                                 new_items = [item.upper() for item in to_move_to_ns]
                                 st.session_state['custom_non_speakers'].update(new_items)
@@ -111,7 +111,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                             options=[name for name in candidates.keys() if name.upper() in non_spk_phrases],
                             key="select_to_spk"
                         )
-                        if st.button("➡️ Đưa vào Database NGƯỜI NÓI", type="secondary"):
+                        if st.button("➡️ Chuyển sang danh sách tên nhân vật", type="secondary"):
                             if to_move_to_spk:
                                 st.session_state['custom_speakers'].update(to_move_to_spk)
                                 save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
@@ -172,7 +172,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                         key="phonetic_script_table"
                     )
 
-                    if st.button("💾 Nạp chỉnh sửa kịch bản này vào Database Phiên Âm", type="secondary", use_container_width=True):
+                    if st.button("💾 Lưu phiên âm vào kho", type="secondary", use_container_width=True):
                         updated_count = 0
                         for _, row in edited_df.iterrows():
                             if row["Nạp vào Database"]:
@@ -188,7 +188,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                 else: st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")
 
             st.markdown("---")
-            if st.button("✨ 2. BẮT ĐẦU ĐỊNH DẠNG TỰ ĐỘNG", use_container_width=True, type="primary"):
+            if st.button("✨ Bắt đầu định dạng tự động", use_container_width=True, type="primary"):
                 try:
                     modified_docx, ass_f, srt_f, act_zip, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12)
                     
@@ -201,6 +201,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                     st.session_state['srt_name'] = clean_file_name_for_output(original_filename, tag="_edit", ext=".srt")
                     st.session_state['zip_name'] = clean_file_name_for_output(original_filename, tag="_KichBan_TachVai", ext=".zip")
                     st.session_state['stats'] = stats
+                    st.session_state['_celebrate_tab1'] = True  # chỉ chúc mừng 1 lần ngay sau khi xử lý xong
                     
                 except Exception as e: st.error(f"Đã có lỗi xảy ra: {e}")
 
@@ -208,16 +209,16 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                 st.markdown("---")
                 qc_warns = st.session_state['stats'].get("qc_warnings", [])
                 if qc_warns:
-                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
+                    with st.expander("🔍 Cảnh báo chất lượng (tốc độ đọc, phân vai)", expanded=True):
                         st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
                         for w in qc_warns[:10]: st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
                         if len(qc_warns) > 10: st.info(f"...và thêm {len(qc_warns)-10} cảnh báo khác.")
                 
-                st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE ĐÃ XỬ LÝ HOÀN HẢO")
+                st.markdown("### ⬇️ Tải về file đã xử lý")
                 col_dl1, col_dl2, col_dl3 = st.columns(3)
                 with col_dl1:
                     st.download_button(
-                        label="📄 FILE WORD KỊCH BẢN (.DOCX)",
+                        label="📄 Kịch bản Word (.docx)",
                         data=st.session_state['processed_docx'],
                         file_name=st.session_state['docx_name'],
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -225,21 +226,21 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                     )
                 with col_dl2:
                     st.download_button(
-                        label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)",
+                        label="🎬 Phụ đề có màu (.ass)",
                         data=st.session_state['processed_ass'],
                         file_name=st.session_state['ass_name'],
                         mime="text/plain", use_container_width=True
                     )
                 with col_dl3:
                     st.download_button(
-                        label="📝 PHỤ ĐỀ CHUẨN (.SRT)",
+                        label="📝 Phụ đề thường (.srt)",
                         data=st.session_state['processed_srt'],
                         file_name=st.session_state['srt_name'],
                         mime="text/plain", use_container_width=True
                     )
                     
                 st.markdown("---")
-                st.markdown("#### 🎙️ KỊCH BẢN TÁCH VAI RIÊNG CHO PHÒNG THU LỒNG TIẾNG")
+                st.markdown("#### 🎙️ Kịch bản tách riêng cho từng diễn viên")
                 st.caption("Mỗi diễn viên chỉ nhận đúng câu thoại của mình, giúp thu âm nhanh và không xao nhãng:")
                 
                 act_map = st.session_state['stats'].get("actor_dialogue_map", {})
@@ -250,7 +251,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                         if selected_actor:
                             act_buf = generate_actor_docx(st.session_state['stats']['video_title'], selected_actor, act_map[selected_actor], font_size_pt=12)
                             st.download_button(
-                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {selected_actor} (.DOCX)",
+                                label=f"⬇️ Tải file của {selected_actor} (.docx)",
                                 data=act_buf,
                                 file_name=f"KichBan_{selected_actor}_{st.session_state['stats']['video_title']}.docx",
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -259,15 +260,15 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                     with col_act2:
                         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                         st.download_button(
-                            label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)",
+                            label="📦 Tải trọn bộ (.zip)",
                             data=st.session_state['actor_zip'],
                             file_name=st.session_state['zip_name'],
                             mime="application/zip", type="secondary", use_container_width=True
                         )
-                st.balloons()
+                if st.session_state.pop('_celebrate_tab1', False): st.balloons()
 
     with col2:
-        st.markdown("### 📊 SaaS Analytics")
+        st.markdown("### 📊 Thống kê kịch bản")
         if 'stats' in st.session_state:
             stats = st.session_state['stats']
             st.markdown(f"""

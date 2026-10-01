@@ -12,8 +12,8 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
     
     with col_r1:
         with st.container(border=True):
-            st.markdown("### 🔄 Tải lên file Kịch bản ĐÃ BIÊN TẬP THỦ CÔNG (.docx)")
-            st.caption("Dành riêng cho file kịch bản đã được team biên tập chỉnh sửa lời thoại. Tự động phục hồi màu sắc, phân vai và **xuất phông chữ 14pt cực nét** cho phòng thu.")
+            st.markdown("### 🔄 Tải lên kịch bản đã biên tập (.docx)")
+            st.caption("Dành cho kịch bản team đã sửa lời thoại bằng tay. App sẽ tô lại màu, phân vai và xuất **cỡ chữ 14** cho phòng thu.")
             
             resync_file = st.file_uploader(
                 "Kéo thả file .docx đã biên tập vào đây", 
@@ -28,7 +28,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
             st.success(f"📄 Đã nhận file kịch bản biên tập: **{r_filename}**")
             
             st.markdown("---")
-            if st.button("✨ 2. BẮT ĐẦU RE-SYNC & CHUẨN HÓA LẠI ĐỊNH DẠNG (14PT)", use_container_width=True, type="primary", key="btn_resync_start"):
+            if st.button("✨ Bắt đầu Re-Sync (cỡ chữ 14)", use_container_width=True, type="primary", key="btn_resync_start"):
                 try:
                     r_docx, r_ass, r_srt, r_zip, r_stats = process_docx(resync_file, r_name_no_ext, enable_colors, enable_phonetic, enable_cast, is_resync=True, font_size_pt=14)
                     
@@ -41,6 +41,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     st.session_state['r_srt_name'] = clean_file_name_for_output(r_filename, tag="_final", ext=".srt")
                     st.session_state['r_zip_name'] = clean_file_name_for_output(r_filename, tag="_KichBan_TachVai_Final", ext=".zip")
                     st.session_state['resync_stats'] = r_stats
+                    st.session_state['_celebrate_tab2'] = True  # chỉ chúc mừng 1 lần ngay sau khi xử lý xong
                     
                     video_title = r_stats.get("video_title", r_name_no_ext)
                     actors_list = r_stats.get("actors_list", [])
@@ -78,7 +79,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                 st.markdown("---")
                 r_qc_warns = st.session_state['resync_stats'].get("qc_warnings", [])
                 if r_qc_warns:
-                    with st.expander("🔍 BÁO CÁO CẢNH BÁO CHẤT LƯỢNG (QC & CPS CHECKER)", expanded=True):
+                    with st.expander("🔍 Cảnh báo chất lượng (tốc độ đọc, phân vai)", expanded=True):
                         st.caption("Danh sách cảnh báo về tốc độ đọc thoại hoặc gán phân vai để BTV rà soát:")
                         for w in r_qc_warns[:10]: st.markdown(f"<div class='qc-card-warning'>{w}</div>", unsafe_allow_html=True)
                         if len(r_qc_warns) > 10: st.info(f"...và thêm {len(r_qc_warns)-10} cảnh báo khác.")
@@ -86,7 +87,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                 # BÁO CÁO SO SÁNH ĐỘ TOÀN VẸN (DIFF CHECK)
                 integrity = st.session_state['resync_stats'].get("integrity_report", {})
                 if integrity:
-                    with st.expander("🛡️ BÁO CÁO SO SÁNH ĐỘ TOÀN VẸN (FILE EDIT VS FINAL)", expanded=True):
+                    with st.expander("🛡️ So sánh file biên tập với file Final", expanded=True):
                         st.caption("Kiểm tra đối soát tự động giữa kịch bản biên tập nạp vào và kịch bản Final tạo ra:")
                         ic1, ic2, ic3, ic4 = st.columns(4)
                         ic1.metric("Mốc TC (Edit)", integrity.get("tc_in_cnt", 0))
@@ -96,32 +97,32 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                         
                         diff_issues = integrity.get("diff_issues", [])
                         if not diff_issues:
-                            st.success("🎉 **BẢO CHỨNG 100% KHỚP CHUẨN!** Tất cả timecode và nội dung thoại giữa file Edit và Final trùng khớp hoàn toàn.")
+                            st.success("✅ Không thấy sai lệch: số mốc timecode khớp, không có câu thoại nào bị hụt chữ đáng kể.")
                         else:
                             st.warning(f"⚠️ Phát hiện **{len(diff_issues)}** điểm sai lệch cần lưu ý:")
                             st.dataframe(pd.DataFrame(diff_issues), use_container_width=True)
 
-                st.markdown("### ⬇️ 3. TẢI VỀ CÁC FILE CHUẨN HOÀN HẢO (PHÔNG 14PT)")
+                st.markdown("### ⬇️ Tải về file đã chuẩn hóa (cỡ chữ 14)")
                 col_rdl1, col_rdl2, col_rdl3 = st.columns(3)
                 with col_rdl1:
                     st.download_button(
-                        label="📄 FILE WORD KỊCH BẢN (14PT)", data=st.session_state['r_processed_docx'],
+                        label="📄 Kịch bản Word (cỡ 14)", data=st.session_state['r_processed_docx'],
                         file_name=st.session_state['r_docx_name'], mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         type="primary", use_container_width=True, key="btn_resync_dl_docx"
                     )
                 with col_rdl2:
                     st.download_button(
-                        label="🎬 PHỤ ĐỀ CAO CẤP (.ASS)", data=st.session_state['r_processed_ass'],
+                        label="🎬 Phụ đề có màu (.ass)", data=st.session_state['r_processed_ass'],
                         file_name=st.session_state['r_ass_name'], mime="text/plain", use_container_width=True, key="btn_resync_dl_ass"
                     )
                 with col_rdl3:
                     st.download_button(
-                        label="📝 PHỤ ĐỀ CHUẨN (.SRT)", data=st.session_state['r_processed_srt'],
+                        label="📝 Phụ đề thường (.srt)", data=st.session_state['r_processed_srt'],
                         file_name=st.session_state['r_srt_name'], mime="text/plain", use_container_width=True, key="btn_resync_dl_srt"
                     )
                     
                 st.markdown("---")
-                st.markdown("#### 🎙️ KỊCH BẢN TÁCH VAI RIÊNG CHO PHÒNG THU LỒNG TIẾNG (14PT)")
+                st.markdown("#### 🎙️ Kịch bản tách riêng cho từng diễn viên (cỡ 14)")
                 st.caption("Mỗi diễn viên chỉ nhận đúng câu thoại của mình, giúp thu âm nhanh và không xao nhãng:")
                 
                 r_act_map = st.session_state['resync_stats'].get("actor_dialogue_map", {})
@@ -132,21 +133,21 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                         if r_selected_actor:
                             r_act_buf = generate_actor_docx(st.session_state['resync_stats']['video_title'], r_selected_actor, r_act_map[r_selected_actor], font_size_pt=14)
                             st.download_button(
-                                label=f"⬇️ TẢI FILE WORD RIÊNG CHO {r_selected_actor} (14PT)", data=r_act_buf,
+                                label=f"⬇️ Tải file của {r_selected_actor} (.docx)", data=r_act_buf,
                                 file_name=f"KichBan_{r_selected_actor}_{st.session_state['resync_stats']['video_title']}_Final.docx",
                                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key="btn_dl_single_actor_resync"
                             )
                     with col_ract2:
                         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                         st.download_button(
-                            label="📦 TẢI TRỌN BỘ KỊCH BẢN TÁCH VAI (.ZIP)", data=st.session_state['r_actor_zip'],
+                            label="📦 Tải trọn bộ (.zip)", data=st.session_state['r_actor_zip'],
                             file_name=st.session_state['r_zip_name'], mime="application/zip", type="secondary", use_container_width=True, key="btn_dl_zip_actor_resync"
                         )
-                st.balloons()
+                if st.session_state.pop('_celebrate_tab2', False): st.balloons()
         else: st.info("📌 **Hãy tải file kịch bản đã qua chỉnh sửa thủ công để hệ thống phục hồi lại định dạng chuẩn.**")
 
     with col_r2:
-        st.markdown("### 📊 Re-Sync Analytics")
+        st.markdown("### 📊 Thống kê bản Re-Sync")
         if 'resync_stats' in st.session_state:
             r_stats = st.session_state['resync_stats']
             st.markdown(f"""

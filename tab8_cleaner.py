@@ -31,12 +31,12 @@ def clean_docx_file(f_item):
     return doc_buf
 
 def render_tab8():
-    st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
+    st.subheader("Dọn dẹp & chuẩn hóa phụ đề")
     st.markdown("Tự động giặt sạch kịch bản rác, bóc tách thẻ HTML/ASS rác, sửa lỗi gõ phím, sửa lỗi dấu câu Tiếng Việt và thu gọn khoảng trắng dư thừa.")
 
     subtab_paste_clean, subtab_file_clean = st.tabs([
-        "✍️ Xử Lý & Dọn Dẹp Văn Bản Trực Tiếp", 
-        "📁 Dọn Dẹp & Chuẩn Hóa File Hàng Loạt (.srt / .docx)"
+        "✍️ Dán văn bản để dọn", 
+        "📁 Dọn nhiều file cùng lúc"
     ])
 
     with subtab_paste_clean:
@@ -58,7 +58,7 @@ def render_tab8():
                 height=240,
                 key="textarea_raw_clean_input"
             )
-            btn_do_clean = st.button("🧹 THỰC THI DỌN DẸP VĂN BẢN", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
+            btn_do_clean = st.button("🧹 Dọn dẹp văn bản", type="primary", use_container_width=True, key="btn_run_text_clean_manual")
 
         if btn_do_clean and input_raw_text:
             cleaned_res = clean_and_normalize_text(
@@ -74,7 +74,7 @@ def render_tab8():
             st.session_state['manual_cleaned_res_len'] = len(cleaned_res)
 
         with col_text_out:
-            st.markdown("##### 📤 Văn Bản Đã Làm Sạch Hoàn Hảo:")
+            st.markdown("##### 📤 Văn bản đã dọn:")
             st.text_area("Kết quả sau khi dọn dẹp:", height=240, key="textarea_clean_output")
 
         if 'manual_cleaned_orig_len' in st.session_state:
@@ -89,7 +89,7 @@ def render_tab8():
 
         if uploaded_clean_files:
             st.info(f"Đã chọn **{len(uploaded_clean_files)}** file cần dọn dẹp.")
-            if st.button("✨ BẮT ĐẦU GIẶT SẠCH CÁC FILE TRÊN", type="primary", use_container_width=True, key="btn_run_batch_clean"):
+            if st.button("✨ Dọn các file trên", type="primary", use_container_width=True, key="btn_run_batch_clean"):
                 try:
                     if len(uploaded_clean_files) == 1:
                         f_item = uploaded_clean_files[0]
@@ -161,7 +161,7 @@ def render_tab8():
                         zip_clean_buf.seek(0)
                         st.success(f"✅ Đã dọn dẹp thành công {len(uploaded_clean_files)} file!")
                         st.download_button(
-                            label="📦 TẢI TRỌN BỘ FILE SẠCH (.ZIP)", data=zip_clean_buf,
+                            label="📦 Tải trọn bộ (.zip)", data=zip_clean_buf,
                             file_name="Cleaned_Files_Pack.zip", mime="application/zip", type="primary", use_container_width=True
                         )
                 except Exception as e: st.error(f"Lỗi dọn dẹp file: {e}")

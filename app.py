@@ -4,6 +4,7 @@ import hmac
 import os
 import re
 import time
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from collections import Counter
 
@@ -95,7 +96,7 @@ init_databases()
 # ==========================================
 # 3. UNIFIED SIDEBAR (CONTROL PANEL)
 # ==========================================
-st.sidebar.markdown("### ⚡ Control Panel")
+st.sidebar.markdown("### Bảng điều khiển")
 
 # Trạng thái kho dữ liệu
 if st.session_state.get("_db_load_error"):
@@ -110,13 +111,14 @@ if st.session_state.get("_db_save_error"):
     st.error(st.session_state.pop("_db_save_error"))
 
 ui_theme_choice = st.sidebar.radio(
-    "Lựa chọn Skin hiển thị:",
-    options=["Mai Han Standard (Mặc định)", "Enterprise Pro (Tối ưu tương phản)"],
+    "Kiểu dải băng đầu trang:",
+    options=["Xanh Mai Han (mặc định)", "Tối, tương phản cao"],
     index=0,
-    help="Chế độ 'Mai Han Standard' giữ nguyên 100% giao diện truyền thống. Chế độ 'Enterprise Pro' mang lại phong cách Studio hiện đại, rõ nét và tương phản cao."
+    help="Chỉ đổi màu dải băng đầu trang. Không ảnh hưởng đến file xuất ra."
 )
 
-if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, type="primary"):
+if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
+                     help="Xoá các file đang mở và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
         if key in st.session_state: del st.session_state[key]
     st.session_state['uploader_key'] += 1
@@ -127,16 +129,16 @@ if st.sidebar.button("🔄 Reset phiên làm việc", use_container_width=True, 
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 🎛️ Bật/Tắt Tính năng")
+st.sidebar.markdown("#### Khi xuất kịch bản")
 enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
 enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
 enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, help="Hiển thị thông tin diễn viên lồng tiếng ở đầu trang và lần xuất hiện đầu tiên của nhân vật")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("#### 💾 Database Quản Lý Cụm Từ")
+st.sidebar.markdown("#### Kho từ dùng chung")
 
 # KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (THÊM NÚT CHỌN TẤT CẢ & BỎ CHỌN SIÊU TỐC)
-with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=False):
+with st.sidebar.expander("📦 Quét nhiều file tìm tên & từ mới", expanded=False):
     st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
     
     if st.button("🗑️ Dọn dẹp danh sách file", key="btn_clear_bulk_scan", use_container_width=True):
@@ -277,7 +279,8 @@ with st.sidebar.expander("📦 Quét Kho SRT/Script Tổng Hợp", expanded=Fals
         else:
             st.info("Tất cả từ Tiếng Anh đều đã có trong Database Phiên Âm.")
 
-with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=False):
+with st.sidebar.expander("🎭 Danh sách tên nhân vật", expanded=False):
+    st.caption("Những tên này luôn được nhận là người nói.")
     manual_spk_input = st.text_area("Nhập thủ công:", height=80, key=f"spk_manual_{st.session_state['spk_input_key']}")
     upload_spk_file = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['spk_input_key']}")
     
@@ -295,7 +298,8 @@ with st.sidebar.expander("🎭 Database Người nói (Whitelist)", expanded=Fal
             st.session_state['spk_input_key'] += 1
             st.success(f"✅ Đã lưu {len(new_spks)} người nói!"); time.sleep(1); st.rerun()
 
-with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=False):
+with st.sidebar.expander("🚫 Cụm từ KHÔNG phải tên nhân vật", expanded=False):
+    st.caption("VD: \"Round 1:\", \"Update:\"... có dấu hai chấm nhưng không phải người nói.")
     manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
     upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
     
@@ -316,7 +320,7 @@ with st.sidebar.expander("🚫 Database Từ nhiễu (Non-speaker)", expanded=Fa
 # ==========================================
 # 4. DYNAMIC CSS INJECTION THEO SKINS
 # ==========================================
-if "Enterprise Pro" in ui_theme_choice:
+if "Tối" in ui_theme_choice:
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -374,50 +378,61 @@ else:
 # ==========================================
 # 5. HERO BANNER
 # ==========================================
+_vn_hour = datetime.now(timezone(timedelta(hours=7))).hour
+_greeting = ("Chào buổi sáng" if 4 <= _vn_hour < 11 else "Chào buổi trưa" if _vn_hour < 13
+             else "Chào buổi chiều" if _vn_hour < 18 else "Chào buổi tối")
+
 st.markdown(f"""
 <style>
-    .hero-container {{ display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }}
-    .hero-logo {{ height: 110px; width: auto; flex-shrink: 0; }}
-    .hero-text {{ flex: 1; min-width: 260px; }}
+    .hero-container {{ display: flex; align-items: center; gap: 1.75rem; flex-wrap: wrap;
+                       padding: 1.4rem 1.75rem; margin-bottom: 1rem; }}
+    .hero-logo {{ height: 76px; width: auto; flex-shrink: 0; }}
+    .hero-text {{ flex: 1; min-width: 240px; }}
+    .hero-greeting {{ font-size: 0.95rem; opacity: 0.85; margin-bottom: 0.15rem; }}
+    .hero-title {{ font-size: 1.75rem; line-height: 1.2; }}
+    .hero-subtitle {{ font-size: 0.98rem; margin-top: 0.3rem; }}
+    .app-footer {{ color: #94A3B8; font-size: 0.8rem; text-align: center; margin-top: 3rem; }}
     @media (max-width: 640px) {{
-        .hero-logo {{ height: 72px; }}
-        .hero-title {{ font-size: 1.6rem; line-height: 1.25; }}
-        .hero-container {{ padding: 1.5rem 1.25rem; gap: 1rem; }}
+        .hero-logo {{ height: 56px; }}
+        .hero-title {{ font-size: 1.4rem; }}
+        .hero-container {{ padding: 1.1rem 1.1rem; gap: 0.9rem; }}
     }}
 </style>
 <div class="hero-container">
     <img class="hero-logo" src="data:image/png;base64,{_logo_base64(LOGO_WHITE)}" alt="Mai Han Team">
     <div class="hero-text">
-        <div class="badge-pro">{ui_theme_choice}</div>
-        <div class="hero-title">ScriptPro Enterprise Studio</div>
-        <div class="hero-subtitle">Hệ thống xử lý kịch bản lồng tiếng, chuẩn hóa định dạng Word, phân vai & báo cáo thù lao cá nhân thông minh.</div>
+        <div class="hero-greeting">{_greeting}, team Mai Han 👋</div>
+        <div class="hero-title">ScriptPro Studio</div>
+        <div class="hero-subtitle">Xử lý kịch bản lồng tiếng, phân vai, phiên âm và báo cáo thù lao — gọn trong một chỗ.</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 6. MÀN HÌNH CHÍNH TÁCH 9 TABS
+# 6. MENU CHỨC NĂNG (4 NHÓM) — mỗi lần chỉ chạy trang đang mở cho nhẹ
 # ==========================================
-tab_script, tab_resync, tab_dub_tracker, tab_cast_db, tab_phonetic_db, tab_dual_align, tab_consistency, tab_cleaner, tab_tools = st.tabs([
-    "🎬 Xử lý Kịch bản Gốc", 
-    "🔄 Re-Sync Kịch Bản Biên Tập",
-    "📋 Theo dõi & Báo cáo Lương",
-    "🎭 Bảng Phân Vai Lồng Tiếng", 
-    "📚 Kho Database Phiên Âm Giọng Nam",
-    "🔀 Đối Chiếu 2 File Tiếng Anh & QC Dịch",
-    "🔎 Soát Bất Nhất Thuật Ngữ & Xưng Hô",
-    "🧹 Dọn Dẹp & Chuẩn Hóa Phụ Đề",
-    "🧰 Bộ Công Cụ Chuyển Đổi"
-])
+pages = {
+    "Kịch bản": [
+        st.Page(lambda: render_tab1(enable_colors, enable_phonetic, enable_cast), title="Xử lý kịch bản gốc",
+                icon=":material/description:", url_path="kich-ban-goc", default=True),
+        st.Page(lambda: render_tab2(enable_colors, enable_phonetic, enable_cast), title="Re-Sync bản đã biên tập",
+                icon=":material/sync:", url_path="re-sync"),
+    ],
+    "Kiểm tra chất lượng": [
+        st.Page(lambda: render_tab6(enable_colors, enable_phonetic, enable_cast), title="Đối chiếu 2 file tiếng Anh",
+                icon=":material/compare_arrows:", url_path="doi-chieu"),
+        st.Page(render_tab7, title="Soát xưng hô & thuật ngữ", icon=":material/fact_check:", url_path="soat-xung-ho"),
+    ],
+    "Quản lý": [
+        st.Page(render_tab3, title="Theo dõi & báo cáo lương", icon=":material/payments:", url_path="luong"),
+        st.Page(render_tab4, title="Phân vai & màu nhân vật", icon=":material/theater_comedy:", url_path="phan-vai"),
+        st.Page(render_tab5, title="Kho phiên âm giọng Nam", icon=":material/record_voice_over:", url_path="phien-am"),
+    ],
+    "Công cụ": [
+        st.Page(render_tab8, title="Dọn dẹp phụ đề", icon=":material/cleaning_services:", url_path="don-phu-de"),
+        st.Page(render_tab9, title="Chuyển đổi định dạng", icon=":material/swap_horiz:", url_path="chuyen-doi"),
+    ],
+}
+st.navigation(pages, position="top").run()
 
-with tab_script: render_tab1(enable_colors, enable_phonetic, enable_cast)
-with tab_resync: render_tab2(enable_colors, enable_phonetic, enable_cast)
-with tab_dub_tracker: render_tab3()
-with tab_cast_db: render_tab4()
-with tab_phonetic_db: render_tab5()
-with tab_dual_align: render_tab6(enable_colors, enable_phonetic, enable_cast)
-with tab_consistency: render_tab7()
-with tab_cleaner: render_tab8()
-with tab_tools: render_tab9()
-
-st.markdown('<div class="saas-footer">Copyright © Mai Han Team. All Rights Reserved.</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-footer">© Mai Han Team</div>', unsafe_allow_html=True)

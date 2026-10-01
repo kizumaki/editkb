@@ -9,9 +9,9 @@ from utils import (
 )
 
 def render_tab3():
-    st.subheader("📋 BÁO CÁO BẢNG TÍNH LƯƠNG LỒNG TIẾNG THEO TUẦN DỰ ÁN")
+    st.subheader("Theo dõi video & báo cáo lương")
     
-    with st.expander("⚙️ CẤU HÌNH ĐƠN GIÁ MẶC ĐỊNH SẢN XUẤT", expanded=False):
+    with st.expander("⚙️ Cách tính & đơn giá mặc định", expanded=False):
         c_rate1, c_rate2 = st.columns([2, 3])
         curr_mode = st.session_state['payroll_rates'].get("mode", "minute")
         mode_idx = 0 if curr_mode == "minute" else (1 if curr_mode == "line" else 2)
@@ -39,7 +39,7 @@ def render_tab3():
     current_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
 
     subtab_video, subtab_custom_rates, subtab_payroll = st.tabs([
-        "📹 Bảng Theo Dõi Video Theo Tuần Dự Án", "💵 Chỉnh Đơn Giá Cá Nhân (Video x Diễn viên)", "💰 Báo Cáo Lương Chi Tiết Từng Diễn Viên"
+        "📹 Video theo tuần", "💵 Đơn giá riêng", "💰 Lương từng diễn viên"
     ])
 
     tracker_data = st.session_state['dubbing_tracker']
@@ -92,7 +92,7 @@ def render_tab3():
 
             col_tr1, col_tr2 = st.columns([1, 1])
             with col_tr1:
-                if st.button("💾 LƯU THAY ĐỔI TRÊN BẢNG VIDEO", type="primary", use_container_width=True):
+                if st.button("💾 Lưu thay đổi", type="primary", use_container_width=True):
                     new_tracker = []; deleted_cnt = 0
                     for idx_r, row in edited_tracker_df.iterrows():
                         if row["Xóa"]: deleted_cnt += 1
@@ -181,11 +181,11 @@ def render_tab3():
                 excel_payroll_buffer.seek(0)
 
                 st.download_button(
-                    label="📊 XUẤT TẤT CẢ TUẦN RA EXCEL (.XLSX)", data=excel_payroll_buffer,
+                    label="📊 Xuất tất cả các tuần ra Excel", data=excel_payroll_buffer,
                     file_name="Theo_Doi_Video_Long_Tieng_MaiHan.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
                 )
-        else: st.info("Chưa có dữ liệu video nào. Hãy chạy Re-Sync ở Tab 2 để tự động ghi nhận video mới!")
+        else: st.info("Chưa có dữ liệu video nào. Mỗi lần chạy Re-Sync (menu Kịch bản → Re-Sync bản đã biên tập), video sẽ tự được ghi vào đây.")
 
     with subtab_custom_rates:
         st.markdown("#### 💵 Bảng Điều Chỉnh Đơn Giá Cá Nhân (Theo Video & Diễn viên)")
@@ -220,7 +220,7 @@ def render_tab3():
                     hide_index=True, use_container_width=True, key="custom_rates_editor_table_main"
                 )
 
-                if st.button("💾 LƯU ĐƠN GIÁ CÁ NHÂN", type="primary", use_container_width=True):
+                if st.button("💾 Lưu đơn giá riêng", type="primary", use_container_width=True):
                     for idx_r, row in edited_custom_rates_df.iterrows():
                         v_i = df_custom_rates.iloc[idx_r]["v_idx"]; act_n = df_custom_rates.iloc[idx_r]["Diễn viên"]
                         new_r = float(row["Đơn giá cá nhân (VNĐ)"])
@@ -283,18 +283,18 @@ def render_tab3():
             if selected_actor_view != "TẤT CẢ DIỄN VIÊN":
                 a_info = actor_weekly_map[selected_actor_view]; a_rows = a_info["video_rows"]
                 a_tot_pay = sum(r["Pay_Num"] for r in a_rows)
-                st.subheader(f"👤 PHIẾU BÁO CÁO THÙ LAO: {selected_actor_view}")
+                st.subheader(f"Phiếu thù lao: {selected_actor_view}")
                 st.caption(f"Dữ liệu thù lao lồng tiếng cho {selected_actor_view} ({selected_week_filter})")
                 
                 df_single_actor = pd.DataFrame(a_rows)[["Stt", "Tiêu đề video", "Thời lượng", "Đơn giá", "Thành tiền"]]
                 st.dataframe(df_single_actor, hide_index=True, use_container_width=True)
-                st.metric(f"💰 TỔNG THÙ LAO DỰ KIẾN TRẢ CHO {selected_actor_view}:", f"{a_tot_pay:,.0f} VNĐ")
+                st.metric(f"💰 Tổng thù lao của {selected_actor_view}", f"{a_tot_pay:,.0f} VNĐ")
                 
                 col_p_btn1, col_p_btn2 = st.columns(2)
                 with col_p_btn1:
                     actor_docx_buf = generate_actor_salary_slip_docx(selected_actor_view, selected_week_filter, a_rows, a_tot_pay, current_mode)
                     st.download_button(
-                        label=f"🖨️ IN / TẢI PHIẾU LƯƠNG WORD CỦA {selected_actor_view} (.DOCX)",
+                        label=f"🖨️ Tải phiếu lương Word của {selected_actor_view}",
                         data=actor_docx_buf, file_name=f"PhieuLuong_{selected_actor_view}_{selected_week_filter}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         type="primary", use_container_width=True
@@ -304,7 +304,7 @@ def render_tab3():
                     with pd.ExcelWriter(excel_single_buf, engine='openpyxl') as writer: df_single_actor.to_excel(writer, index=False, sheet_name="Phieu Luong")
                     excel_single_buf.seek(0)
                     st.download_button(
-                        label=f"📊 TẢI PHIẾU LƯƠNG CÁ NHÂN EXCEL (.XLSX)",
+                        label="📊 Tải phiếu lương Excel",
                         data=excel_single_buf, file_name=f"PhieuLuong_{selected_actor_view}_{selected_week_filter}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
                     )
@@ -336,7 +336,7 @@ def render_tab3():
                 })
 
                 df_act_payroll = pd.DataFrame(actor_payroll_rows)
-                st.metric(f"💰 TỔNG LƯƠNG CẦN CHI CHO DIỄN VIÊN ({selected_week_filter}):", f"{grand_actor_pay:,.0f} VNĐ")
+                st.metric(f"💰 Tổng lương cần chi ({selected_week_filter})", f"{grand_actor_pay:,.0f} VNĐ")
                 st.dataframe(
                     df_act_payroll[["Stt", "Diễn viên Lồng tiếng", "Số Video đã lồng", "Tổng phút video", "Thành tiền Lương", "Danh sách Video tham gia"]],
                     hide_index=True, use_container_width=True
@@ -346,7 +346,7 @@ def render_tab3():
                 with pd.ExcelWriter(excel_actor_buf, engine='openpyxl') as writer: df_act_payroll.to_excel(writer, index=False, sheet_name="Luong Dien Vien")
                 excel_actor_buf.seek(0)
                 st.download_button(
-                    label=f"📊 TẢI BÁO CÁO LƯƠNG TOÀN BỘ DIỄN VIÊN ({selected_week_filter}) EXCEL (.XLSX)",
+                    label=f"📊 Tải báo cáo lương tất cả diễn viên ({selected_week_filter}) ra Excel",
                     data=excel_actor_buf, file_name=f"Bao_Cao_Luong_DienVien_{selected_week_filter}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary", use_container_width=True

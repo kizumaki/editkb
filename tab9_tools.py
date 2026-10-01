@@ -16,13 +16,13 @@ from utils import (
 
 def render_tab9():
     subtab_sub_conv, subtab_srt_excel, subtab_daw_markers, subtab_curr, subtab_dist, subtab_speed, subtab_mass_temp = st.tabs([
-        "🎬 Kịch Bản Subtitle (SRT ⇄ DOCX)",
-        "📊 SRT ➔ Excel (.xlsx)",
-        "🎛️ DAW Marker Timeline",
-        "💵 Tiền Tệ (Currency)",
-        "📏 Khoảng Cách (Distance)",
-        "🚀 Vận Tốc (Speed)",
-        "⚖️ Khối Lượng & Nhiệt Độ"
+        "🎬 SRT ⇄ Word",
+        "📊 SRT → Excel",
+        "🎛️ Marker cho phần mềm thu âm",
+        "💵 Tiền tệ",
+        "📏 Khoảng cách",
+        "🚀 Vận tốc",
+        "⚖️ Khối lượng & nhiệt độ"
     ])
 
     # 1. BỘ CHUYỂN ĐỔI SUBTITLE KỊCH BẢN (SRT ⇄ DOCX)

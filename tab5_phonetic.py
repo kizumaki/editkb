@@ -4,7 +4,7 @@ import pandas as pd
 from utils import PHONETIC_DB_FILE, save_json_db, generate_english_audio, clean_cell
 
 def render_tab5():
-    st.subheader("📚 TỪ ĐIỂN PHIÊN ÂM GIỌNG NAM (GLOBAL DATABASE)")
+    st.subheader("Kho phiên âm giọng Nam")
     st.markdown("Nơi quản lý toàn bộ kho từ vựng Tiếng Anh và các bản phiên âm giọng Nam được lưu trữ lâu dài trên hệ thống.")
     
     with st.container(border=True):
@@ -64,7 +64,7 @@ def render_tab5():
                 disabled=["Từ Tiếng Anh"], hide_index=True, use_container_width=True, key="global_phonetic_db_editor"
             )
 
-            if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT TRONG BẢNG", type="primary", use_container_width=True):
+            if st.button("💾 Lưu thay đổi trong bảng", type="primary", use_container_width=True):
                 new_db = {}; deleted_count = 0
                 if search_query:
                     for k, v in all_phonetics_dict.items():

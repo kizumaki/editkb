@@ -7,7 +7,7 @@ from utils import (
 )
 
 def render_tab6(enable_colors, enable_phonetic, enable_cast):
-    st.subheader("🔀 ĐỐI CHIẾU 2 FILE TIẾNG ANH & SOÁT SỬA BẢN DỊCH VIỆT")
+    st.subheader("Đối chiếu 2 file tiếng Anh & sửa bản dịch Việt")
     st.markdown("So sánh file Tiếng Anh do Mai Han Team nghe với file Tiếng Anh Gốc do Khách gửi trễ.")
 
     col_spk_fb1, col_spk_fb2 = st.columns([1.8, 1.2])
@@ -127,7 +127,7 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
             with col_ex1:
                 qc_excel_buf = generate_qc_dual_excel(df_aligned)
                 st.download_button(
-                    label="📊 TẢI BÁO CÁO ĐỐI CHIẾU EXCEL (.XLSX)", data=qc_excel_buf,
+                    label="📊 Tải báo cáo đối chiếu (Excel)", data=qc_excel_buf,
                     file_name=f"{base_out_name}_DoiChieu_English_QC.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary", use_container_width=True
@@ -139,7 +139,7 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
                     hide_default_spk=hide_default_spk_export, fallback_spk_name=fallback_spk_name
                 )
                 st.download_button(
-                    label="📄 TẢI WORD VIỆT HOÀN CHỈNH (.DOCX)", data=aligned_docx_buf,
+                    label="📄 Tải kịch bản Việt (Word)", data=aligned_docx_buf,
                     file_name=f"{base_out_name}_VI_Final.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     type="primary", use_container_width=True
@@ -162,7 +162,7 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
                 srt_out_bytes = "\n".join(srt_out_lines).encode('utf-8-sig')
 
                 st.download_button(
-                    label="📝 TẢI SUBTITLE SRT VIỆT (.SRT)", data=srt_out_bytes,
+                    label="📝 Tải phụ đề Việt (.srt)", data=srt_out_bytes,
                     file_name=f"{base_out_name}_VI_Final.srt",
                     mime="text/plain", type="primary", use_container_width=True
                 )

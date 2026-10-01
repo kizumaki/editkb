@@ -10,13 +10,13 @@ def rgb_to_hex(rgb_tuple, default_hex="#FF0000"):
 
 def render_tab4():
     subtab_cast_map, subtab_color_map = st.tabs([
-        "🎭 Bảng Phân Vai Diễn Viên (Global Database)",
-        "🎨 Bảng Màu & Highlight Nhân Vật Cố Định"
+        "🎭 Phân vai diễn viên",
+        "🎨 Màu nhân vật"
     ])
 
     # SUBTAB 1: PHÂN VAI DIỄN VIÊN
     with subtab_cast_map:
-        st.subheader("🎭 BẢNG PHÂN VAI LỒNG TIẾNG (GLOBAL DATABASE)")
+        st.subheader("Bảng phân vai lồng tiếng")
         st.markdown("Nơi thiết lập mặc định nhân vật Tiếng Anh nào sẽ do diễn viên lồng tiếng Việt nào đảm nhận cho Mai Han Team.")
 
         st.markdown("#### ➕ Thêm / Cập nhật Phân vai mới")
@@ -59,7 +59,7 @@ def render_tab4():
                 disabled=["Nhân vật (Tiếng Anh)"], hide_index=True, use_container_width=True, key="global_cast_db_editor"
             )
 
-            if st.button("💾 LƯU TOÀN BỘ CẬP NHẬT PHÂN VAI", type="primary", use_container_width=True, key="btn_save_global_cast"):
+            if st.button("💾 Lưu bảng phân vai", type="primary", use_container_width=True, key="btn_save_global_cast"):
                 new_cast_db = {}; deleted_cast_count = 0
                 if search_cast_query:
                     for k, v in all_cast_dict.items():
@@ -80,7 +80,7 @@ def render_tab4():
 
     # SUBTAB 2: BẢNG MÀU CỐ ĐỊNH & THIẾT LẬP/CHỈNH SỬA
     with subtab_color_map:
-        st.subheader("🎨 BẢNG MÀU CHỮ & HIGHLIGHT CỐ ĐỊNH")
+        st.subheader("Màu chữ & màu nền cố định cho nhân vật")
         st.markdown("Nơi cấu hình màu chữ và màu highlight cố định cho các nhân vật đặc biệt.")
         fixed_color_dict = st.session_state.get('fixed_speaker_colors', {})
 
@@ -213,7 +213,7 @@ def render_tab4():
                 hide_index=True, use_container_width=True, key="fixed_colors_editor_table"
             )
 
-            if st.button("💾 LƯU BẢNG MÀU CỐ ĐỊNH", type="primary", use_container_width=True, key="btn_save_colors"):
+            if st.button("💾 Lưu bảng màu", type="primary", use_container_width=True, key="btn_save_colors"):
                 new_colors = {}
                 for _, row in edited_colors_df.iterrows():
                     if not row["Xóa"]:
