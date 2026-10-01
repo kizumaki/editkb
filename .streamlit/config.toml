@@ -1,1 +1,8 @@
+# Màu chủ đạo (nút bấm, công tắc, thanh chọn) = màu xanh logo Mai Han.
+# Khai báo riêng cho giao diện sáng & tối để app vẫn tự theo chế độ sáng/tối của máy người dùng.
+[theme.light]
+primaryColor = "#2A63BA"
+
+[theme.dark]
+primaryColor = "#5B8EDB"
 
