@@ -4,5 +4,5 @@ pandas
 openpyxl
 gTTS
 starlette<0.40.0
-gspread
+gspread>=6.0
 google-auth

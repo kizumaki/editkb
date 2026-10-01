@@ -113,8 +113,8 @@ def render_tab9():
         uploaded_srt_excel = st.file_uploader("Tải file .srt của bạn vào đây:", type=['srt'], key="tool_srt_to_excel")
         if uploaded_srt_excel is not None:
             try:
-                try: srt_content_excel = uploaded_srt_excel.read().decode("utf-8")
-                except UnicodeDecodeError: srt_content_excel = uploaded_srt_excel.read().decode("latin-1")
+                try: srt_content_excel = uploaded_srt_excel.getvalue().decode("utf-8")
+                except UnicodeDecodeError: srt_content_excel = uploaded_srt_excel.getvalue().decode("latin-1")
             except Exception:
                 st.error("Lỗi mã hóa file. Vui lòng đảm bảo file SRT của bạn ở chuẩn mã hóa UTF-8.")
                 srt_content_excel = None
@@ -222,8 +222,8 @@ def render_tab9():
             custom_non_spks_m = st.session_state.get('custom_non_speakers', set())
             
             if m_filename.endswith('.srt'):
-                try: m_srt_text = uploaded_marker_file.read().decode("utf-8")
-                except UnicodeDecodeError: m_srt_text = uploaded_marker_file.read().decode("latin-1")
+                try: m_srt_text = uploaded_marker_file.getvalue().decode("utf-8")
+                except UnicodeDecodeError: m_srt_text = uploaded_marker_file.getvalue().decode("latin-1")
                 df_markers = parse_srt_to_dataframe(m_srt_text, custom_spks_m, custom_non_spks_m)
             else:
                 s_bytes = process_docx_to_srt(uploaded_marker_file)

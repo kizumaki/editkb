@@ -7,6 +7,29 @@ from docx import Document
 from docx.shared import Pt
 from utils import clean_and_normalize_text
 
+def clean_docx_file(f_item):
+    doc = Document(io.BytesIO(f_item.getvalue()))
+    new_doc = Document()
+    timecode_pattern = re.compile(r'^\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}$')
+
+    for p in doc.paragraphs:
+        txt = p.text.strip()
+        if not txt: continue
+        if timecode_pattern.match(txt) or txt.isdigit() or txt.lower().startswith("srt conversion"):
+            p_out = new_doc.add_paragraph(txt)
+            p_out.runs[0].font.name = 'Times New Roman'; p_out.runs[0].font.size = Pt(12)
+            if timecode_pattern.match(txt) or txt.isdigit(): p_out.runs[0].bold = True
+            p_out.paragraph_format.space_before = Pt(0); p_out.paragraph_format.space_after = Pt(0)
+        else:
+            cleaned_p = clean_and_normalize_text(txt, strip_all_tags=True)
+            if not cleaned_p: continue
+            p_out = new_doc.add_paragraph(cleaned_p)
+            p_out.runs[0].font.name = 'Times New Roman'; p_out.runs[0].font.size = Pt(12)
+            p_out.paragraph_format.space_before = Pt(0); p_out.paragraph_format.space_after = Pt(4)
+
+    doc_buf = io.BytesIO(); new_doc.save(doc_buf); doc_buf.seek(0)
+    return doc_buf
+
 def render_tab8():
     st.subheader("🧹 DỌN DẸP & CHUẨN HÓA PHỤ ĐỀ (TEXT NORMALIZER)")
     st.markdown("Tự động giặt sạch kịch bản rác, bóc tách thẻ HTML/ASS rác, sửa lỗi gõ phím, sửa lỗi dấu câu Tiếng Việt và thu gọn khoảng trắng dư thừa.")
@@ -52,8 +75,7 @@ def render_tab8():
 
         with col_text_out:
             st.markdown("##### 📤 Văn Bản Đã Làm Sạch Hoàn Hảo:")
-            out_val = st.session_state.get('textarea_clean_output', "")
-            st.text_area("Kết quả sau khi dọn dẹp:", value=out_val, height=240, key="textarea_clean_output")
+            st.text_area("Kết quả sau khi dọn dẹp:", height=240, key="textarea_clean_output")
 
         if 'manual_cleaned_orig_len' in st.session_state:
             orig_c = st.session_state['manual_cleaned_orig_len']
@@ -101,25 +123,7 @@ def render_tab8():
                                 file_name=f"{f_name_no_ext}_Clean.srt", mime="text/plain", type="primary", use_container_width=True
                             )
                         elif f_ext == '.docx':
-                            doc = Document(io.BytesIO(f_item.getvalue()))
-                            new_doc = Document()
-                            timecode_pattern = re.compile(r'^\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}$')
-
-                            for p in doc.paragraphs:
-                                txt = p.text.strip()
-                                if not txt: continue
-                                if timecode_pattern.match(txt) or txt.isdigit() or txt.lower().startswith("srt conversion"):
-                                    p_out = new_doc.add_paragraph(txt)
-                                    p_out.runs[0].font.name = 'Times New Roman'; p_out.runs[0].font.size = Pt(12)
-                                    if timecode_pattern.match(txt) or txt.isdigit(): p_out.runs[0].bold = True
-                                    p_out.paragraph_format.space_before = Pt(0); p_out.paragraph_format.space_after = Pt(0)
-                                else:
-                                    cleaned_p = clean_and_normalize_text(txt, strip_all_tags=True)
-                                    p_out = new_doc.add_paragraph(cleaned_p)
-                                    p_out.runs[0].font.name = 'Times New Roman'; p_out.runs[0].font.size = Pt(12)
-                                    p_out.paragraph_format.space_before = Pt(0); p_out.paragraph_format.space_after = Pt(4)
-
-                            doc_buf = io.BytesIO(); new_doc.save(doc_buf); doc_buf.seek(0)
+                            doc_buf = clean_docx_file(f_item)
                             st.success("✅ Đã làm sạch file Word DOCX thành công!")
                             st.download_button(
                                 label=f"⬇️ TẢI FILE WORD SẠCH ({f_name_no_ext}_Clean.docx)", data=doc_buf,
@@ -152,6 +156,8 @@ def render_tab8():
                                         out_b += tc_line + "\n" + clean_diag
                                         cleaned_srt_lines.append(out_b)
                                     zf.writestr(f"{f_name_no_ext}_Clean.srt", "\n\n".join(cleaned_srt_lines).encode('utf-8-sig'))
+                                elif f_ext == '.docx':
+                                    zf.writestr(f"{f_name_no_ext}_Clean.docx", clean_docx_file(f_item).getvalue())
                         zip_clean_buf.seek(0)
                         st.success(f"✅ Đã dọn dẹp thành công {len(uploaded_clean_files)} file!")
                         st.download_button(

@@ -6,7 +6,7 @@ from utils import (
     scan_candidate_speakers, scan_english_words_in_dialogue, 
     generate_english_audio, process_docx, clean_file_name_for_output, 
     generate_actor_docx, save_json_db, CAST_DB_FILE, PHONETIC_DB_FILE, 
-    SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE, DEFAULT_NON_SPEAKER_PHRASES
+    SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE, DEFAULT_NON_SPEAKER_PHRASES, clean_cell
 )
 
 def render_tab1(enable_colors, enable_phonetic, enable_cast):
@@ -73,8 +73,8 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                         updated_cast_count = 0
                         for _, row in edited_cast_df.iterrows():
                             if row["Nạp vào Database"]:
-                                spk_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
-                                act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
+                                spk_k = clean_cell(row["Nhân vật (Tiếng Anh)"]).upper()
+                                act_v = clean_cell(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).upper()
                                 if act_v:
                                     st.session_state['custom_cast_mapping'][spk_k] = act_v
                                     updated_cast_count += 1
@@ -176,8 +176,8 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                         updated_count = 0
                         for _, row in edited_df.iterrows():
                             if row["Nạp vào Database"]:
-                                eng_k = str(row["Từ Tiếng Anh"]).upper().strip()
-                                pho_v = str(row["Đề xuất chỉnh sửa của bạn"]).strip()
+                                eng_k = clean_cell(row["Từ Tiếng Anh"]).upper()
+                                pho_v = clean_cell(row["Đề xuất chỉnh sửa của bạn"])
                                 if pho_v:
                                     st.session_state['custom_phonetics'][eng_k] = pho_v
                                     updated_count += 1

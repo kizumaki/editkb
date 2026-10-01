@@ -1,7 +1,7 @@
 import streamlit as st
 import time
 import pandas as pd
-from utils import CAST_DB_FILE, SPEAKER_COLOR_DB_FILE, save_json_db, hex_to_rgb
+from utils import CAST_DB_FILE, SPEAKER_COLOR_DB_FILE, save_json_db, hex_to_rgb, clean_cell
 
 def rgb_to_hex(rgb_tuple, default_hex="#FF0000"):
     if not rgb_tuple or not isinstance(rgb_tuple, (tuple, list)) or len(rgb_tuple) < 3:
@@ -66,8 +66,8 @@ def render_tab4():
                         if k not in filtered_cast: new_cast_db[k] = v
 
                 for _, row in edited_cast_db_df.iterrows():
-                    eng_k = str(row["Nhân vật (Tiếng Anh)"]).upper().strip()
-                    act_v = str(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).strip().upper()
+                    eng_k = clean_cell(row["Nhân vật (Tiếng Anh)"]).upper()
+                    act_v = clean_cell(row["Diễn viên Lồng tiếng (Tiếng Việt)"]).upper()
                     is_del = row["Xóa khỏi Database"]
                     if is_del: deleted_cast_count += 1
                     else:

@@ -44,7 +44,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     
                     video_title = r_stats.get("video_title", r_name_no_ext)
                     actors_list = r_stats.get("actors_list", [])
-                    actors_str = ", ".join(actors_list) if actors_list else "Chưa có thông tin"
+                    actors_str = ", ".join(actors_list) if actors_list else "CHƯA CÓ THÔNG TIN"
                     actor_breakdown = r_stats.get("actor_stats_breakdown", {})
                     total_lines = r_stats.get("total_lines", 0)
                     video_dur_min = r_stats.get("video_duration_min", 1)
@@ -53,7 +53,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     assigned_week = project_week_input.strip() if project_week_input else "Tuần 1"
                     
                     tracker_list = st.session_state['dubbing_tracker']
-                    existing_entry = next((item for item in tracker_list if item['video_title'].upper() == video_title.upper()), None)
+                    existing_entry = next((item for item in tracker_list if str(item.get('video_title', '')).upper() == video_title.upper()), None)
                     
                     curr_def_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
                     custom_actor_rates = {a.upper(): curr_def_rate for a in actors_list}

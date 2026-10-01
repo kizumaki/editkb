@@ -1,16 +1,13 @@
 import streamlit as st
-import io
-import os
+import hmac
 import re
 import time
 import pandas as pd
 from collections import Counter
 
 from utils import (
-    load_json_db, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, 
-    PHONETIC_DB_FILE, CAST_DB_FILE, TRACKER_DB_FILE, RATES_DB_FILE, 
-    PRONOUN_REL_DB_FILE, SPEAKER_COLOR_DB_FILE, DEFAULT_CAST_MAPPING, 
-    DEFAULT_FIXED_SPEAKER_COLORS, DEFAULT_SOUTH_VIETNAM_PHONETICS, extract_phrases_from_file,
+    init_databases, sheets_enabled, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE,
+    PHONETIC_DB_FILE, extract_phrases_from_file,
     scan_candidate_speakers, scan_english_words_in_dialogue
 )
 
@@ -35,6 +32,26 @@ st.set_page_config(
 )
 
 # ==========================================
+# 1b. MẬT KHẨU VÀO APP (đặt APP_PASSWORD trong mục Secrets của Streamlit)
+# ==========================================
+def _get_app_password():
+    try: return str(st.secrets.get("APP_PASSWORD", ""))
+    except Exception: return ""
+
+_app_password = _get_app_password()
+if _app_password and not st.session_state.get("_authenticated"):
+    st.markdown("## 🔒 ScriptPro - Mai Han Team")
+    with st.form("login_form"):
+        _entered = st.text_input("Nhập mật khẩu để sử dụng:", type="password")
+        if st.form_submit_button("Vào", type="primary"):
+            if hmac.compare_digest(_entered.encode("utf-8"), _app_password.encode("utf-8")):
+                st.session_state["_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Sai mật khẩu.")
+    st.stop()
+
+# ==========================================
 # 2. KHỞI TẠO SESSION STATE
 # ==========================================
 if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = 0
@@ -48,37 +65,25 @@ if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_
 if 'color_input_key' not in st.session_state: st.session_state['color_input_key'] = 0
 if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
-if 'custom_non_speakers' not in st.session_state: st.session_state['custom_non_speakers'] = load_json_db(NON_SPEAKER_DB_FILE, set())
-if 'custom_speakers' not in st.session_state: st.session_state['custom_speakers'] = load_json_db(SPEAKER_DB_FILE, set())
-
-if 'custom_phonetics' not in st.session_state:
-    loaded_pho = load_json_db(PHONETIC_DB_FILE, DEFAULT_SOUTH_VIETNAM_PHONETICS)
-    st.session_state['custom_phonetics'] = {**DEFAULT_SOUTH_VIETNAM_PHONETICS, **loaded_pho}
-
-if 'custom_cast_mapping' not in st.session_state:
-    loaded_cast = load_json_db(CAST_DB_FILE, DEFAULT_CAST_MAPPING)
-    st.session_state['custom_cast_mapping'] = {**DEFAULT_CAST_MAPPING, **loaded_cast}
-
-if 'fixed_speaker_colors' not in st.session_state:
-    st.session_state['fixed_speaker_colors'] = load_json_db(SPEAKER_COLOR_DB_FILE, DEFAULT_FIXED_SPEAKER_COLORS)
-
-if 'custom_pronoun_rel' not in st.session_state:
-    default_pronouns = {
-        "TYLER|BILL": {"self": "tui", "target": "ông"},
-        "CORY|EASTON": {"self": "tui", "target": "ông"},
-        "COBY|COACH RAC": {"self": "tui", "target": "ông"}
-    }
-    st.session_state['custom_pronoun_rel'] = load_json_db(PRONOUN_REL_DB_FILE, default_pronouns)
-
-if 'dubbing_tracker' not in st.session_state: st.session_state['dubbing_tracker'] = load_json_db(TRACKER_DB_FILE, [])
-
-if 'payroll_rates' not in st.session_state:
-    st.session_state['payroll_rates'] = load_json_db(RATES_DB_FILE, {"mode": "minute", "unit_rate": 30000})
+# Tải toàn bộ kho dữ liệu (Google Sheets khi chạy online, file JSON khi chạy trên máy) — 1 lần mỗi phiên
+init_databases()
 
 # ==========================================
 # 3. UNIFIED SIDEBAR (CONTROL PANEL)
 # ==========================================
 st.sidebar.markdown("### ⚡ Control Panel")
+
+# Trạng thái kho dữ liệu
+if st.session_state.get("_db_load_error"):
+    st.sidebar.error("⚠️ Không tải được dữ liệu từ Google Sheets. Hãy tải lại trang (F5). Nếu vẫn lỗi, báo người quản lý.\n\n"
+                     f"Chi tiết: {st.session_state['_db_load_error'][:300]}")
+elif sheets_enabled():
+    st.sidebar.success("☁️ Dữ liệu đang lưu trên Google Sheets")
+else:
+    st.sidebar.info("💻 Chạy trên máy: dữ liệu lưu thành file trong thư mục app")
+
+if st.session_state.get("_db_save_error"):
+    st.error(st.session_state.pop("_db_save_error"))
 
 ui_theme_choice = st.sidebar.radio(
     "Lựa chọn Skin hiển thị:",

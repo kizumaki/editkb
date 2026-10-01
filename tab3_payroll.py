@@ -1,10 +1,11 @@
 import streamlit as st
 import io
+import re
 import time
 import pandas as pd
 from utils import (
-    TRACKER_DB_FILE, RATES_DB_FILE, save_json_db, 
-    generate_actor_salary_slip_docx
+    TRACKER_DB_FILE, RATES_DB_FILE, save_json_db,
+    generate_actor_salary_slip_docx, clean_cell
 )
 
 def render_tab3():
@@ -55,7 +56,7 @@ def render_tab3():
                 bd = item.get("actor_breakdown", {})
                 custom_rates = item.get("custom_actor_rates", {})
                 
-                raw_acts = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                raw_acts = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip().upper() != "CHƯA CÓ THÔNG TIN"]
                 
                 if current_mode == "minute":
                     v_pay = sum(v_dur_min * custom_rates.get(act, current_rate) for act in raw_acts) if raw_acts else v_dur_min * current_rate
@@ -97,10 +98,10 @@ def render_tab3():
                         if row["Xóa"]: deleted_cnt += 1
                         else:
                             orig_item = tracker_data[idx_r]
-                            orig_item['project_week'] = str(row["Tuần dự án"]).strip()
-                            orig_item['video_title'] = str(row["Tiêu đề video"]).strip()
-                            
-                            new_acts_raw = [a.strip().upper() for a in str(row["Diễn viên"]).split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                            orig_item['project_week'] = clean_cell(row["Tuần dự án"]) or "Tuần 1"
+                            orig_item['video_title'] = clean_cell(row["Tiêu đề video"]) or orig_item['video_title']
+
+                            new_acts_raw = [a.strip().upper() for a in clean_cell(row["Diễn viên"]).split(',') if a.strip() and a.strip().upper() != "CHƯA CÓ THÔNG TIN"]
                             orig_item['actors'] = ", ".join(new_acts_raw) if new_acts_raw else "CHƯA CÓ THÔNG TIN"
                             
                             old_bd = orig_item.get("actor_breakdown", {}); new_bd = {}
@@ -138,7 +139,7 @@ def render_tab3():
                     v_lines = item.get("total_lines", 0); v_actors = item.get("actors", "")
                     bd = item.get("actor_breakdown", {}); custom_rates = item.get("custom_actor_rates", {})
                     
-                    raw_acts = [a.strip().upper() for a in v_actors.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                    raw_acts = [a.strip().upper() for a in v_actors.split(',') if a.strip() and a.strip().upper() != "CHƯA CÓ THÔNG TIN"]
                     
                     if current_mode == "minute":
                         v_pay = sum(v_dur_min * custom_rates.get(act, current_rate) for act in raw_acts) if raw_acts else v_dur_min * current_rate
@@ -167,13 +168,16 @@ def render_tab3():
 
                 df_week_display = pd.DataFrame(week_rows)
                 st.dataframe(df_week_display, hide_index=True, use_container_width=True)
-                excel_sheets_data[pw_name[:30]] = df_week_display
+                # Tên trang Excel: tối đa 31 ký tự, không chứa : \ / ? * [ ] ; không được trùng nhau
+                sheet_name = re.sub(r'[:\\/?*\[\]]', '_', str(pw_name))[:28] or "Tuan"
+                while sheet_name in excel_sheets_data: sheet_name = sheet_name[:26] + f"_{len(excel_sheets_data)}"
+                excel_sheets_data[sheet_name] = df_week_display
 
             with col_tr2:
                 excel_payroll_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_payroll_buffer, engine='openpyxl') as writer:
                     for s_name, s_df in excel_sheets_data.items():
-                        s_df.to_excel(writer, index=False, sheet_name=s_name.replace(":", "_").replace("/", "_"))
+                        s_df.to_excel(writer, index=False, sheet_name=s_name)
                 excel_payroll_buffer.seek(0)
 
                 st.download_button(
@@ -193,7 +197,7 @@ def render_tab3():
                 pw = item.get("project_week", "Tuần 1"); v_title = item['video_title']
                 v_dur = int(item.get("video_duration_min", 1)); v_acts = item.get("actors", "")
                 custom_rates = item.get("custom_actor_rates", {})
-                acting_actors = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                acting_actors = [a.strip().upper() for a in v_acts.split(',') if a.strip() and a.strip().upper() != "CHƯA CÓ THÔNG TIN"]
                 
                 for act in acting_actors:
                     act_rate = custom_rates.get(act, current_rate)
@@ -244,7 +248,7 @@ def render_tab3():
                 v_title = item['video_title']; v_dur = int(item.get("video_duration_min", 1))
                 bd = item.get("actor_breakdown", {}); v_lines = item.get("total_lines", 0)
                 custom_rates = item.get("custom_actor_rates", {})
-                acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip() != "CHƯA CÓ THÔNG TIN"]
+                acting_actors = [a.strip().upper() for a in item.get("actors", "").split(",") if a.strip() and a.strip().upper() != "CHƯA CÓ THÔNG TIN"]
 
                 for act_name_clean in acting_actors:
                     if act_name_clean not in actor_weekly_map:

@@ -1,7 +1,7 @@
 import streamlit as st
 import time
 import pandas as pd
-from utils import PHONETIC_DB_FILE, save_json_db, generate_english_audio
+from utils import PHONETIC_DB_FILE, save_json_db, generate_english_audio, clean_cell
 
 def render_tab5():
     st.subheader("📚 TỪ ĐIỂN PHIÊN ÂM GIỌNG NAM (GLOBAL DATABASE)")
@@ -71,7 +71,7 @@ def render_tab5():
                         if k not in filtered_dict: new_db[k] = v
 
                 for _, row in edited_db_df.iterrows():
-                    eng_k = str(row["Từ Tiếng Anh"]).upper().strip(); pho_v = str(row["Phiên âm giọng Nam"]).strip()
+                    eng_k = clean_cell(row["Từ Tiếng Anh"]).upper(); pho_v = clean_cell(row["Phiên âm giọng Nam"])
                     is_delete = row["Xóa khỏi Database"]
                     if is_delete: deleted_count += 1
                     else:

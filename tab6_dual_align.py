@@ -1,9 +1,6 @@
 import streamlit as st
-import io
 import os
-import re
 import pandas as pd
-from docx import Document
 from utils import (
     parse_any_script_file_to_df, align_and_compare_english_scripts, 
     generate_qc_dual_excel, generate_aligned_docx_file
@@ -80,6 +77,22 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
             st.markdown("#### 👁️ Workspace Bảng Đối Chiếu Tiếng Anh & Chỉnh Sửa Dịch Tiếng Việt")
             qc_filter = st.selectbox("🔍 Lọc danh sách câu theo Trạng thái QC:", options=["TẤT CẢ CÁC CÂU", "🟡 Chỉ xem câu KHÁC TỪ VỰNG (Cần sửa dịch)", "🔴 Chỉ xem câu BỎ SÓT THOẠI", "🔵 Chỉ xem câu LỆCH VAI"])
 
+            # Ghi nhớ các câu Tiếng Việt đã sửa trong bảng (giữ nguyên khi đổi bộ lọc), xoá khi đổi file
+            files_sig = tuple((f.name, f.size) if f else None for f in (uploaded_mh_eng, uploaded_off_eng, uploaded_vn_script))
+            if st.session_state.get('dual_vn_edits_sig') != files_sig:
+                st.session_state['dual_vn_edits_sig'] = files_sig
+                st.session_state['dual_vn_edits'] = {}
+            vn_edits = st.session_state['dual_vn_edits']
+            vn_col = 'Dịch Tiếng Việt (Cần Sửa)'
+
+            def apply_vn_edit(row_i, full_text):
+                prefix = f"{df_aligned.at[row_i, 'Speaker_VN']}: "
+                df_aligned.at[row_i, vn_col] = full_text
+                df_aligned.at[row_i, 'Dialogue_VN'] = full_text[len(prefix):] if full_text.startswith(prefix) else full_text
+
+            for row_i, txt in vn_edits.items():
+                if row_i in df_aligned.index: apply_vn_edit(row_i, txt)
+
             if "🔴" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🔴', na=False)]
             elif "🟡" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🟡', na=False)]
             elif "🔵" in qc_filter: df_display = df_aligned[df_aligned['Trạng thái QC'].str.contains('🔵', na=False)]
@@ -96,8 +109,15 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
                     "Trạng thái QC": st.column_config.TextColumn("Trạng thái", disabled=True),
                     "Ghi chú QC": st.column_config.TextColumn("Ghi chú từ vựng khác biệt", disabled=True)
                 },
-                hide_index=True, use_container_width=True, key="dual_english_editor_table"
+                hide_index=True, use_container_width=True, key=f"dual_english_editor_table_{qc_filter}"
             )
+
+            for row_i in edited_aligned_df.index:
+                new_txt = edited_aligned_df.at[row_i, vn_col]
+                new_txt = "" if pd.isna(new_txt) else str(new_txt)
+                if new_txt != df_aligned.at[row_i, vn_col]:
+                    vn_edits[row_i] = new_txt
+                    apply_vn_edit(row_i, new_txt)
 
             st.markdown("---")
             st.markdown("#### ⬇️ Xuất File Kịch Bản Tiếng Việt Hoàn Chỉnh")

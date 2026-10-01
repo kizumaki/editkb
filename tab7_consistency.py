@@ -1,8 +1,9 @@
 import streamlit as st
 import re
+import time
 import pandas as pd
 from collections import Counter
-from utils import PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df
+from utils import PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df, is_candidate_english_word, clean_cell
 
 VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
 VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
@@ -31,7 +32,7 @@ def render_tab7():
                     st.session_state['custom_pronoun_rel'][key_pair] = {"self": rel_self, "target": rel_target}
                     save_json_db(PRONOUN_REL_DB_FILE, st.session_state['custom_pronoun_rel'])
                     st.session_state['pronoun_input_key'] = st.session_state.get('pronoun_input_key', 0) + 1
-                    st.success("✅ Đã lưu quan hệ xưng hô!")
+                    st.success("✅ Đã lưu quan hệ xưng hô!"); time.sleep(1); st.rerun()
 
         rel_db_dict = st.session_state.get('custom_pronoun_rel', {})
         if rel_db_dict:
@@ -62,7 +63,7 @@ def render_tab7():
                 for _, row in edited_rel_df.iterrows():
                     if not row["Xóa"]:
                         pk = f"{str(row['Người Nói']).upper()}|{str(row['Người Nghe']).upper()}"
-                        new_rel_db[pk] = {"self": str(row["Xưng (Self)"]).lower(), "target": str(row["Gọi (Target)"]).lower()}
+                        new_rel_db[pk] = {"self": clean_cell(row["Xưng (Self)"]).lower(), "target": clean_cell(row["Gọi (Target)"]).lower()}
                 st.session_state['custom_pronoun_rel'] = new_rel_db
                 save_json_db(PRONOUN_REL_DB_FILE, new_rel_db)
                 st.success("✅ Đã lưu cập nhật Bảng Xưng Hô!"); time.sleep(1); st.rerun()

@@ -12,6 +12,8 @@ from collections import Counter
 import time
 import pandas as pd
 import json
+import ast
+import copy
 from gtts import gTTS
 import zipfile
 import gspread
@@ -195,108 +197,257 @@ RED_COLOR = RGBColor(255, 0, 0)
 
 
 # ==========================================
-# HÀM KẾT NỐI VÀ ĐỒNG BỘ GOOGLE SHEETS
+# KHO DỮ LIỆU: GOOGLE SHEETS (KHI CHẠY ONLINE) HOẶC FILE JSON (KHI CHẠY TRÊN MÁY)
 # ==========================================
-def get_gspread_client():
+# Mỗi kho dữ liệu = 1 trang tính trong Google Sheets (tên trang giữ nguyên như bản cũ).
+# Giá trị phức tạp (màu, xưng hô, chi tiết lương...) được lưu dạng JSON trong ô.
+# Khi lưu: đọc bản mới nhất trên Sheets, chỉ áp phần người dùng vừa thay đổi (gộp 3 chiều),
+# rồi ghi đè 1 lần duy nhất -> không xoá trắng, không đè mất thay đổi của người khác.
+
+DEFAULT_PRONOUN_REL = {
+    "TYLER|BILL": {"self": "tui", "target": "ông"},
+    "CORY|EASTON": {"self": "tui", "target": "ông"},
+    "COBY|COACH RAC": {"self": "tui", "target": "ông"}
+}
+DEFAULT_PAYROLL_RATES = {"mode": "minute", "unit_rate": 30000}
+
+TRACKER_JSON_FIELDS = {"actor_breakdown", "custom_actor_rates"}
+TRACKER_NUM_FIELDS = {"total_lines", "video_duration_min"}
+
+DB_REGISTRY = {
+    NON_SPEAKER_DB_FILE: {"state_key": "custom_non_speakers", "kind": "set", "default": set},
+    SPEAKER_DB_FILE: {"state_key": "custom_speakers", "kind": "set", "default": set},
+    PHONETIC_DB_FILE: {"state_key": "custom_phonetics", "kind": "text_dict", "default": lambda: dict(DEFAULT_SOUTH_VIETNAM_PHONETICS), "merge_defaults": True},
+    CAST_DB_FILE: {"state_key": "custom_cast_mapping", "kind": "text_dict", "default": lambda: dict(DEFAULT_CAST_MAPPING), "merge_defaults": True},
+    SPEAKER_COLOR_DB_FILE: {"state_key": "fixed_speaker_colors", "kind": "json_dict", "default": lambda: copy.deepcopy(DEFAULT_FIXED_SPEAKER_COLORS)},
+    PRONOUN_REL_DB_FILE: {"state_key": "custom_pronoun_rel", "kind": "json_dict", "default": lambda: copy.deepcopy(DEFAULT_PRONOUN_REL)},
+    RATES_DB_FILE: {"state_key": "payroll_rates", "kind": "json_dict", "default": lambda: dict(DEFAULT_PAYROLL_RATES), "lower_keys": True},
+    TRACKER_DB_FILE: {"state_key": "dubbing_tracker", "kind": "records", "default": list},
+}
+
+def _tab_name(filepath):
+    return os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
+
+def sheets_enabled():
     try:
-        if "gcp_service_account" in st.secrets:
-            scopes = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            creds = Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"], 
-                scopes=scopes
-            )
-            return gspread.authorize(creds)
-    except Exception as e:
-        print(f"Lỗi khởi tạo Credentials: {e}")
-    return None
+        return "SPREADSHEET_ID" in st.secrets and "gcp_service_account" in st.secrets
+    except Exception:
+        return False
+
+@st.cache_resource(show_spinner=False)
+def _get_spreadsheet():
+    creds = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    # BackOffHTTPClient: tự chờ & thử lại khi Google báo quá tải (lỗi 429)
+    client = gspread.authorize(creds, http_client=gspread.BackOffHTTPClient)
+    return client.open_by_key(st.secrets["SPREADSHEET_ID"])
+
+def _decode_cell(v):
+    if not isinstance(v, str): return v
+    s = v.strip()
+    if not s: return ""
+    try: return json.loads(s)
+    except Exception: pass
+    try: return ast.literal_eval(s)  # dữ liệu cũ do bản trước lưu sai định dạng
+    except Exception: return v
+
+def _to_number(v):
+    v = _decode_cell(v)
+    try:
+        f = float(v)
+        return int(f) if f.is_integer() else f
+    except Exception:
+        return 0
+
+def _rows_to_data(cfg, rows):
+    kind = cfg["kind"]
+    header = [str(h).strip() for h in rows[0]] if rows else []
+    body = rows[1:] if rows else []
+    def cell(r, i): return r[i] if 0 <= i < len(r) else ""
+
+    if kind == "set":
+        i = header.index("item") if "item" in header else 0
+        return {str(cell(r, i)).strip() for r in body if str(cell(r, i)).strip()}
+
+    if kind in ("text_dict", "json_dict"):
+        ki = header.index("key") if "key" in header else 0
+        vi = header.index("value") if "value" in header else 1
+        out = {}
+        for r in body:
+            k = str(cell(r, ki)).strip()
+            if not k: continue
+            k = k.lower() if cfg.get("lower_keys") else k.upper()
+            v = cell(r, vi)
+            out[k] = str(v).strip() if kind == "text_dict" else _decode_cell(v)
+        return out
+
+    records = []
+    for r in body:
+        if not any(str(c).strip() for c in r): continue
+        item = {}
+        for i, h in enumerate(header):
+            if not h: continue
+            v = cell(r, i)
+            if h in TRACKER_JSON_FIELDS:
+                v = _decode_cell(v)
+                if not isinstance(v, dict): v = {}
+            elif h in TRACKER_NUM_FIELDS:
+                v = _to_number(v)
+            else:
+                v = "" if v is None else str(v)
+            item[h] = v
+        if item.get("video_title", "") != "": records.append(item)
+    return records
+
+def _data_to_rows(cfg, data):
+    kind = cfg["kind"]
+    def enc(v): return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+    if kind == "set":
+        return [["item"]] + [[x] for x in sorted(data, key=lambda s: str(s).upper())]
+    if kind in ("text_dict", "json_dict"):
+        return [["key", "value"]] + [[k, enc(data[k])] for k in sorted(data)]
+    headers = []
+    for item in data:
+        for h in item.keys():
+            if h not in headers: headers.append(h)
+    if not headers: headers = ["video_title"]
+    return [headers] + [[enc(item.get(h, "")) for h in headers] for item in data]
+
+def _with_defaults(cfg, data):
+    if cfg.get("merge_defaults"):
+        return {**cfg["default"](), **data}
+    return data
+
+def _local_read(filepath, cfg):
+    if not os.path.exists(filepath): return None
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if cfg["kind"] == "set": return set(data)
+    if cfg.get("lower_keys"): return {str(k).lower(): v for k, v in data.items()}
+    return data
+
+def _local_write(filepath, data):
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(list(data) if isinstance(data, set) else data, f, ensure_ascii=False, indent=2)
+
+def _record_key(item):
+    return str(item.get("video_title", "")).strip().upper()
+
+def _three_way_merge(kind, base, local, remote):
+    """Chỉ áp những gì phiên này đã THAY ĐỔI (so với lúc tải về) lên bản mới nhất trên kho."""
+    if kind == "set":
+        return (set(remote) | (local - base)) - (base - local)
+    if kind == "records":
+        b = {_record_key(x): x for x in base}
+        l = {_record_key(x): x for x in local}
+        r = {_record_key(x): x for x in remote}
+        merged = _three_way_merge("dict", b, l, r)
+        order = [k for k in r if k in merged] + [k for k in l if k in merged and k not in r]
+        return [merged[k] for k in order]
+    merged = dict(remote)
+    for k, v in local.items():
+        if k not in base or base[k] != v: merged[k] = v
+    for k in base:
+        if k not in local: merged.pop(k, None)
+    return merged
+
+def _set_base(filepath, data):
+    st.session_state.setdefault("_db_base", {})[filepath] = copy.deepcopy(data)
+
+def init_databases():
+    """Tải toàn bộ kho dữ liệu 1 lần khi mở app (chỉ 1-2 lượt gọi Google)."""
+    if st.session_state.get("_db_ready"): return
+    raw = {}
+    st.session_state["_db_load_error"] = ""
+    if sheets_enabled():
+        try:
+            sh = _get_spreadsheet()
+            existing = {ws.title for ws in sh.worksheets()}
+            wanted = [_tab_name(fp) for fp in DB_REGISTRY if _tab_name(fp) in existing]
+            if wanted:
+                resp = sh.values_batch_get([f"'{t}'" for t in wanted], params={"valueRenderOption": "UNFORMATTED_VALUE"})
+                for t, vr in zip(wanted, resp.get("valueRanges", [])):
+                    raw[t] = vr.get("values", [])
+        except Exception as e:
+            st.session_state["_db_load_error"] = str(e)
+    for fp, cfg in DB_REGISTRY.items():
+        data = None
+        try:
+            if sheets_enabled():
+                if _tab_name(fp) in raw: data = _rows_to_data(cfg, raw[_tab_name(fp)])
+            else:
+                data = _local_read(fp, cfg)
+        except Exception as e:
+            st.session_state["_db_load_error"] = str(e)
+        data = cfg["default"]() if data is None else _with_defaults(cfg, data)
+        st.session_state[cfg["state_key"]] = data
+        _set_base(fp, data)
+    st.session_state["_db_ready"] = True
 
 def load_json_db(filepath, default_data=None):
-    try:
-        if "SPREADSHEET_ID" in st.secrets and "gcp_service_account" in st.secrets:
-            gc = get_gspread_client()
-            if gc:
-                spreadsheet_id = st.secrets["SPREADSHEET_ID"]
-                tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
-                sh = gc.open_by_key(spreadsheet_id)
-                worksheet = sh.worksheet(tab_name)
-                records = worksheet.get_all_records()
-                
-                if isinstance(default_data, set):
-                    return set([str(r["item"]).strip() for r in records if "item" in r and r["item"]])
-                elif isinstance(default_data, dict):
-                    return {str(r["key"]).strip().upper(): str(r["value"]).strip() for r in records if "key" in r and "value" in r}
-                elif isinstance(default_data, list):
-                    return records
-    except Exception as e:
-        print(f"Lỗi đọc Google Sheets ({filepath}): {e}")
-
-    # Fallback đọc local nếu Sheet bị lỗi
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return set(data) if isinstance(data, list) and isinstance(default_data, set) else data
-        except Exception: pass
-    return default_data if default_data is not None else (set() if not isinstance(default_data, dict) else {})
+    init_databases()
+    return st.session_state[DB_REGISTRY[filepath]["state_key"]]
 
 def save_json_db(filepath, data_container):
-    # Lưu file local trước để phòng hờ
+    """Lưu an toàn: gộp với bản mới nhất trên kho rồi mới ghi. Trả về True nếu lưu thành công."""
+    cfg = DB_REGISTRY[filepath]
+    kind = cfg["kind"]
+    tab = _tab_name(filepath)
+    base = st.session_state.get("_db_base", {}).get(filepath, cfg["default"]())
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            if isinstance(data_container, set): json.dump(list(data_container), f, ensure_ascii=False, indent=2)
-            else: json.dump(data_container, f, ensure_ascii=False, indent=2)
-    except Exception: pass
-
-    try:
-        if "SPREADSHEET_ID" not in st.secrets:
-            st.warning("⚠️ Thiếu cấu hình SPREADSHEET_ID. Dữ liệu chỉ được lưu tạm thời trên web.")
-            return
-            
-        if "gcp_service_account" not in st.secrets:
-            st.warning("⚠️ Thiếu cấu hình Tài khoản Service Account. Dữ liệu chỉ được lưu tạm thời trên web.")
-            return
-            
-        gc = get_gspread_client()
-        if not gc:
-            st.error("❌ Kết nối Google Sheets thất bại! Hãy kiểm tra lại file Secrets (chú ý định dạng ngoặc kép và dấu xuống dòng).")
-            return
-            
-        spreadsheet_id = st.secrets["SPREADSHEET_ID"]
-        tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
-        
-        sh = gc.open_by_key(spreadsheet_id)
-        try: worksheet = sh.worksheet(tab_name)
-        except Exception: worksheet = sh.add_worksheet(title=tab_name, rows=1000, cols=10)
-        
-        worksheet.clear()
-        if isinstance(data_container, set):
-            rows = [["item"]] + [[item] for item in sorted(list(data_container))]
-        elif isinstance(data_container, dict):
-            rows = [["key", "value"]] + [[k, v] for k, v in data_container.items()]
-        elif isinstance(data_container, list):
-            if data_container:
-                headers = list(data_container[0].keys())
-                rows = [headers] + [[str(item.get(h, "")) for h in headers] for item in data_container]
-            else: rows = [["data"]]
-        else: return
-
-        # Thích ứng mọi phiên bản của thư viện gspread (v5.x và v6.0+)
-        try:
-            worksheet.update("A1", rows)
-        except TypeError:
-            worksheet.update(values=rows, range_name="A1")
-            
-        st.toast(f"✅ Đã đồng bộ an toàn lên Google Sheet ({tab_name})", icon="☁️")
-        
+        if sheets_enabled():
+            sh = _get_spreadsheet()
+            try:
+                ws = sh.worksheet(tab)
+                remote_rows = ws.get_values(value_render_option=gspread.utils.ValueRenderOption.unformatted)
+                remote = _with_defaults(cfg, _rows_to_data(cfg, remote_rows))
+            except gspread.WorksheetNotFound:
+                ws, remote_rows, remote = None, [], cfg["default"]()
+            merged = _three_way_merge(kind, base, data_container, remote)
+            rows = _data_to_rows(cfg, merged)
+            # Ghi đè đúng 1 lần, phần thừa của bản cũ được ghi đè bằng ô trống (không xoá trắng trước)
+            n_rows = max(len(rows), len(remote_rows))
+            n_cols = max([len(r) for r in rows + remote_rows] + [1])
+            padded = [list(r) + [""] * (n_cols - len(r)) for r in rows] + [[""] * n_cols for _ in range(n_rows - len(rows))]
+            if ws is None:
+                ws = sh.add_worksheet(title=tab, rows=n_rows + 50, cols=max(n_cols, 5))
+            elif ws.row_count < n_rows or ws.col_count < n_cols:
+                ws.resize(rows=max(ws.row_count, n_rows + 50), cols=max(ws.col_count, n_cols))
+            ws.update(values=padded, range_name="A1")
+            st.toast(f"Đã lưu lên Google Sheets ({tab})", icon="☁️")
+        else:
+            remote = _local_read(filepath, cfg)
+            remote = cfg["default"]() if remote is None else _with_defaults(cfg, remote)
+            merged = _three_way_merge(kind, base, data_container, remote)
+            _local_write(filepath, merged)
     except Exception as e:
-        st.error(f"❌ Lỗi ghi dữ liệu lên Google Sheets: {e}")
+        st.session_state["_db_save_error"] = f"❌ CHƯA LƯU ĐƯỢC dữ liệu '{tab}' (thay đổi vẫn còn trong phiên này, hãy bấm lưu lại sau ít phút). Chi tiết lỗi: {e}"
+        st.error(st.session_state["_db_save_error"])
+        return False
+
+    # Cập nhật dữ liệu đang dùng thành bản đã gộp (giữ nguyên object để các tab khác thấy ngay)
+    if isinstance(data_container, (set, dict, list)):
+        data_container.clear()
+        if isinstance(data_container, list): data_container.extend(merged)
+        else: data_container.update(merged)
+        merged = data_container
+    st.session_state[cfg["state_key"]] = merged
+    _set_base(filepath, merged)
+    return True
 
 # ==========================================
 # CÁC HÀM XỬ LÝ KỊCH BẢN & PHỤ ĐỀ
 # ==========================================
+def clean_cell(value):
+    """Đọc 1 ô trong bảng sửa trực tiếp: ô bị xoá trống trả về "" (không thành chữ 'None'/'nan')."""
+    if value is None: return ""
+    try:
+        if pd.isna(value): return ""
+    except (TypeError, ValueError): pass
+    return str(value).strip()
+
 def hex_to_rgb(hex_str):
     if not hex_str: return None
     hex_str = str(hex_str).strip().lstrip('#')
@@ -745,6 +896,14 @@ def align_and_compare_english_scripts(df_mh_eng, df_off_eng, df_vn=None, default
             off_text_combined = ""
             off_window_text = ""
             off_spk = ""
+
+        # Ghép câu Tiếng Việt có cùng khoảng thời gian (nếu có tải file Việt)
+        vn_text_combined = ""; vn_spk = ""
+        if df_vn is not None and not df_vn.empty:
+            vn_matches = [row_vn for _, row_vn in df_vn.iterrows()
+                          if calculate_time_overlap(s_mh, e_mh, timecode_to_sec(row_vn['Start']), timecode_to_sec(row_vn['End'])) > 0.1]
+            vn_text_combined = " ".join(str(r['Dialogue']) for r in vn_matches if pd.notna(r['Dialogue']))
+            vn_spk = str(vn_matches[0]['Speaker']) if vn_matches else ""
 
         qc_status = "🟢 Khớp chuẩn"
         qc_details = "Nội dung Tiếng Anh khớp chuẩn nghĩa"
@@ -1277,6 +1436,9 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
             out += ass_text[last_end:]
             ass_text = out
 
+    # Câu thoại không có tên người nói: chỉ giữ nội dung
+    if not speaker_name: return ass_text
+
     is_all = (speaker_name.strip().upper() == "ALL")
     spk_hex = "&H0000FF&" if is_all else (rgb_to_ass_hex(spk_color) if enable_colors else "&H00FFFFFF&")
     prefix_ass = f"{{\\c{spk_hex}}}{{\\b1}}{speaker_name}:{{\\b0}}"
@@ -1305,10 +1467,10 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         r_tab.font.name = 'Times New Roman'; r_tab.font.size = Pt(font_size_pt)
         
         apply_html_and_phonetic_to_paragraph(new_paragraph, text, enable_phonetic)
-        return None, text
+        return format_ass_and_srt_text(text, "", "", None, enable_colors, enable_phonetic, enable_cast, False), text
 
     last_processed_index = 0
-    ass_line_result = ""
+    ass_line_parts = []  # mỗi người nói 1 phần, ghép lại bằng xuống dòng ASS (\N)
     pure_dialogue_list = []
     
     for i in range(len(speaker_tags)):
@@ -1328,7 +1490,8 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
             
             apply_html_and_phonetic_to_paragraph(continuation_paragraph, leading_content, enable_phonetic)
             pure_dialogue_list.append(leading_content)
-            
+            ass_line_parts.append(format_ass_and_srt_text(leading_content, "", "", None, enable_colors, enable_phonetic, enable_cast, False))
+
         stats_counter[speaker_name] += 1
         next_match_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(text)
             
@@ -1387,20 +1550,25 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         
         if content: apply_html_and_phonetic_to_paragraph(new_paragraph, content, enable_phonetic)
         
-        ass_line_result = format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time)
+        ass_line_parts.append(format_ass_and_srt_text(content, speaker_name, actor_name, spk_color, enable_colors, enable_phonetic, enable_cast, is_first_time))
         last_processed_index = next_match_start
 
     pure_dialogue_text = " ".join(pure_dialogue_list)
-    return ass_line_result, pure_dialogue_text
+    return "\\N".join(ass_line_parts), pure_dialogue_text
 
 def check_resync_integrity(body_zone, srt_dialogues):
     input_tcs = []; input_dialogues = []; curr_tc = None
     for text in body_zone:
         if TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text):
             curr_tc = text; input_tcs.append(text)
-        elif curr_tc and text and not text.lower().startswith("srt conversion") and not text.lower().startswith("vai:"):
+        elif curr_tc and text and not text.lower().startswith("srt conversion") and not text.lower().startswith("vai:") and not re.fullmatch(r"\s*\d+\s*", text):
             clean_txt = re.sub(r'</?[ibuIBU]>', '', text).strip()
-            if clean_txt: input_dialogues.append({"timecode": curr_tc, "text": clean_txt})
+            if not clean_txt: continue
+            # Gộp các dòng cùng 1 mốc timecode thành 1 khối (giống file SRT xuất ra)
+            if input_dialogues and input_dialogues[-1]["timecode"] == curr_tc:
+                input_dialogues[-1]["text"] += "\n" + clean_txt
+            else:
+                input_dialogues.append({"timecode": curr_tc, "text": clean_txt})
                 
     output_tcs = []; output_dialogues = []
     for srt_block in srt_dialogues:
@@ -1536,7 +1704,19 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     document.add_paragraph()
     start_index = len(document.paragraphs); total_paras = len(body_zone)
     progress_bar = st.progress(0); status_text = st.empty()
-    ass_dialogues = []; srt_dialogues = []; current_timecode_line = None; srt_counter = 1; max_video_time_sec = 0.0
+    ass_dialogues = []; srt_dialogues = []; current_timecode_line = None; max_video_time_sec = 0.0
+    block_ass_parts = []  # toàn bộ lời thoại thuộc mốc timecode hiện tại
+
+    def flush_subtitle_block():
+        # Ghi 1 khối phụ đề cho mốc timecode hiện tại, gồm MỌI dòng thoại bên dưới mốc đó
+        if current_timecode_line and block_ass_parts:
+            start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
+            if start_ass and end_ass:
+                ass_line = "\\N".join(block_ass_parts)
+                srt_text = re.sub(r'\{\\[^}]*\}', '', ass_line).replace("\\N", "\n")
+                ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{ass_line}")
+                srt_dialogues.append(f"{len(srt_dialogues) + 1}\n{current_timecode_line}\n{srt_text}\n")
+        block_ass_parts.clear()
 
     for idx, text in enumerate(body_zone):
         if idx % max(1, total_paras // 10) == 0:
@@ -1548,6 +1728,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         if text.lower().startswith("srt conversion") or text.lower().startswith("vai:") or re.fullmatch(r"^\s*\d+\s*$", text): continue
             
         if TIMECODE_REGEX.match(text) or SHORT_TIMECODE_REGEX.match(text):
+            flush_subtitle_block()
             current_timecode_line = text
             dur, t1, t2 = calculate_duration_sec(text)
             if t2 > max_video_time_sec: max_video_time_sec = t2
@@ -1578,12 +1759,9 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     qc_warnings.append(f"⏱️ **Tốc độ đọc nhanh ({cps:.1f} ký tự/s)** tại `{current_timecode_line}`: \"{pure_dialogue_text[:45]}...\"")
             
             if current_timecode_line and ass_formatted_line:
-                start_ass, end_ass = srt_timecode_to_ass(current_timecode_line)
-                if start_ass and end_ass:
-                    ass_dialogues.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{ass_formatted_line}")
-                    srt_dialogues.append(f"{srt_counter}\n{current_timecode_line}\n{re.sub(r'{\\.*?}', '', ass_formatted_line)}\n")
-                    srt_counter += 1
+                block_ass_parts.append(ass_formatted_line)
 
+    flush_subtitle_block()
     progress_bar.progress(100); status_text.text("Xử lý hoàn tất!"); time.sleep(0.5)
     progress_bar.empty(); status_text.empty()
             
