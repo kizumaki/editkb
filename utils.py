@@ -14,6 +14,8 @@ import pandas as pd
 import json
 from gtts import gTTS
 import zipfile
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ==========================================
 # CẤU HÌNH DATABASE & FILE PATH
@@ -192,9 +194,44 @@ ENGLISH_WORD_REGEX = re.compile(r"\b[A-Za-z][A-Za-z0-9'-]*\b")
 RED_COLOR = RGBColor(255, 0, 0)
 
 # ==========================================
-# HÀM ĐỌC/GHI JSON DATABASE
+# HÀM TỰ ĐỘNG ĐỒNG BỘ GOOGLE SHEETS
 # ==========================================
+def get_gspread_client():
+    try:
+        if "gcp_service_account" in st.secrets:
+            scopes = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            creds = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"], 
+                scopes=scopes
+            )
+            return gspread.authorize(creds)
+    except Exception as e:
+        pass
+    return None
+
 def load_json_db(filepath, default_data=None):
+    gc = get_gspread_client()
+    spreadsheet_id = st.secrets.get("SPREADSHEET_ID") if "SPREADSHEET_ID" in st.secrets else None
+    tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
+    
+    if gc and spreadsheet_id:
+        try:
+            sh = gc.open_by_key(spreadsheet_id)
+            worksheet = sh.worksheet(tab_name)
+            records = worksheet.get_all_records()
+            
+            if isinstance(default_data, set):
+                return set([str(r["item"]).strip() for r in records if "item" in r and r["item"]])
+            elif isinstance(default_data, dict):
+                return {str(r["key"]).strip().upper(): str(r["value"]).strip() for r in records if "key" in r and "value" in r}
+            elif isinstance(default_data, list):
+                return records
+        except Exception:
+            pass
+
     if os.path.exists(filepath):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -208,7 +245,33 @@ def save_json_db(filepath, data_container):
         with open(filepath, "w", encoding="utf-8") as f:
             if isinstance(data_container, set): json.dump(list(data_container), f, ensure_ascii=False, indent=2)
             else: json.dump(data_container, f, ensure_ascii=False, indent=2)
-    except Exception as e: st.error(f"Không thể lưu vào Database: {e}")
+    except Exception: pass
+
+    gc = get_gspread_client()
+    spreadsheet_id = st.secrets.get("SPREADSHEET_ID") if "SPREADSHEET_ID" in st.secrets else None
+    tab_name = os.path.splitext(os.path.basename(filepath))[0].replace("custom_", "")
+
+    if gc and spreadsheet_id:
+        try:
+            sh = gc.open_by_key(spreadsheet_id)
+            try: worksheet = sh.worksheet(tab_name)
+            except Exception: worksheet = sh.add_worksheet(title=tab_name, rows=1000, cols=10)
+            
+            worksheet.clear()
+            if isinstance(data_container, set):
+                rows = [["item"]] + [[item] for item in sorted(list(data_container))]
+            elif isinstance(data_container, dict):
+                rows = [["key", "value"]] + [[k, v] for k, v in data_container.items()]
+            elif isinstance(data_container, list):
+                if data_container:
+                    headers = list(data_container[0].keys())
+                    rows = [headers] + [[str(item.get(h, "")) for h in headers] for item in data_container]
+                else: rows = [["data"]]
+            else: return
+
+            worksheet.update("A1", rows)
+        except Exception as e:
+            st.warning(f"⚠️ Dữ liệu chưa lưu lên Google Sheet: {e}")
 
 def hex_to_rgb(hex_str):
     if not hex_str: return None
@@ -264,10 +327,6 @@ def get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors
     res = (color_object, None)
     speaker_color_map[spk_upper] = res
     return res[0], res[1]
-
-def get_speaker_color(speaker_name, speaker_color_map, used_colors):
-    spk_color, _ = get_speaker_color_and_highlight(speaker_name, speaker_color_map, used_colors)
-    return spk_color if spk_color else RGBColor(0, 0, 0)
 
 def apply_speaker_styling_to_run(run, text_color_tuple, highlight_color_tuple):
     if text_color_tuple:
@@ -412,7 +471,6 @@ def is_valid_speaker_name(name):
     if len(clean.split()) > 6: return False
     return True
 
-# HÀM KIỂM TRA TÊN DIỄN VIÊN CHUẨN XÁC (CHO PHÉP CHỨA DẤU CHẤM VÀ DẤU GẠCH NỐI NHƯ C.DŨNG, A.TRUNG)
 def is_valid_actor_name_strict(act_str):
     if not act_str: return False
     clean = act_str.strip().upper()
@@ -1068,7 +1126,6 @@ def add_text_run_with_html(paragraph, text, highlight=None):
             if is_underline: run.font.underline = True
             if highlight: run.font.highlight_color = highlight
 
-# HÀM PHIÊN ÂM VÀ TÔ MÀU VÀNG DÀNH CHO PARAGRAPH
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
     current_text = re.sub(r'\t+', ' ', current_text).strip()
     if not current_text: return
@@ -1387,7 +1444,6 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                 st.session_state['custom_cast_mapping'][spk_k] = act_v
 
     document = Document()
-    # Cấu hình lề trang 0.5" (1.27 cm) cho cả 4 chiều chuẩn Page Setup
     for section in document.sections:
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.5)
@@ -1403,7 +1459,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     unique_speakers = []; assigned_actors = []; unassigned_speakers = []
     for text in body_zone:
         if not text or text.lower().startswith("srt conversion") or text.lower().startswith("vai:"): continue 
-        spk_tags = find_all_speaker_tags(text, custom_speakers, custom_non_speakers)
+        spk_tags = find_all_speaker_tags(text, custom_speakers, non_speakers)
         for _, _, speaker_name, _ in spk_tags:
             if speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
