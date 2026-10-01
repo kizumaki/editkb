@@ -8,6 +8,7 @@ from collections import Counter
 import pandas as pd
 from docx import Document
 from utils import (
+    kept_file_uploader,
     process_srt_to_docx, process_docx_to_srt, parse_srt_to_dataframe, 
     apply_excel_styles, find_all_speaker_tags, save_json_db, DEFAULT_NON_SPEAKER_PHRASES, 
     NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, TIMECODE_REGEX, generate_reaper_region_csv, 
@@ -35,7 +36,7 @@ def render_tab9():
                 st.markdown("##### 📄 1. Chuyển SRT ➔ Word (.docx)")
                 st.caption("Tải 1 hoặc hàng ngàn file SRT để tự động chuyển sang Word (Times New Roman, 12pt):")
                 
-                batch_srt_files = st.file_uploader(
+                batch_srt_files = kept_file_uploader(
                     "Tải 1 hoặc nhiều file .srt:", type=['srt'], accept_multiple_files=True, key="tool_srt_to_docx_batch"
                 )
                 
@@ -73,7 +74,7 @@ def render_tab9():
                 st.markdown("##### 📝 2. Chuyển Word (.docx) ➔ SRT (Batch hàng loạt)")
                 st.caption("Tải 1 file hoặc hàng ngàn file Word kịch bản để tự động trích xuất SRT:")
                 
-                batch_docx_files = st.file_uploader(
+                batch_docx_files = kept_file_uploader(
                     "Tải 1 hoặc nhiều file .docx:", type=['docx'], accept_multiple_files=True, key="tool_docx_to_srt_batch"
                 )
                 
@@ -110,7 +111,7 @@ def render_tab9():
         st.markdown("#### 📊 Chuyển Đổi File Subtitle SRT ➔ Bảng Tính Excel (.xlsx)")
         st.caption("Tự động nhận diện nhân vật, tô màu phân biệt người nói và xuất file Excel có cấu trúc:")
         
-        uploaded_srt_excel = st.file_uploader("Tải file .srt của bạn vào đây:", type=['srt'], key="tool_srt_to_excel")
+        uploaded_srt_excel = kept_file_uploader("Tải file .srt của bạn vào đây:", type=['srt'], key="tool_srt_to_excel")
         if uploaded_srt_excel is not None:
             try:
                 try: srt_content_excel = uploaded_srt_excel.getvalue().decode("utf-8")
@@ -213,7 +214,7 @@ def render_tab9():
         st.markdown("#### 🎛️ Tự Động Tạo File Marker Timeline Cho Phần Mềm Thu Âm DAW")
         st.caption("Chuyển đổi kịch bản (.srt hoặc .docx) thành các điểm mốc Marker phủ màu sẵn cho KTV thu âm trên Pro Tools, Reaper, Premiere, Resolve:")
 
-        uploaded_marker_file = st.file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt', 'docx'], key="tool_marker_uploader")
+        uploaded_marker_file = kept_file_uploader("Tải file Kịch bản (.srt hoặc .docx) của bạn vào đây:", type=['srt', 'docx'], key="tool_marker_uploader")
         
         if uploaded_marker_file is not None:
             m_filename = uploaded_marker_file.name

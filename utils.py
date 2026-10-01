@@ -440,6 +440,50 @@ def save_json_db(filepath, data_container):
 # ==========================================
 # CÁC HÀM XỬ LÝ KỊCH BẢN & PHỤ ĐỀ
 # ==========================================
+# ==========================================
+# Ô TẢI FILE "CÓ TRÍ NHỚ": GIỮ FILE KHI CHUYỂN TRANG, CHỈ XOÁ KHI BẤM "BẮT ĐẦU PHIÊN MỚI"
+# ==========================================
+class KeptFile(io.BytesIO):
+    """Bản sao file đã tải lên, dùng giống hệt file gốc (có .name, .size, .getvalue())."""
+    def __init__(self, name, data):
+        super().__init__(data)
+        self.name = name
+        self.size = len(data)
+
+def clear_kept_files():
+    for k in [k for k in st.session_state.keys() if str(k).startswith(("_kept_", "_restored_"))]:
+        del st.session_state[k]
+    st.session_state["_reset_counter"] = st.session_state.get("_reset_counter", 0) + 1
+
+def kept_file_uploader(label, key, accept_multiple_files=False, **kwargs):
+    store, restored = f"_kept_{key}", f"_restored_{key}"
+    widget_key = f"{key}__{st.session_state.get('_reset_counter', 0)}"
+    widget_alive = widget_key in st.session_state  # False ngay sau khi chuyển trang (Streamlit đã dọn ô cũ)
+    result = st.file_uploader(label, key=widget_key, accept_multiple_files=accept_multiple_files, **kwargs)
+    files = (list(result) if result else []) if accept_multiple_files else ([result] if result else [])
+
+    if files:  # người dùng vừa tải (hoặc vẫn đang giữ) file trong ô -> ghi nhớ lại
+        st.session_state[store] = [(f.name, f.getvalue()) for f in files]
+        st.session_state[restored] = False
+        return result
+    # Ô trống: nếu trước đó file đang nằm trong ô (không phải bản khôi phục) -> người dùng vừa bấm X để bỏ file
+    if store in st.session_state and st.session_state.get(restored) is False and widget_alive:
+        st.session_state.pop(store, None)
+    kept = st.session_state.get(store)
+    if not kept:
+        return [] if accept_multiple_files else None
+
+    # Ô trống vì vừa chuyển trang -> dùng lại file đã nhớ
+    st.session_state[restored] = True
+    names = ", ".join(n for n, _ in kept)
+    c1, c2 = st.columns([5, 1])
+    c1.caption(f"📎 Đang dùng file đã tải trước đó: **{names}**. Tải file khác vào ô trên để thay.")
+    if c2.button("✖ Bỏ file", key=f"_drop_{key}"):
+        st.session_state.pop(store, None); st.session_state.pop(restored, None)
+        st.rerun()
+    objs = [KeptFile(n, b) for n, b in kept]
+    return objs if accept_multiple_files else objs[0]
+
 def clean_cell(value):
     """Đọc 1 ô trong bảng sửa trực tiếp: ô bị xoá trống trả về "" (không thành chữ 'None'/'nan')."""
     if value is None: return ""

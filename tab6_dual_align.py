@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import pandas as pd
 from utils import (
+    kept_file_uploader,
     parse_any_script_file_to_df, align_and_compare_english_scripts, 
     generate_qc_dual_excel, generate_aligned_docx_file
 )
@@ -14,16 +15,17 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
     with col_spk_fb1:
         default_spk_input = st.text_input(
             "🎭 Tên người nói mặc định (dùng cho Báo cáo QC):", 
-            placeholder="VD: Nick, Narrator, MC...", 
-            value="", 
+            placeholder="VD: Nick, Narrator, MC...",
+            key="dual_default_spk",
             help="Điền tên ở đây để Báo cáo QC Excel hiển thị 'Nick' rõ ràng thay vì 'Unknown:'."
         )
 
     with col_spk_fb2:
         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        if "dual_hide_default_spk" not in st.session_state: st.session_state["dual_hide_default_spk"] = True
         hide_default_spk_export = st.checkbox(
-            "🚫 Không in Tên mặc định vào Kịch bản xuất ra (Word/SRT)", 
-            value=True,
+            "🚫 Không in Tên mặc định vào Kịch bản xuất ra (Word/SRT)",
+            key="dual_hide_default_spk",
             help="File Word và SRT xuất ra sẽ giữ nguyên văn bản gọn gàng không có chữ 'Nick:' ở từng câu."
         )
 
@@ -31,17 +33,17 @@ def render_tab6(enable_colors, enable_phonetic, enable_cast):
     with col_dual1:
         with st.container(border=True):
             st.markdown("##### 📄 1. File Tiếng Anh - Mai Han Team (.srt/docx)")
-            uploaded_mh_eng = st.file_uploader("Tải file tiếng Anh - Mai Han Team (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_mh_eng")
+            uploaded_mh_eng = kept_file_uploader("Tải file tiếng Anh - Mai Han Team (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_mh_eng")
 
     with col_dual2:
         with st.container(border=True):
             st.markdown("##### 📄 2. File Tiếng Anh của Khách (.srt/docx)")
-            uploaded_off_eng = st.file_uploader("Tải file tiếng Anh của Khách (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_off_eng")
+            uploaded_off_eng = kept_file_uploader("Tải file tiếng Anh của Khách (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_off_eng")
 
     with col_dual3:
         with st.container(border=True):
             st.markdown("##### 📄 3. File Tiếng Việt Hiện Tại (Vietnamese Script)")
-            uploaded_vn_script = st.file_uploader("Tải file Tiếng Việt (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_vn_script")
+            uploaded_vn_script = kept_file_uploader("Tải file Tiếng Việt (.srt/docx):", type=['srt', 'docx'], key="uploader_dual_vn_script")
 
     if uploaded_mh_eng is not None and uploaded_off_eng is not None:
         c_spks = st.session_state.get('custom_speakers', set())

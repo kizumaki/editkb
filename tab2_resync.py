@@ -3,6 +3,7 @@ import os
 import time
 import pandas as pd
 from utils import (
+    kept_file_uploader,
     process_docx, clean_file_name_for_output, generate_actor_docx, 
     save_json_db, TRACKER_DB_FILE
 )
@@ -15,12 +16,13 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
             st.markdown("### 🔄 Tải lên kịch bản đã biên tập (.docx)")
             st.caption("Dành cho kịch bản team đã sửa lời thoại bằng tay. App sẽ tô lại màu, phân vai và xuất **cỡ chữ 14** cho phòng thu.")
             
-            resync_file = st.file_uploader(
+            resync_file = kept_file_uploader(
                 "Kéo thả file .docx đã biên tập vào đây", 
                 type=['docx'], 
-                key=f"resync_uploader_{st.session_state['resync_uploader_key']}"
+                key="resync_uploader"
             )
-            project_week_input = st.text_input("📌 Gán Tuần Dự Án cho video này:", value="Tuần 1", help="VD: Tuần 1, Tuần 2, Tuần 1 - Đợt Phim A...")
+            if "resync_project_week" not in st.session_state: st.session_state["resync_project_week"] = "Tuần 1"
+            project_week_input = st.text_input("📌 Gán Tuần Dự Án cho video này:", key="resync_project_week", help="VD: Tuần 1, Tuần 2, Tuần 1 - Đợt Phim A...")
             
         if resync_file is not None:
             r_filename = resync_file.name

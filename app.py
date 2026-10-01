@@ -9,7 +9,7 @@ import pandas as pd
 from collections import Counter
 
 from utils import (
-    init_databases, sheets_enabled, save_json_db, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE,
+    init_databases, sheets_enabled, save_json_db, clear_kept_files, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE,
     PHONETIC_DB_FILE, extract_phrases_from_file,
     scan_candidate_speakers, scan_english_words_in_dialogue
 )
@@ -90,6 +90,10 @@ if 'pronoun_input_key' not in st.session_state: st.session_state['pronoun_input_
 if 'color_input_key' not in st.session_state: st.session_state['color_input_key'] = 0
 if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
+# Giữ giá trị các ô nhập quan trọng khi chuyển trang (Streamlit mặc định xoá ô của trang không mở)
+for _k in ("resync_project_week", "dual_default_spk", "dual_hide_default_spk", "textarea_clean_output"):
+    if _k in st.session_state: st.session_state[_k] = st.session_state[_k]
+
 # Tải toàn bộ kho dữ liệu (Google Sheets khi chạy online, file JSON khi chạy trên máy) — 1 lần mỗi phiên
 init_databases()
 
@@ -118,9 +122,13 @@ ui_theme_choice = st.sidebar.radio(
 )
 
 if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
-                     help="Xoá các file đang mở và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
-    for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip']:
+                     help="Xoá các file đã tải lên (ở mọi trang) và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
+    for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'stats',
+                'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip', 'resync_stats',
+                'dual_vn_edits', 'dual_vn_edits_sig', 'manual_cleaned_orig_len', 'manual_cleaned_res_len']:
         if key in st.session_state: del st.session_state[key]
+    st.session_state['textarea_clean_output'] = ""
+    clear_kept_files()  # xoá các file đã tải ở mọi trang
     st.session_state['uploader_key'] += 1
     st.session_state['resync_uploader_key'] += 1
     st.session_state['bulk_uploader_key'] += 1
@@ -414,7 +422,7 @@ st.markdown(f"""
 pages = {
     "Kịch bản": [
         st.Page(lambda: render_tab1(enable_colors, enable_phonetic, enable_cast), title="Xử lý kịch bản gốc",
-                icon=":material/description:", url_path="kich-ban-goc", default=True),
+                icon=":material/description:", default=True),  # trang mặc định luôn ở địa chỉ gốc "/"
         st.Page(lambda: render_tab2(enable_colors, enable_phonetic, enable_cast), title="Re-Sync bản đã biên tập",
                 icon=":material/sync:", url_path="re-sync"),
     ],

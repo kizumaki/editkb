@@ -3,7 +3,7 @@ import re
 import time
 import pandas as pd
 from collections import Counter
-from utils import PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df, is_candidate_english_word, clean_cell
+from utils import kept_file_uploader, PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df, is_candidate_english_word, clean_cell
 
 VN_SELF_PRONOUNS = ["tui", "tôi", "mình", "tao", "ta", "em", "anh", "chị", "cháu", "con", "tại hạ", "bản thân"]
 VN_TARGET_PRONOUNS = ["ông", "bạn", "mày", "anh", "chị", "chú", "bác", "cậu", "bà", "cưng", "em", "ní", "mấy ní", "sư huynh", "huynh", "đệ"]
@@ -70,7 +70,7 @@ def render_tab7():
 
         st.markdown("---")
         st.markdown("#### 2. Công Cụ Soát Lỗi Xưng Hô Tự Động Trong Kịch Bản")
-        uploaded_pronoun_script = st.file_uploader("Tải file Kịch bản Tiếng Việt (.srt/.docx) để kiểm tra xưng hô:", type=['srt', 'docx'], key="uploader_pronoun_qc")
+        uploaded_pronoun_script = kept_file_uploader("Tải file Kịch bản Tiếng Việt (.srt/.docx) để kiểm tra xưng hô:", type=['srt', 'docx'], key="uploader_pronoun_qc")
 
         if uploaded_pronoun_script is not None:
             c_spks_p = st.session_state.get('custom_speakers', set())
@@ -140,7 +140,7 @@ def render_tab7():
 
     with subtab_glossary:
         st.markdown("#### 📚 Soát Bất Nhất Thuật Ngữ & Bản Dịch Tiếng Việt")
-        uploaded_glossary_script = st.file_uploader("Tải file Kịch bản (.srt/.docx) để kiểm tra thuật ngữ:", type=['srt', 'docx'], key="uploader_glossary_qc")
+        uploaded_glossary_script = kept_file_uploader("Tải file Kịch bản (.srt/.docx) để kiểm tra thuật ngữ:", type=['srt', 'docx'], key="uploader_glossary_qc")
 
         if uploaded_glossary_script is not None:
             c_spks_g = st.session_state.get('custom_speakers', set())

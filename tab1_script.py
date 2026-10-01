@@ -3,6 +3,7 @@ import os
 import time
 import pandas as pd
 from utils import (
+    kept_file_uploader,
     scan_candidate_speakers, scan_english_words_in_dialogue, 
     generate_english_audio, process_docx, clean_file_name_for_output, 
     generate_actor_docx, save_json_db, CAST_DB_FILE, PHONETIC_DB_FILE, 
@@ -15,10 +16,10 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
     with col1:
         with st.container(border=True):
             st.markdown("### 📁 Tải lên file Kịch bản Word gốc (.docx)")
-            uploaded_file = st.file_uploader(
+            uploaded_file = kept_file_uploader(
                 "Kéo thả file .docx gốc của bạn vào đây", 
                 type=['docx'], 
-                key=f"main_uploader_{st.session_state['uploader_key']}"
+                key="main_uploader"
             )
 
         if uploaded_file is None:

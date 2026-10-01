@@ -5,7 +5,7 @@ import re
 import zipfile
 from docx import Document
 from docx.shared import Pt
-from utils import clean_and_normalize_text
+from utils import kept_file_uploader, clean_and_normalize_text
 
 def clean_docx_file(f_item):
     doc = Document(io.BytesIO(f_item.getvalue()))
@@ -85,7 +85,7 @@ def render_tab8():
 
     with subtab_file_clean:
         st.markdown("#### 📁 Dọn Dẹp File Phụ Đề & Kịch Bản Hàng Loạt")
-        uploaded_clean_files = st.file_uploader("Tải file .srt hoặc .docx cần giặt sạch:", type=['srt', 'docx'], accept_multiple_files=True, key="batch_clean_file_uploader")
+        uploaded_clean_files = kept_file_uploader("Tải file .srt hoặc .docx cần giặt sạch:", type=['srt', 'docx'], accept_multiple_files=True, key="batch_clean_file_uploader")
 
         if uploaded_clean_files:
             st.info(f"Đã chọn **{len(uploaded_clean_files)}** file cần dọn dẹp.")
