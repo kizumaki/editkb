@@ -441,6 +441,7 @@ def init_databases():
         st.session_state[cfg["state_key"]] = data
         _set_base(fp, data)
     st.session_state["_db_ready"] = True
+    st.session_state["_db_loaded_at"] = time.time()
 
 def load_json_db(filepath, default_data=None):
     init_databases()
@@ -538,6 +539,71 @@ def reload_json_db(filepath):
     st.session_state[cfg["state_key"]] = data
     _set_base(filepath, data)
     return True
+
+def refresh_databases(bump_editors=True):
+    """Đọc lại TOÀN BỘ kho từ Google Sheets (1 lượt gọi) — để thấy thay đổi người khác vừa lưu.
+    Mỗi phiên chỉ tự đọc 1 lần lúc đăng nhập, nên trước đây người A thêm phiên âm thì người B phải đăng nhập lại mới thấy.
+    Đọc lỗi -> GIỮ NGUYÊN dữ liệu đang có (không làm trống màn hình), trả về False."""
+    import time as _t
+    try:
+        if sheets_enabled():
+            sh = _get_spreadsheet()
+            existing = {ws.title for ws in sh.worksheets()}
+            wanted = [_tab_name(fp) for fp in DB_REGISTRY if _tab_name(fp) in existing]
+            raw = {}
+            if wanted:
+                resp = sh.values_batch_get([f"'{t}'" for t in wanted], params={"valueRenderOption": "UNFORMATTED_VALUE"})
+                raw = {t: vr.get("values", []) for t, vr in zip(wanted, resp.get("valueRanges", []))}
+            fresh = {fp: _with_defaults(cfg, _rows_to_data(cfg, raw[_tab_name(fp)])) if _tab_name(fp) in raw else cfg["default"]()
+                     for fp, cfg in DB_REGISTRY.items()}
+        else:
+            fresh = {}
+            for fp, cfg in DB_REGISTRY.items():
+                d = _local_read(fp, cfg)
+                fresh[fp] = cfg["default"]() if d is None else _with_defaults(cfg, d)
+    except Exception as e:
+        st.session_state["_db_refresh_error"] = str(e)[:300]
+        return False
+    for fp, data in fresh.items():
+        st.session_state[DB_REGISTRY[fp]["state_key"]] = data
+        _set_base(fp, data)
+    st.session_state["_db_loaded_at"] = _t.time()
+    st.session_state.pop("_db_refresh_error", None)
+    # Bảng sửa trực tiếp (data_editor) đang giữ bản cũ -> đổi khoá để vẽ lại theo dữ liệu mới
+    for k in ([k for k in st.session_state if k.endswith(("_input_key", "_editor_version"))] if bump_editors else []):
+        if isinstance(st.session_state[k], int): st.session_state[k] += 1
+    return True
+
+def auto_refresh_on_page_change(page_id, max_age=60):
+    """Khi CHUYỂN sang trang khác mà dữ liệu đã cũ hơn max_age giây -> tự đọc lại (không đọc lại khi đang thao tác trong 1 trang,
+    để bảng đang sửa dở không bị thay dưới tay người dùng)."""
+    import time as _t
+    prev = st.session_state.get("_last_page")
+    st.session_state["_last_page"] = page_id
+    if prev is not None and prev != page_id and _t.time() - st.session_state.get("_db_loaded_at", 0) > max_age:
+        refresh_databases(bump_editors=False)  # trang mới vẽ bảng từ đầu, không cần đổi khoá (giữ chữ đang gõ ở thanh bên)
+
+def data_signature(*extra):
+    """Dấu nhận biết dữ liệu dùng để xử lý kịch bản (phiên âm, phân vai, màu, tên người nói) + các công tắc.
+    Đổi dấu = kết quả đã xử lý trước đó là bản CŨ."""
+    import hashlib
+    parts = []
+    for fp in (PHONETIC_DB_FILE, CAST_DB_FILE, SPEAKER_COLOR_DB_FILE, SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE):
+        v = st.session_state.get(DB_REGISTRY[fp]["state_key"])
+        v = sorted(v) if isinstance(v, set) else v
+        parts.append(json.dumps(v, sort_keys=True, ensure_ascii=False, default=str))
+    parts.append(repr(extra))
+    return hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()
+
+def warn_if_stale(sig_key, *extra, button_label):
+    """Hiện cảnh báo nếu kho đã đổi sau lần xử lý gần nhất (kết quả bên dưới là bản cũ). Trả về True nếu đã cũ."""
+    old = st.session_state.get(sig_key)
+    if old and old != data_signature(*extra):
+        st.warning(f"⚠️ **Kho dữ liệu (phiên âm / phân vai / màu / tên nhân vật) hoặc công tắc ở thanh bên đã thay đổi** "
+                   f"sau khi xử lý file này. Các file tải về bên dưới là **bản CŨ**, chưa có thay đổi mới. "
+                   f"Bấm lại nút **{button_label}** ở trên để xử lý lại.")
+        return True
+    return False
 
 def add_names(kind, names, move=False, slot="main"):
     """Thêm vào danh sách "tên người nói" (kind="spk") hoặc "không phải người nói" (kind="ns") — MỌI nơi đều đi qua đây.

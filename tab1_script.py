@@ -3,7 +3,7 @@ import os
 import time
 import pandas as pd
 from utils import (
-    kept_file_uploader,
+    kept_file_uploader, data_signature, warn_if_stale,
     scan_candidate_speakers, scan_english_words_in_dialogue, 
     generate_english_audio, process_docx, clean_file_name_for_output, 
     generate_actor_docx, save_json_db, CAST_DB_FILE, PHONETIC_DB_FILE, 
@@ -205,11 +205,13 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                     st.session_state['zip_name'] = clean_file_name_for_output(original_filename, tag="_KichBan_TachVai", ext=".zip")
                     st.session_state['stats'] = stats
                     st.session_state['_celebrate_tab1'] = True  # chỉ chúc mừng 1 lần ngay sau khi xử lý xong
-                    
+                    st.session_state['processed_sig'] = data_signature(enable_colors, enable_phonetic, enable_cast)
+
                 except Exception as e: st.error(f"Đã có lỗi xảy ra: {e}")
 
             if 'processed_docx' in st.session_state:
                 st.markdown("---")
+                warn_if_stale('processed_sig', enable_colors, enable_phonetic, enable_cast, button_label="✨ Bắt đầu định dạng tự động")
                 qc_warns = st.session_state['stats'].get("qc_warnings", [])
                 if qc_warns:
                     with st.expander("🔍 Cảnh báo chất lượng (tốc độ đọc, phân vai)", expanded=True):

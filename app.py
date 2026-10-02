@@ -8,7 +8,7 @@ import pandas as pd
 from collections import Counter
 
 from utils import (
-    init_databases, sheets_enabled, save_json_db, clear_kept_files, build_backup_excel, add_names, render_names_result,
+    init_databases, sheets_enabled, save_json_db, refresh_databases, auto_refresh_on_page_change, clear_kept_files, build_backup_excel, add_names, render_names_result,
     PHONETIC_DB_FILE, extract_phrases_from_file,
     scan_candidate_speakers, scan_english_words_in_dialogue
 )
@@ -102,6 +102,15 @@ if st.session_state.get("_db_save_error"):
 
 def _sidebar_gap():
     st.sidebar.markdown("<div class='mh-side-gap'></div>", unsafe_allow_html=True)  # khoảng trống nhỏ giữa các nhóm
+
+_sidebar_gap()
+if st.sidebar.button("🔄 Tải lại dữ liệu mới nhất", use_container_width=True, key="btn_refresh_db",
+                     help="Lấy bản mới nhất từ Google Sheets (phiên âm, phân vai, lương... người khác vừa lưu). "
+                          "Tool cũng tự lấy lại khi bạn chuyển sang trang khác."):
+    if refresh_databases(): st.toast("Đã tải dữ liệu mới nhất", icon="🔄")
+if st.session_state.get("_db_refresh_error"):
+    st.sidebar.error("⚠️ Chưa tải lại được dữ liệu mới (đang dùng bản cũ). Thử lại sau ít phút.\n\n"
+                     f"Chi tiết: {st.session_state['_db_refresh_error']}")
 
 _sidebar_gap()
 _banner = st.sidebar.segmented_control(
@@ -452,7 +461,9 @@ for _section, _perm, _fn, _title, _icon, _url in PAGE_DEFS:
         pages.setdefault(_section, []).append(st.Page(_fn, title=_title, icon=_icon, url_path=_url, default=_is_first))
 
 if pages:
-    st.navigation(pages, position="top").run()
+    _nav = st.navigation(pages, position="top")
+    auto_refresh_on_page_change(_nav.url_path)  # chuyển trang -> lấy dữ liệu mới người khác vừa lưu
+    _nav.run()
 else:
     st.info("Tài khoản của bạn chưa được cấp quyền dùng chức năng nào. Hãy liên hệ Quản trị.")
 

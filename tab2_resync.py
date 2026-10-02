@@ -3,7 +3,7 @@ import os
 import time
 import pandas as pd
 from utils import (
-    kept_file_uploader,
+    kept_file_uploader, data_signature, warn_if_stale,
     process_docx, clean_file_name_for_output, generate_actor_docx, 
     save_json_db, TRACKER_DB_FILE, record_video_in_tracker, project_picker
 )
@@ -53,7 +53,8 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     st.session_state['r_zip_name'] = clean_file_name_for_output(r_filename, tag="_KichBan_TachVai_Final", ext=".zip")
                     st.session_state['resync_stats'] = r_stats
                     st.session_state['_celebrate_tab2'] = True  # chỉ chúc mừng 1 lần ngay sau khi xử lý xong
-                    
+                    st.session_state['r_processed_sig'] = data_signature(enable_colors, enable_phonetic, enable_cast)
+
                     record_video_in_tracker(r_stats, r_name_no_ext, project_week_input, project_id_input)
                     save_json_db(TRACKER_DB_FILE, st.session_state['dubbing_tracker'])
                     
@@ -61,6 +62,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     
             if 'r_processed_docx' in st.session_state:
                 st.markdown("---")
+                warn_if_stale('r_processed_sig', enable_colors, enable_phonetic, enable_cast, button_label="✨ Bắt đầu Re-Sync (cỡ chữ 14)")
                 r_qc_warns = st.session_state['resync_stats'].get("qc_warnings", [])
                 if r_qc_warns:
                     with st.expander("🔍 Cảnh báo chất lượng (tốc độ đọc, phân vai)", expanded=True):

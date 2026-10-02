@@ -22,16 +22,40 @@ def fmt_ts(t):
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def wrap_lines(text, width=MAX_LINE):
-    """Chia 1 khung thành tối đa 2 dòng cân đối."""
-    if len(text) <= width: return [text]
+STYLE_HINT = "Hello, everyone! Welcome back to the channel. Today, we're trying something new, and I love it."  # giữ dấu câu + chữ hoa
+
+
+def split_two(text, width=MAX_LINE):
+    """Chia thành 2 dòng cân đối, CHỈ ngắt ở dấu cách. Không chia được -> None."""
     words = text.split(); best = None
     for i in range(1, len(words)):
         a, b = " ".join(words[:i]), " ".join(words[i:])
         if len(a) <= width and len(b) <= width:
             score = abs(len(a) - len(b)) - (8 if a.endswith((",", ".", "?", "!")) else 0)
             if best is None or score < best[0]: best = (score, a, b)
-    return [best[1], best[2]] if best else [text[:width], text[width:]]
+    return [best[1], best[2]] if best else None
+
+
+def fits(text):
+    return len(text) <= MAX_LINE or split_two(text) is not None
+
+
+def wrap_lines(text, width=MAX_LINE):
+    """Chia 1 khung thành tối đa 2 dòng cân đối (không bao giờ cắt giữa chữ)."""
+    if len(text) <= width: return [text]
+    two = split_two(text, width)
+    if two: return two
+    lines, cur = [], ""  # khung quá dài (hiếm): xuống dòng theo chữ
+    for w in text.split():
+        if cur and len(cur) + 1 + len(w) > width: lines.append(cur); cur = w
+        else: cur = (cur + " " + w).strip()
+    return lines + [cur]
+
+
+def join_words(ws):
+    """Nối chữ Whisper trả về: mỗi chữ đã kèm dấu cách đầu (" Nori", "-dusted", " 9", "2") -> nối thẳng,
+    KHÔNG thêm dấu cách (bản cũ thêm -> "Nori -dusted", "9 2", "McDonald' s")."""
+    return re.sub(r"\s+", " ", "".join(w[2] for w in ws)).strip()
 
 
 def build_cues(words):
@@ -39,20 +63,20 @@ def build_cues(words):
     cues, cur = [], []
     def flush():
         if cur:
-            txt = re.sub(r"\s+", " ", " ".join(w[2].strip() for w in cur)).strip()
+            txt = join_words(cur)
             if txt: cues.append([cur[0][0], cur[-1][1], txt])
         cur.clear()
     for w in words:
         if not w[2].strip(): continue
         if cur:
             gap = w[0] - cur[-1][1]
-            new_len = len(" ".join(x[2].strip() for x in cur + [w]))
-            too_long = new_len > MAX_LINE * MAX_LINES or (w[1] - cur[0][0]) > MAX_DUR
-            sentence_end = cur[-1][2].strip().endswith((".", "?", "!")) and new_len > 20
+            new_txt = join_words(cur + [w])
+            too_long = not fits(new_txt) or (w[1] - cur[0][0]) > MAX_DUR
+            sentence_end = cur[-1][2].strip().endswith((".", "?", "!")) and len(new_txt) > 20
             if too_long or gap >= PAUSE or sentence_end:
                 flush()
         cur.append(w)
-        if w[2].strip().endswith((".", "?", "!")) and len(" ".join(x[2].strip() for x in cur)) >= MAX_LINE * MAX_LINES * 0.75:
+        if w[2].strip().endswith((".", "?", "!")) and len(join_words(cur)) >= MAX_LINE * MAX_LINES * 0.75:
             flush()
     flush()
     for i, c in enumerate(cues):  # khung quá ngắn -> kéo dài (không chồng khung sau)
@@ -151,11 +175,16 @@ def read_wav(wav):
     return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def transcribe_file(model, wav, language="en", log=print):
+def transcribe_file(model, wav, language="en", log=print, keywords=""):
+    """keywords: tên riêng / từ khó của video ("Nick, Manny, McFlurry") -> gợi ý cho Whisper nghe đúng.
+    Gợi ý (hotwords) được gắn vào MỌI đoạn 30 giây, kèm 1 câu mẫu có dấu câu để Whisper không bỏ dấu chấm / chữ hoa
+    (bản cũ: có đoạn dài toàn chữ thường, không dấu)."""
     t0 = time.time()
+    hint = (STYLE_HINT + " " + keywords.strip()).strip() if language in ("en", "auto") else keywords.strip()
     segs, info = model.transcribe(read_wav(wav), language=None if language == "auto" else language, beam_size=5,
                                   vad_filter=True, vad_parameters={"min_silence_duration_ms": 400},
-                                  word_timestamps=True, condition_on_previous_text=False)
+                                  word_timestamps=True, condition_on_previous_text=False,
+                                  hotwords=hint or None)
     words, last = [], 0
     for seg in segs:
         for w in (seg.words or []):
@@ -166,7 +195,7 @@ def transcribe_file(model, wav, language="en", log=print):
     return build_cues(words)
 
 
-def run(paths, model_name="large-v3", language="en", log=print):
+def run(paths, model_name="large-v3", language="en", log=print, keywords=""):
     """Chạy cho danh sách file đã tải vào phiên. Trả về danh sách file .srt đã tạo."""
     model, dev = load_model(model_name, log)
     made = []
@@ -176,13 +205,13 @@ def run(paths, model_name="large-v3", language="en", log=print):
         try:
             wav = extract_audio(p); log("   ✔ đã tách tiếng" + ("" if p.lower().endswith(AUDIO_EXT) else " và xoá bản sao video trên Colab (video gốc trên máy bạn vẫn còn)"))
             try:
-                cues = transcribe_file(model, wav, language, log)
+                cues = transcribe_file(model, wav, language, log, keywords)
             except Exception as e:
                 if dev != "gpu" or not is_cuda_error(e): raise
                 log(f"   ⚠️ Card đồ hoạ lỗi ({str(e)[:120]}) — chuyển sang bộ xử lý thường và làm lại (CHẬM hơn).")
                 from faster_whisper import WhisperModel
                 model, dev = WhisperModel(model_name, device="cpu", compute_type="int8"), "cpu"
-                cues = transcribe_file(model, wav, language, log)
+                cues = transcribe_file(model, wav, language, log, keywords)
             srt = os.path.splitext(p)[0] + "_EN_whisper.srt"
             with open(srt, "w", encoding="utf-8") as f: f.write(to_srt(cues))
             made.append(srt); log(f"   ✔ {len(cues)} khung phụ đề → {os.path.basename(srt)}")
