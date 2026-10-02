@@ -8,7 +8,7 @@ import pandas as pd
 from collections import Counter
 
 from utils import (
-    init_databases, sheets_enabled, save_json_db, clear_kept_files, build_backup_excel, NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE,
+    init_databases, sheets_enabled, save_json_db, clear_kept_files, build_backup_excel, add_names, render_names_result,
     PHONETIC_DB_FILE, extract_phrases_from_file,
     scan_candidate_speakers, scan_english_words_in_dialogue
 )
@@ -215,11 +215,7 @@ if has_perm("kho_tu"):
             
                 if st.button(f"➕ Thêm ({len(selected_spks)}) Vai đã chọn vào Whitelist", use_container_width=True):
                     if selected_spks:
-                        st.session_state['custom_speakers'].update(selected_spks)
-                        save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                        st.success(f"🎉 Đã lưu {len(selected_spks)} tên vai vào Whitelist!")
-                        time.sleep(1)
-                        st.rerun()
+                        add_names("spk", selected_spks, slot="side"); st.rerun()
                     else:
                         st.warning("⚠️ Bạn chưa chọn tên vai nào!")
             else:
@@ -268,7 +264,8 @@ if has_perm("kho_tu"):
                 if st.button(f"➕ Thêm ({len(selected_words)}) Từ đã chọn vào Kho Phiên Âm", use_container_width=True):
                     if selected_words:
                         for w in selected_words:
-                            st.session_state['custom_phonetics'][w.upper()] = w
+                            # chỉ đánh dấu "chưa có phiên âm" cho từ CHƯA có trong kho (không đè phiên âm đã có)
+                            st.session_state['custom_phonetics'].setdefault(w.upper(), w)
                         save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
                         st.success(f"🎉 Đã lưu {len(selected_words)} từ vào Kho Phiên Âm!")
                         time.sleep(1)
@@ -280,6 +277,7 @@ if has_perm("kho_tu"):
 
     with st.sidebar.expander("🎭 Danh sách tên nhân vật", expanded=False):
         st.caption("Những tên này luôn được nhận là người nói.")
+        render_names_result("spk", slot="side")
         manual_spk_input = st.text_area("Nhập thủ công:", height=80, key=f"spk_manual_{st.session_state['spk_input_key']}")
         upload_spk_file = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"spk_uploader_{st.session_state['spk_input_key']}")
     
@@ -292,13 +290,12 @@ if has_perm("kho_tu"):
                 new_spks.update(extract_phrases_from_file(upload_spk_file, upload_spk_file.name))
             
             if new_spks:
-                st.session_state['custom_speakers'].update(new_spks)
-                save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                st.session_state['spk_input_key'] += 1
-                st.success(f"✅ Đã lưu {len(new_spks)} người nói!"); time.sleep(1); st.rerun()
+                add_names("spk", sorted(new_spks), slot="side")  # kiểm tra trùng / đang nằm ở "không phải tên" / gần giống
+                st.session_state['spk_input_key'] += 1; st.rerun()
 
     with st.sidebar.expander("🚫 Cụm từ không phải tên", expanded=False):
         st.caption("VD: \"Round 1:\", \"Update:\"... có dấu hai chấm nhưng không phải người nói.")
+        render_names_result("ns", slot="side")
         manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
         upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
     
@@ -311,10 +308,8 @@ if has_perm("kho_tu"):
                 new_phrases.update([p.upper() for p in extract_phrases_from_file(upload_non_speaker, upload_non_speaker.name)])
             
             if new_phrases:
-                st.session_state['custom_non_speakers'].update(new_phrases)
-                save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                st.session_state['ns_input_key'] += 1
-                st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
+                add_names("ns", sorted(new_phrases), slot="side")
+                st.session_state['ns_input_key'] += 1; st.rerun()
 
 if has_perm("sao_luu"):
     _sidebar_gap()

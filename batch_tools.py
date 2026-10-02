@@ -56,7 +56,8 @@ def render_batch_processing(is_resync, enable_colors, enable_phonetic, enable_ca
                         record_video_in_tracker(stats, name_no_ext, st.session_state.get("resync_project_week"),
                                                 st.session_state.get("resync_project_id"))
                     warns = stats.get("qc_warnings", [])
-                    integ = stats.get("integrity_report", {}).get("diff_issues", [])
+                    integ = list(stats.get("integrity_report", {}).get("diff_issues", []))
+                    if stats.get("integrity_report", {}).get("check_error"): integ.append("chưa kiểm tra được độ khớp")
                     summary.append({
                         "File": f.name, "Kết quả": "✅ Xong",
                         "Nhân vật": stats.get("total_speakers", 0), "Câu thoại": stats.get("total_lines", 0),

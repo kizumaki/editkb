@@ -68,6 +68,60 @@ def normalize_pho(s, proper=None):
 
 def _cap_first(s): return s[:1].upper() + s[1:]
 
+def norm_eng_key(s):
+    """Khoá tiếng Anh thống nhất: IN HOA, dấu nháy thẳng, 1 dấu cách ("McDonald’s " -> "MCDONALD'S")."""
+    s = unicodedata.normalize("NFC", str(s or "")).replace("’", "'").replace("‘", "'").replace("`", "'")
+    return re.sub(r"\s+", " ", s).strip().upper()
+
+def pho_missing(eng, pho):
+    """Chưa có phiên âm thật (trống, hoặc chỉ chép lại chữ tiếng Anh) -> không chèn vào kịch bản."""
+    p = strip_marks(str(pho or "")).lower().replace("-", "").replace(" ", "")
+    return not p or p == strip_marks(str(eng or "")).lower().replace("-", "").replace(" ", "").replace("'", "")
+
+def near_keys(eng, keys):
+    """Từ gần giống đã có trong kho: khác nhau chỉ ở số nhiều / 's / dấu cách / gạch nối."""
+    def core(k): return re.sub(r"('S|S)$", "", re.sub(r"[\s\-'.]", "", k))
+    c = core(eng)
+    return [k for k in keys if k != eng and core(k) == c]
+
+def norm_pair_key(a, b):
+    def n(x): return re.sub(r"\s+", " ", unicodedata.normalize("NFC", str(x or ""))).strip().rstrip(":").strip().upper()
+    return f"{n(a)}|{n(b)}" if n(a) and n(b) else ""
+
+def norm_term(t): return re.sub(r"\s+", " ", unicodedata.normalize("NFC", str(t or ""))).strip().lower()
+
+def merge_pronoun_rels(kho, items, known_terms=()):
+    """items: [(người nói, người nghe, xưng, gọi)]. Giống phiên âm: mới -> thêm; trùng -> bỏ qua; khác -> KHÔNG ghi đè.
+    Trả về added / same / conflicts [(khoá, cũ, mới)] / odd [(khoá, từ lạ)]."""
+    out = {"added": [], "same": [], "conflicts": [], "odd": []}
+    known = {norm_term(t) for t in known_terms}
+    for a, b, s, t in items:
+        k = norm_pair_key(a, b)
+        new = {"self": norm_term(s), "target": norm_term(t)}
+        if not k or not (new["self"] or new["target"]): continue
+        if known:
+            out["odd"] += [(k, w) for w in (new["self"], new["target"]) if w and w not in known]
+        cur = kho.get(k)
+        if not isinstance(cur, dict): kho[k] = new; out["added"].append((k, new))
+        elif {"self": norm_term(cur.get("self")), "target": norm_term(cur.get("target"))} == new: out["same"].append((k, new))
+        else: out["conflicts"].append((k, cur, new))
+    return out
+
+def merge_phonetics(kho, items):
+    """items: [(english, phiên âm đã chuẩn hoá)]. Thêm từ mới vào kho NGAY; từ trùng hệt bỏ qua;
+    từ có rồi mà khác -> KHÔNG ghi đè, trả về để người duyệt chọn. Trả về dict added/same/conflicts/near."""
+    out = {"added": [], "same": [], "conflicts": [], "near": []}
+    for eng, pho in items:
+        k = norm_eng_key(eng)
+        if not k or not pho: continue
+        cur = kho.get(k)
+        if cur is None or pho_missing(k, cur):
+            for n in near_keys(k, kho): out["near"].append((k, n, kho[n]))
+            kho[k] = pho; out["added"].append((k, pho))
+        elif cur == pho: out["same"].append((k, pho))
+        else: out["conflicts"].append((k, cur, pho))
+    return out
+
 def _sentence_start(before):
     b = before.rstrip()
     return not b or b[-1] in ".!?/…:\t" or bool(re.search(r"^\s*[^\s:]{1,30}:\s*$", b))
@@ -213,7 +267,7 @@ def learn(docx_files, srt_files, vn_syllables, pronoun_find_terms):
             spk[s.strip()] += 1; spk_src.setdefault(s.strip(), fname)
         for line in d["lines"]:
             for eng_raw, p in find_phonetic_pairs(line, vn_syllables, keep_case=True):
-                eng = eng_raw.upper()
+                eng = norm_eng_key(eng_raw)
                 pho[eng][normalize_pho(p)] += 1; pho_src.setdefault(eng, fname)
                 if not eng_raw.isupper(): pho_eng_case[eng][0 if eng_raw[:1].isupper() else 1] += 1
         turns = d["turns"]

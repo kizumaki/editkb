@@ -3,10 +3,60 @@ import re
 import time
 import pandas as pd
 from collections import Counter
-from utils import kept_file_uploader, PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df, is_candidate_english_word, clean_cell
+import io
+from utils import kept_file_uploader, PRONOUN_REL_DB_FILE, save_json_db, ENGLISH_WORD_REGEX, parse_any_script_file_to_df, is_candidate_english_word, clean_cell, log_event
+from learn_core import merge_pronoun_rels, norm_pair_key
 
 from pronoun_qc import (analyze as analyze_pronouns, SELF_TERMS as PRONOUN_SELF_TERMS, TARGET_TERMS as PRONOUN_TARGET_TERMS,
                         THIRD_TERMS as PRONOUN_THIRD_TERMS, KINSHIP_TERMS as PRONOUN_KIN_TERMS)
+
+KEEP, USE_NEW = "Giữ cũ", "Dùng mới"
+_KNOWN_TERMS = PRONOUN_SELF_TERMS + PRONOUN_TARGET_TERMS + PRONOUN_THIRD_TERMS + PRONOUN_KIN_TERMS
+
+
+def _rel_template():
+    buf = io.BytesIO()
+    pd.DataFrame({"Người nói": ["TYLER"], "Người nghe": ["BILL"], "Xưng": ["tui"], "Gọi": ["ông"]}).to_excel(buf, index=False)
+    return buf.getvalue()
+
+
+def _apply_rels(items, source):
+    """Mọi lần thêm quan hệ xưng hô đi qua đây: mới -> thêm; trùng -> bỏ qua; khác -> hỏi; từ lạ -> cảnh báo."""
+    kho = st.session_state['custom_pronoun_rel']
+    res = merge_pronoun_rels(kho, items, _KNOWN_TERMS)
+    if res["added"] and save_json_db(PRONOUN_REL_DB_FILE, kho):
+        log_event("Thêm quan hệ xưng hô", f"{source}: " + ", ".join(k for k, _ in res["added"])[:400])
+    st.session_state["_rel_result"] = res
+    st.session_state['pronoun_input_key'] = st.session_state.get('pronoun_input_key', 0) + 1
+    st.rerun()
+
+
+def _render_rel_result():
+    res = st.session_state.get("_rel_result")
+    if not res: return
+    if res.get("msg"): st.success(res["msg"])
+    if res["added"]: st.success(f"✅ Đã thêm {len(res['added'])} cặp: " + ", ".join(k.replace("|", " → ") for k, _ in res["added"][:8]))
+    if res["same"]: st.info(f"ℹ️ {len(res['same'])} cặp đã có sẵn, giống hệt — bỏ qua.")
+    if res["odd"]: st.warning("⚠️ Từ xưng/gọi **lạ** (không có trong bộ từ xưng hô, có thể gõ sai): " +
+                              "; ".join(f"«{w}» ({k.replace('|', ' → ')})" for k, w in res["odd"][:8]))
+    if res["conflicts"]:
+        st.warning(f"⚠️ {len(res['conflicts'])} cặp ĐÃ CÓ nhưng cách xưng hô KHÁC. App **chưa ghi đè** — chọn cho từng cặp:")
+        df = pd.DataFrame([{"Cặp": k.replace("|", " → "), "Kho đang có": f"{o.get('self')} / {o.get('target')}",
+                            "Mới nhập": f"{n['self']} / {n['target']}", "Chọn": KEEP} for k, o, n in res["conflicts"]])
+        ed = st.data_editor(df, hide_index=True, use_container_width=True, key=f"rel_conf_{st.session_state.get('pronoun_input_key', 0)}",
+                            column_config={c: st.column_config.TextColumn(disabled=True) for c in ("Cặp", "Kho đang có", "Mới nhập")} |
+                                          {"Chọn": st.column_config.SelectboxColumn(options=[KEEP, USE_NEW], required=True)})
+        if st.button("✔️ Áp dụng lựa chọn", type="primary", key="btn_rel_conf"):
+            kho = st.session_state['custom_pronoun_rel']
+            changed = [(k, o, n) for (k, o, n), (_, r) in zip(res["conflicts"], ed.iterrows()) if r["Chọn"] == USE_NEW]
+            for k, _, n in changed: kho[k] = n
+            if changed and save_json_db(PRONOUN_REL_DB_FILE, kho):
+                log_event("Sửa quan hệ xưng hô (chọn dùng mới)", "; ".join(f"{k}: {o} → {n}" for k, o, n in changed)[:500])
+            st.session_state["_rel_result"] = {"added": [], "same": [], "odd": [], "conflicts": [],
+                                               "msg": f"✅ Đã cập nhật {len(changed)} cặp, giữ nguyên {len(res['conflicts']) - len(changed)} cặp."}
+            st.rerun()
+    if st.button("Đóng thông báo", key="btn_rel_close"): st.session_state.pop("_rel_result", None); st.rerun()
+
 
 def render_tab7():
     st.subheader("Soát xưng hô & thuật ngữ")
@@ -19,26 +69,42 @@ def render_tab7():
 
     with subtab_pronoun:
         st.markdown("#### 1. Bảng Thiết Lập Quan Hệ Xưng Hô (Lưu Database)")
-        col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([2, 2, 1.5, 1.5, 1.2])
-        with col_p1: rel_spk_a = st.text_input("Người Nói (Speaker A):", placeholder="VD: TYLER", key=f"p_spk_a_{st.session_state.get('pronoun_input_key', 0)}").strip().upper()
-        with col_p2: rel_spk_b = st.text_input("Người Nghe (Speaker B):", placeholder="VD: BILL", key=f"p_spk_b_{st.session_state.get('pronoun_input_key', 0)}").strip().upper()
-        with col_p3: rel_self = st.text_input("Xưng (Self):", placeholder="VD: tui...", key=f"p_self_{st.session_state.get('pronoun_input_key', 0)}").strip().lower()
-        with col_p4: rel_target = st.text_input("Gọi (Target):", placeholder="VD: ông...", key=f"p_target_{st.session_state.get('pronoun_input_key', 0)}").strip().lower()
-        with col_p5:
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("➕ Thêm Xưng Hô", type="primary", use_container_width=True, key="btn_add_pronoun"):
-                if rel_spk_a and rel_spk_b and rel_self and rel_target:
-                    key_pair = f"{rel_spk_a}|{rel_spk_b}"
-                    st.session_state['custom_pronoun_rel'][key_pair] = {"self": rel_self, "target": rel_target}
-                    save_json_db(PRONOUN_REL_DB_FILE, st.session_state['custom_pronoun_rel'])
-                    st.session_state['pronoun_input_key'] = st.session_state.get('pronoun_input_key', 0) + 1
-                    st.success("✅ Đã lưu quan hệ xưng hô!"); time.sleep(1); st.rerun()
+        _render_rel_result()
+        ver = st.session_state.get('pronoun_input_key', 0)
+        t_hand, t_file = st.tabs(["✍️ Gõ tay", "📄 Tải file"])
+        with t_hand:
+            col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([2, 2, 1.5, 1.5, 1.2])
+            with col_p1: rel_spk_a = st.text_input("Người Nói (Speaker A):", placeholder="VD: TYLER", key=f"p_spk_a_{ver}")
+            with col_p2: rel_spk_b = st.text_input("Người Nghe (Speaker B):", placeholder="VD: BILL", key=f"p_spk_b_{ver}")
+            with col_p3: rel_self = st.text_input("Xưng (Self):", placeholder="VD: tui...", key=f"p_self_{ver}")
+            with col_p4: rel_target = st.text_input("Gọi (Target):", placeholder="VD: ông...", key=f"p_target_{ver}")
+            with col_p5:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("➕ Thêm Xưng Hô", type="primary", use_container_width=True, key="btn_add_pronoun"):
+                    if rel_spk_a.strip() and rel_spk_b.strip() and (rel_self.strip() or rel_target.strip()):
+                        _apply_rels([(rel_spk_a, rel_spk_b, rel_self, rel_target)], "gõ tay")
+                    else: st.warning("Điền Người nói, Người nghe và ít nhất 1 trong 2 ô Xưng/Gọi.")
+            k_now = norm_pair_key(rel_spk_a, rel_spk_b)
+            cur = st.session_state['custom_pronoun_rel'].get(k_now)
+            if isinstance(cur, dict): st.caption(f"ℹ️ Kho đang có cho cặp này: xưng **{cur.get('self')}**, gọi **{cur.get('target')}**")
+        with t_file:
+            st.caption("Excel/CSV 4 cột: **Người nói, Người nghe, Xưng, Gọi**.")
+            st.download_button("⬇️ Tải file mẫu (Excel)", data=_rel_template(), file_name="Mau_Xung_Ho.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_rel_tpl")
+            up = st.file_uploader("Chọn file", type=["xlsx", "xls", "csv"], key=f"rel_upload_{ver}")
+            if up and st.button("📥 Nạp file", type="primary", key="btn_rel_upload"):
+                try:
+                    df_up = (pd.read_csv(up, dtype=str) if up.name.lower().endswith(".csv") else pd.read_excel(up, dtype=str)).dropna(how="all")
+                    if df_up.shape[1] < 4: st.error("File cần đủ 4 cột: Người nói, Người nghe, Xưng, Gọi.")
+                    else: _apply_rels([tuple(clean_cell(x) for x in r[:4]) for r in df_up.itertuples(index=False)], f"file {up.name}")
+                except Exception as e: st.error(f"Không đọc được file: {e}")
 
         rel_db_dict = st.session_state.get('custom_pronoun_rel', {})
         if rel_db_dict:
             rel_data_table = []
             for pair_key, val in sorted(rel_db_dict.items()):
-                spk_a, spk_b = pair_key.split("|") if "|" in pair_key else (pair_key, "ALL")
+                spk_a, _, spk_b = pair_key.partition("|")
+                spk_b = spk_b or "ALL"
                 rel_data_table.append({
                     "Người Nói": spk_a, "Người Nghe": spk_b,
                     "Xưng (Self)": val.get("self", "tui"), "Gọi (Target)": val.get("target", "ông"),

@@ -5,7 +5,7 @@ import re
 import zipfile
 from docx import Document
 from docx.shared import Pt
-from utils import kept_file_uploader, clean_and_normalize_text
+from utils import decode_text, kept_file_uploader, clean_and_normalize_text
 
 def clean_docx_file(f_item):
     doc = Document(io.BytesIO(f_item.getvalue()))
@@ -97,8 +97,7 @@ def render_tab8():
                         f_ext = os.path.splitext(f_item.name)[1].lower()
 
                         if f_ext == '.srt':
-                            try: raw_str = f_item.getvalue().decode('utf-8')
-                            except UnicodeDecodeError: raw_str = f_item.getvalue().decode('latin-1')
+                            raw_str = decode_text(f_item.getvalue())
                             
                             cleaned_srt_lines = []
                             for block in re.split(r'\n\s*\n', raw_str.strip()):
@@ -137,8 +136,7 @@ def render_tab8():
                                 f_name_no_ext = os.path.splitext(f_item.name)[0]
                                 f_ext = os.path.splitext(f_item.name)[1].lower()
                                 if f_ext == '.srt':
-                                    try: raw_str = f_item.getvalue().decode('utf-8')
-                                    except UnicodeDecodeError: raw_str = f_item.getvalue().decode('latin-1')
+                                    raw_str = decode_text(f_item.getvalue())
                                     
                                     cleaned_srt_lines = []
                                     for block in re.split(r'\n\s*\n', raw_str.strip()):

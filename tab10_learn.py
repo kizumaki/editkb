@@ -7,8 +7,9 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 from utils import (
-    kept_file_uploader, save_json_db, log_event, clean_cell, VN_SYLLABLES,
-    PHONETIC_DB_FILE, SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE, CAST_DB_FILE, PRONOUN_REL_DB_FILE
+    decode_text,
+    kept_file_uploader, save_json_db, log_event, clean_cell, VN_SYLLABLES, add_names, render_names_result,
+    PHONETIC_DB_FILE, CAST_DB_FILE, PRONOUN_REL_DB_FILE
 )
 import learn_core as L
 import pronoun_qc
@@ -41,7 +42,7 @@ def _read_files(files):
             if name.endswith(".docx"):
                 docx.append((f.name, [p.text for p in Document(io.BytesIO(f.getvalue())).paragraphs]))
             elif name.endswith(".srt"):
-                text = f.getvalue().decode("utf-8-sig", errors="ignore")
+                text = decode_text(f.getvalue())
                 body = " ".join(l for l in text.splitlines() if l.strip() and not L.TIMECODE.match(l) and not l.strip().isdigit())
                 if len(L.VN_MARK.findall(body)) > 0.02 * max(len(body), 1): skipped.append(f"{f.name} (phụ đề tiếng Việt — chỉ dùng phụ đề gốc tiếng Anh)")
                 else: srt.append((f.name, text))
@@ -154,18 +155,22 @@ def _speakers(R):
             u = name.strip().upper()
             if u in have or u in seen or not u: continue
             seen.add(u)
-            rows.append({"Lưu": bool(n >= 2 and not L.has_vn(name) and not re.search(r"\d", name)),
-                         "Tên nhân vật": name.strip(), "Số lần": n, "Học từ": src})
+            in_ns = u in {x.upper() for x in st.session_state["custom_non_speakers"]}
+            rows.append({"Lưu": bool(n >= 2 and not in_ns and not L.has_vn(name) and not re.search(r"\d", name)),
+                         "Tên nhân vật": name.strip(), "Số lần": n, "Học từ": src,
+                         "Ghi chú": "⚠️ Đang nằm ở 'Không phải tên'" if in_ns else ""})
     if not rows: st.success("Danh sách tên nhân vật đã đủ."); return
     df = _editor(pd.DataFrame(rows), "spk", {
         "Tên nhân vật": st.column_config.TextColumn(disabled=True),
         "Số lần": st.column_config.NumberColumn(disabled=True, width="small"),
         "Học từ": st.column_config.TextColumn(disabled=True),
+        "Ghi chú": st.column_config.TextColumn(disabled=True),
     }, f"**{len(rows)}** tên chưa có trong danh sách. Tên tiếng Việt (\"Giọng nam\", \"Nữ 1\"...) không chọn sẵn vì kịch bản gốc tiếng Anh không dùng.")
     sel = df[df["Lưu"]]
+    render_names_result("spk", slot="learn")
     if st.button(f"💾 Lưu {len(sel)} tên nhân vật", type="primary", key="btn_save_spk", disabled=sel.empty):
-        st.session_state["custom_speakers"].update(sel["Tên nhân vật"].tolist())
-        if save_json_db(SPEAKER_DB_FILE, st.session_state["custom_speakers"]): _done("spk", len(sel), "tên nhân vật")
+        add_names("spk", sel["Tên nhân vật"].tolist(), slot="learn")  # trùng / đang ở "không phải tên" sẽ được hỏi lại
+        st.session_state["spk_v"] = st.session_state.get("spk_v", 0) + 1; st.rerun()
 
 
 # ---------- 3. không phải tên nhân vật ----------
@@ -184,9 +189,10 @@ def _non_speakers(R):
         "Ví dụ": st.column_config.TextColumn("Câu ví dụ trong phụ đề gốc", disabled=True),
     }, f"**{len(rows)}** cụm có dấu hai chấm trong phụ đề gốc nhưng KHÔNG phải tên người nói (VD: \"I was like:\"). Chọn sẵn cụm gặp từ 2 lần.")
     sel = df[df["Lưu"]]
+    render_names_result("ns", slot="learn")
     if st.button(f"💾 Lưu {len(sel)} cụm", type="primary", key="btn_save_ns", disabled=sel.empty):
-        st.session_state["custom_non_speakers"].update(sel["Cụm từ"].str.upper().tolist())
-        if save_json_db(NON_SPEAKER_DB_FILE, st.session_state["custom_non_speakers"]): _done("ns", len(sel), "cụm không phải tên nhân vật")
+        add_names("ns", sel["Cụm từ"].tolist(), slot="learn")
+        st.session_state["ns_v"] = st.session_state.get("ns_v", 0) + 1; st.rerun()
 
 
 # ---------- 4. phân vai ----------

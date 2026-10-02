@@ -10,10 +10,11 @@ from collections import Counter
 import pandas as pd
 from docx import Document
 from utils import (
+    decode_text,
     kept_file_uploader,
     process_srt_to_docx, process_docx_to_srt, parse_srt_to_dataframe, 
-    apply_excel_styles, find_all_speaker_tags, save_json_db, DEFAULT_NON_SPEAKER_PHRASES, 
-    NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE, TIMECODE_REGEX, generate_reaper_region_csv, 
+    apply_excel_styles, find_all_speaker_tags, DEFAULT_NON_SPEAKER_PHRASES, 
+    add_names, render_names_result, TIMECODE_REGEX, generate_reaper_region_csv, 
     generate_pro_tools_csv, generate_cmx3600_edl
 )
 
@@ -132,8 +133,7 @@ def render_tab9():
         uploaded_srt_excel = kept_file_uploader("Tải file .srt của bạn vào đây:", type=['srt'], key="tool_srt_to_excel")
         if uploaded_srt_excel is not None:
             try:
-                try: srt_content_excel = uploaded_srt_excel.getvalue().decode("utf-8")
-                except UnicodeDecodeError: srt_content_excel = uploaded_srt_excel.getvalue().decode("latin-1")
+                srt_content_excel = decode_text(uploaded_srt_excel.getvalue())
             except Exception:
                 st.error("Lỗi mã hóa file. Vui lòng đảm bảo file SRT của bạn ở chuẩn mã hóa UTF-8.")
                 srt_content_excel = None
@@ -167,27 +167,20 @@ def render_tab9():
                         if detected_srt_spk_disp:
                             st.write(", ".join([f"`{s}`" for s in detected_srt_spk_disp]))
                             to_move_ns_srt = st.multiselect("Phát hiện từ nào bị nhận diện sai? Chọn để LƯU VÀO DATABASE TỪ NHIỄU:", options=detected_srt_spk_names, key="select_srt_to_ns")
+                            render_names_result("ns", slot="tab9")
                             if st.button("➡️ Đưa vào Database TỪ NHIỄU", type="secondary", key="btn_srt_to_ns"):
                                 if to_move_ns_srt:
-                                    new_items = [item.upper() for item in to_move_ns_srt]
-                                    st.session_state['custom_non_speakers'].update(new_items)
-                                    save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                                    st.success(f"✅ Đã lưu {len(new_items)} từ vào Database Từ Nhiễu!")
-                                    time.sleep(1); st.rerun()
+                                    add_names("ns", to_move_ns_srt, move=True, slot="tab9"); st.rerun()
                         else: st.info("Chưa tìm thấy cụm từ người nói nào trong file SRT.")
 
                     with tab_srt_non_spk:
                         if detected_srt_non_spk_disp:
                             st.write(", ".join([f"`{s}`" for s in detected_srt_non_spk_disp]))
                             to_move_spk_srt = st.multiselect("Từ nào thực ra là NGƯỜI NÓI? Chọn để LƯU VÀO DATABASE NGƯỜI NÓI:", options=detected_srt_non_spk_names, key="select_srt_to_spk")
+                            render_names_result("spk", slot="tab9")
                             if st.button("➡️ Đưa vào Database NGƯỜI NÓI", type="secondary", key="btn_srt_to_spk"):
                                 if to_move_spk_srt:
-                                    st.session_state['custom_speakers'].update(to_move_spk_srt)
-                                    save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                                    for item in to_move_spk_srt: st.session_state['custom_non_speakers'].discard(item.upper())
-                                    save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                                    st.success(f"✅ Đã lưu {len(to_move_spk_srt)} tên vào Database Người Nói!")
-                                    time.sleep(1); st.rerun()
+                                    add_names("spk", to_move_spk_srt, move=True, slot="tab9"); st.rerun()
                         else: st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
 
                 st.markdown("---")
@@ -241,12 +234,11 @@ def render_tab9():
             custom_non_spks_m = st.session_state.get('custom_non_speakers', set())
             
             if m_filename.endswith('.srt'):
-                try: m_srt_text = uploaded_marker_file.getvalue().decode("utf-8")
-                except UnicodeDecodeError: m_srt_text = uploaded_marker_file.getvalue().decode("latin-1")
+                m_srt_text = decode_text(uploaded_marker_file.getvalue())
                 df_markers = parse_srt_to_dataframe(m_srt_text, custom_spks_m, custom_non_spks_m)
             else:
                 s_bytes = process_docx_to_srt(uploaded_marker_file)
-                m_srt_text = s_bytes.decode("utf-8", errors="ignore")
+                m_srt_text = decode_text(s_bytes)
                 df_markers = parse_srt_to_dataframe(m_srt_text, custom_spks_m, custom_non_spks_m)
 
             if not df_markers.empty:

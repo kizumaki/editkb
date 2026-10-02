@@ -23,9 +23,16 @@ def render_tab4():
         c_c1, c_c2, c_c3 = st.columns([2, 2, 1.2])
         with c_c1: add_role_eng = st.text_input("Tên Nhân vật (Tiếng Anh):", placeholder="VD: Bri, Chase...", key=f"add_role_eng_{st.session_state.get('cast_input_key', 0)}")
         with c_c2: add_actor_vn = st.text_input("Diễn viên Lồng tiếng (Tiếng Việt):", placeholder="VD: TRÚC, THIỆN...", key=f"add_actor_vn_{st.session_state.get('cast_input_key', 0)}")
+        k_now, v_now = add_role_eng.upper().strip(), add_actor_vn.strip().upper()
+        cur_actor = st.session_state['custom_cast_mapping'].get(k_now, "")
+        confirm_overwrite = True
+        if k_now and cur_actor and v_now and cur_actor != v_now:
+            confirm_overwrite = st.checkbox(f"⚠️ «{k_now}» đang do **{cur_actor}** lồng. Tích để ĐỔI sang **{v_now}**.", key=f"cast_confirm_{k_now}_{v_now}")
+        elif k_now and cur_actor and cur_actor == v_now:
+            st.caption(f"ℹ️ «{k_now}» đã là {cur_actor} — không cần thêm.")
         with c_c3:
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast"):
+            if st.button("➕ Thêm Phân Vai", use_container_width=True, type="primary", key="btn_add_cast", disabled=not confirm_overwrite):
                 if add_role_eng and add_actor_vn:
                     k = add_role_eng.upper().strip(); v = add_actor_vn.strip().upper()
                     st.session_state['custom_cast_mapping'][k] = v
@@ -145,9 +152,12 @@ def render_tab4():
             with col_col3:
                 enable_hc = st.checkbox("Tô Highlight Nền", value=False, key=f"chk_hc_{st.session_state.get('color_input_key', 0)}")
                 new_hl_hex = st.color_picker("Chọn Màu Highlight:", "#FFFF00", key=f"add_hc_picker_{st.session_state.get('color_input_key', 0)}") if enable_hc else None
+            color_ok = True
+            if new_color_spk and new_color_spk in fixed_color_dict:
+                color_ok = st.checkbox(f"⚠️ «{new_color_spk}» ĐÃ CÓ màu riêng. Tích để GHI ĐÈ bằng màu mới.", key=f"color_confirm_{new_color_spk}")
             with col_col4:
                 st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                if st.button("➕ Thêm Quy Tắc Màu", use_container_width=True, type="primary", key="btn_add_fixed_color"):
+                if st.button("➕ Thêm Quy Tắc Màu", use_container_width=True, type="primary", key="btn_add_fixed_color", disabled=not color_ok):
                     if new_color_spk:
                         tc_tuple = hex_to_rgb(new_text_hex) if enable_tc else None
                         hc_tuple = hex_to_rgb(new_hl_hex) if enable_hc else None

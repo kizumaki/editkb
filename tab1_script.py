@@ -7,8 +7,9 @@ from utils import (
     scan_candidate_speakers, scan_english_words_in_dialogue, 
     generate_english_audio, process_docx, clean_file_name_for_output, 
     generate_actor_docx, save_json_db, CAST_DB_FILE, PHONETIC_DB_FILE, 
-    SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE, DEFAULT_NON_SPEAKER_PHRASES, clean_cell
+    DEFAULT_NON_SPEAKER_PHRASES, clean_cell, add_names, render_names_result
 )
+from learn_core import norm_eng_key, pho_missing
 from batch_tools import render_batch_processing
 
 def render_tab1(enable_colors, enable_phonetic, enable_cast):
@@ -102,13 +103,10 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                             options=[name for name in candidates.keys() if name.upper() not in non_spk_phrases],
                             key="select_to_ns"
                         )
+                        render_names_result("ns", slot="tab1")
                         if st.button("➡️ Chuyển sang \"không phải tên nhân vật\"", type="secondary"):
                             if to_move_to_ns:
-                                new_items = [item.upper() for item in to_move_to_ns]
-                                st.session_state['custom_non_speakers'].update(new_items)
-                                save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                                st.success(f"✅ Đã lưu {len(new_items)} từ vào Database Từ Nhiễu!")
-                                time.sleep(1); st.rerun()
+                                add_names("ns", to_move_to_ns, move=True, slot="tab1"); st.rerun()  # chuyển hẳn: bỏ khỏi danh sách tên
                     else: st.info("Chưa tìm thấy cụm từ người nói nào.")
 
                 with tab_non_spk:
@@ -119,14 +117,10 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                             options=[name for name in candidates.keys() if name.upper() in non_spk_phrases],
                             key="select_to_spk"
                         )
+                        render_names_result("spk", slot="tab1")
                         if st.button("➡️ Chuyển sang danh sách tên nhân vật", type="secondary"):
                             if to_move_to_spk:
-                                st.session_state['custom_speakers'].update(to_move_to_spk)
-                                save_json_db(SPEAKER_DB_FILE, st.session_state['custom_speakers'])
-                                for item in to_move_to_spk: st.session_state['custom_non_speakers'].discard(item.upper())
-                                save_json_db(NON_SPEAKER_DB_FILE, st.session_state['custom_non_speakers'])
-                                st.success(f"✅ Đã lưu {len(to_move_to_spk)} tên vào Database Người Nói!")
-                                time.sleep(1); st.rerun()
+                                add_names("spk", to_move_to_spk, move=True, slot="tab1"); st.rerun()
                     else: st.info("Không có cụm từ nào bị loại vào danh sách từ nhiễu.")
 
             with st.container(border=True):
@@ -156,12 +150,13 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                     
                     table_data = []
                     for word in detected_eng_words:
-                        current_pho = st.session_state['custom_phonetics'].get(word.upper(), word)
+                        current_pho = st.session_state['custom_phonetics'].get(norm_eng_key(word), "")
+                        if pho_missing(word, current_pho): current_pho = ""  # "Pizza -> Pizza" = chưa có phiên âm
                         table_data.append({
                             "Từ Tiếng Anh": word,
-                            "Phiên âm hiện tại": current_pho,
+                            "Phiên âm hiện tại": current_pho or "(chưa có)",
                             "Đề xuất chỉnh sửa của bạn": current_pho,
-                            "Nạp vào Database": True
+                            "Nạp vào Database": False
                         })
 
                     df_eng = pd.DataFrame(table_data)
@@ -182,15 +177,15 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
 
                     if st.button("💾 Lưu phiên âm vào kho", type="secondary", use_container_width=True):
                         updated_count = 0
+                        kho = st.session_state['custom_phonetics']
                         for _, row in edited_df.iterrows():
-                            if row["Nạp vào Database"]:
-                                eng_k = clean_cell(row["Từ Tiếng Anh"]).upper()
-                                pho_v = clean_cell(row["Đề xuất chỉnh sửa của bạn"])
-                                if pho_v:
-                                    st.session_state['custom_phonetics'][eng_k] = pho_v
-                                    updated_count += 1
-                        
-                        save_json_db(PHONETIC_DB_FILE, st.session_state['custom_phonetics'])
+                            eng_k = norm_eng_key(clean_cell(row["Từ Tiếng Anh"]))
+                            pho_v = clean_cell(row["Đề xuất chỉnh sửa của bạn"])
+                            # Chỉ lưu dòng được tích, có phiên âm THẬT (không phải chép lại chữ tiếng Anh) và khác kho
+                            if row["Nạp vào Database"] and pho_v and not pho_missing(eng_k, pho_v) and pho_v != kho.get(eng_k):
+                                kho[eng_k] = pho_v
+                                updated_count += 1
+                        if updated_count: save_json_db(PHONETIC_DB_FILE, kho)
                         st.success(f"✅ Đã cập nhật {updated_count} từ phiên âm vào Database!")
                         time.sleep(1); st.rerun()
                 else: st.info("Không phát hiện từ Tiếng Anh / Tên riêng nước ngoài nào trong phần lời thoại kịch bản này.")

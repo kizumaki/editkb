@@ -80,7 +80,10 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                         ic4.metric("Dòng thoại (Final)", integrity.get("line_out_cnt", 0))
                         
                         diff_issues = integrity.get("diff_issues", [])
-                        if not diff_issues:
+                        if integrity.get("check_error"):
+                            st.error("❌ CHƯA kiểm tra được độ khớp giữa 2 file (bước so sánh gặp lỗi). Hãy tự soát kỹ file Final. "
+                                     f"Chi tiết: {integrity['check_error']}")
+                        elif not diff_issues:
                             st.success("✅ Không thấy sai lệch: số mốc timecode khớp, không có câu thoại nào bị hụt chữ đáng kể.")
                         else:
                             st.warning(f"⚠️ Phát hiện **{len(diff_issues)}** điểm sai lệch cần lưu ý:")

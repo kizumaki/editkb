@@ -235,6 +235,22 @@ DB_REGISTRY = {
                             "json_fields": {"rows"}, "num_fields": {"total"}},
 }
 
+def decode_text(b):
+    """Đọc chữ từ file tải lên: UTF-8 (có/không BOM), UTF-16 ("Unicode" của Notepad), bảng mã tiếng Việt Windows (cp1258).
+    Bản cũ thử utf-8 rồi rơi về latin-1 -> chữ Việt thành ký tự rác mà không báo gì."""
+    if isinstance(b, str): return b
+    if b.startswith(b"\xef\xbb\xbf"): return b[3:].decode("utf-8", errors="replace")
+    if b.startswith((b"\xff\xfe", b"\xfe\xff")): return b.decode("utf-16", errors="replace")
+    try: return b.decode("utf-8")
+    except UnicodeDecodeError: pass
+    if len(b) > 1 and (b[1:2] == b"\x00" or b[:1] == b"\x00"):
+        try: return b.decode("utf-16-le" if b[1:2] == b"\x00" else "utf-16-be")
+        except UnicodeDecodeError: pass
+    for enc in ("cp1258", "cp1252"):
+        try: return b.decode(enc)
+        except UnicodeDecodeError: pass
+    return b.decode("latin-1")
+
 def log_event(action, detail=""):
     """Ghi 1 dòng nhật ký (ai, lúc nào, làm gì). Lỗi ghi nhật ký không được làm hỏng thao tác chính."""
     from datetime import datetime, timedelta, timezone
@@ -435,10 +451,23 @@ def save_json_db(filepath, data_container):
     tab = _tab_name(filepath)
     base = st.session_state.get("_db_base", {}).get(filepath, cfg["default"]())
     if filepath == PHONETIC_DB_FILE and isinstance(data_container, dict):
-        from learn_core import normalize_pho  # quy chuẩn phiên âm cho MỌI đường lưu (sửa lỗi gõ, dấu cách quanh gạch nối)
+        from learn_core import normalize_pho, norm_eng_key  # quy chuẩn cho MỌI đường lưu (lỗi gõ, dấu nháy, dấu cách)
         for k in list(data_container):
-            v = normalize_pho(data_container[k])
-            if v: data_container[k] = v
+            v = normalize_pho(data_container[k]) or data_container[k]
+            nk = norm_eng_key(k)
+            if nk != k:
+                data_container.pop(k)
+                if nk in data_container: continue  # khoá chuẩn đã có thì giữ bản đó
+            if nk: data_container[nk] = v
+    if filepath == PRONOUN_REL_DB_FILE and isinstance(data_container, dict):
+        from learn_core import norm_pair_key, norm_term  # tên viết hoa, từ xưng hô viết thường, bỏ dấu cách thừa
+        for k in list(data_container):
+            v = data_container[k]
+            a, _, b = str(k).partition("|")
+            nk = norm_pair_key(a, b or "ALL")
+            nv = {"self": norm_term(v.get("self")), "target": norm_term(v.get("target"))} if isinstance(v, dict) else v
+            if nk != k: data_container.pop(k)
+            if nk and not (nk != k and nk in data_container): data_container[nk] = nv
     try:
         if sheets_enabled():
             sh = _get_spreadsheet()
@@ -503,6 +532,54 @@ def reload_json_db(filepath):
     st.session_state[cfg["state_key"]] = data
     _set_base(filepath, data)
     return True
+
+def add_names(kind, names, move=False, slot="main"):
+    """Thêm vào danh sách "tên người nói" (kind="spk") hoặc "không phải người nói" (kind="ns") — MỌI nơi đều đi qua đây.
+    - Trùng (không phân biệt hoa/thường) -> bỏ qua.
+    - Đang nằm ở danh sách BÊN KIA -> nếu move=True (nút "Chuyển sang...") thì chuyển; nếu không thì để người dùng quyết.
+    - Gần giống tên đã có -> vẫn thêm nhưng báo để kiểm tra.
+    Trả về dict added / same / cross / near."""
+    from learn_core import near_keys
+    spk, ns = st.session_state['custom_speakers'], st.session_state['custom_non_speakers']
+    target, other = (spk, ns) if kind == "spk" else (ns, spk)
+    t_up = {str(x).upper(): x for x in target}
+    o_up = {str(x).upper(): x for x in other}
+    res = {"added": [], "same": [], "cross": [], "near": []}
+    moved = False
+    for n in names:
+        n = re.sub(r"\s+", " ", str(n or "")).strip().rstrip(":").strip()
+        if not n: continue
+        u = n.upper()
+        val = n if kind == "spk" else u
+        if u in t_up: res["same"].append(n); continue
+        if u in o_up:
+            if not move: res["cross"].append(n); continue
+            other.discard(o_up.pop(u)); moved = True
+        res["near"] += [(n, t_up[k]) for k in near_keys(u, t_up)]
+        target.add(val); t_up[u] = val; res["added"].append(n)
+    t_file, o_file = (SPEAKER_DB_FILE, NON_SPEAKER_DB_FILE) if kind == "spk" else (NON_SPEAKER_DB_FILE, SPEAKER_DB_FILE)
+    if res["added"] and save_json_db(t_file, target):
+        log_event("Thêm " + ("tên người nói" if kind == "spk" else "cụm không phải người nói"), ", ".join(res["added"])[:500])
+    if moved: save_json_db(o_file, other)
+    res["slot"] = slot  # chỉ hiện thông báo ở đúng nơi vừa bấm lưu
+    st.session_state[f"_names_res_{kind}"] = res
+    return res
+
+def render_names_result(kind, where=None, slot="main"):
+    """Hiện kết quả add_names + hỏi về các mục đang nằm ở danh sách bên kia."""
+    where = where or st
+    res = st.session_state.get(f"_names_res_{kind}")
+    if not res or res.get("slot", "main") != slot: return
+    here, there = ("tên người nói", "không phải người nói") if kind == "spk" else ("không phải người nói", "tên người nói")
+    if res["added"]: where.success(f"✅ Đã thêm {len(res['added'])}: " + ", ".join(res["added"][:10]) + (" ..." if len(res["added"]) > 10 else ""))
+    if res["same"]: where.info(f"ℹ️ {len(res['same'])} mục đã có sẵn — bỏ qua.")
+    if res["near"]: where.warning("⚠️ Gần giống mục đã có, kiểm tra trùng: " + "; ".join(f"«{a}» ~ «{b}»" for a, b in res["near"][:6]))
+    if res["cross"]:
+        where.warning(f"⚠️ {len(res['cross'])} mục đang nằm ở danh sách **{there}** — chưa thêm. Chọn mục muốn CHUYỂN sang **{here}**:")
+        pick = where.multiselect("Chuyển các mục:", res["cross"], key=f"names_cross_{kind}_{slot}_{len(res['cross'])}")
+        if where.button("➡️ Chuyển", key=f"btn_names_cross_{kind}_{slot}", disabled=not pick):
+            add_names(kind, pick, move=True, slot=slot); st.rerun()
+    if where.button("Đóng thông báo", key=f"btn_names_close_{kind}_{slot}"): st.session_state.pop(f"_names_res_{kind}", None); st.rerun()
 
 def ensure_payroll_ready():
     """Lần đầu dùng bản lương theo dự án: tạo "Dự án mặc định" và gán các video cũ vào đó (lưu luôn lên kho)."""
@@ -971,8 +1048,7 @@ def apply_excel_styles(df):
 
 def parse_any_script_file_to_df(file_bytes, filename, custom_speakers=None, non_speakers=None, default_speaker="Unknown"):
     if filename.lower().endswith('.srt'):
-        try: content_str = file_bytes.decode('utf-8')
-        except UnicodeDecodeError: content_str = file_bytes.decode('latin-1')
+        content_str = decode_text(file_bytes)
         return parse_srt_to_dataframe(content_str, custom_speakers, non_speakers, default_speaker)
     elif filename.lower().endswith('.docx'):
         doc = Document(io.BytesIO(file_bytes))
@@ -1223,7 +1299,7 @@ def generate_cmx3600_edl(df):
     return "\n".join(lines)
 
 def process_srt_to_docx(uploaded_file, file_name_without_ext):
-    srt_content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
+    srt_content = decode_text(uploaded_file.getvalue())
     blocks = re.split(r'\n\s*\n', srt_content.strip())
     document = Document()
     for section in document.sections:
@@ -1326,8 +1402,7 @@ def extract_strings_from_uploaded_file(uploaded_file):
     fname = uploaded_file.name.lower()
     raw_lines = []
     if fname.endswith('.srt') or fname.endswith('.txt'):
-        try: content_str = uploaded_file.getvalue().decode('utf-8')
-        except Exception: content_str = uploaded_file.getvalue().decode('latin-1', errors='ignore')
+        content_str = decode_text(uploaded_file.getvalue())
         raw_lines = [l.strip() for l in content_str.split('\n') if l.strip()]
     elif fname.endswith('.docx'):
         doc = Document(io.BytesIO(uploaded_file.getvalue()))
@@ -1392,7 +1467,7 @@ def extract_phrases_from_file(file_io, file_name):
     phrases = set()
     try:
         if file_name.endswith('.txt'):
-            content = file_io.getvalue().decode("utf-8")
+            content = decode_text(file_io.getvalue())
             phrases.update([line.strip() for line in content.split('\n') if line.strip()])
         elif file_name.endswith('.docx'):
             doc = Document(io.BytesIO(file_io.getvalue()))
@@ -1449,10 +1524,10 @@ _PHO_DB_CACHE = {}
 
 def _normalized_pho_db(db):
     """Bản đã quy chuẩn của kho phiên âm (nhớ tạm theo nội dung để không tính lại mỗi câu)."""
-    from learn_core import normalize_pho
+    from learn_core import normalize_pho, pho_missing
     sig = (id(db), len(db), hash(tuple(sorted(db.items()))) if len(db) < 20000 else 0)
-    if _PHO_DB_CACHE.get("sig") != sig:
-        _PHO_DB_CACHE.update(sig=sig, db={k: normalize_pho(v) or v for k, v in db.items()})
+    if _PHO_DB_CACHE.get("sig") != sig:  # bỏ từ "chưa có phiên âm" (VD: PIZZA -> Pizza) để không chèn "Pizza (Pizza)"
+        _PHO_DB_CACHE.update(sig=sig, db={k: normalize_pho(v) or v for k, v in db.items() if not pho_missing(k, v)})
     return _PHO_DB_CACHE["db"]
 
 def _standardize_phonetics(text, phonetic_db):
@@ -1652,13 +1727,15 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
         next_match_start = speaker_tags[i+1][0] if i + 1 < len(speaker_tags) else len(text)
             
         content = re.sub(r'^\s*[\t\s]+', '', text[end_pos:next_match_start]).strip()
-        raw_actor = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+        cast_map = st.session_state.get('_script_cast') or st.session_state['custom_cast_mapping']  # bản riêng của file đang xử lý
+        raw_actor = cast_map.get(speaker_name.upper(), "").strip().upper()
         actor_name = raw_actor if is_valid_actor_name_strict(raw_actor) else ""
-        
+
         if not actor_name:
             first_word = content.split()[0].upper().strip(".,!?:;") if content.split() else ""
-            if first_word and first_word in st.session_state['custom_cast_mapping'].values() and is_valid_actor_name_strict(first_word):
-                actor_name = first_word; st.session_state['custom_cast_mapping'][speaker_name.upper()] = actor_name
+            if first_word and first_word in cast_map.values() and is_valid_actor_name_strict(first_word):
+                actor_name = first_word
+                if cast_map is not st.session_state['custom_cast_mapping']: cast_map[speaker_name.upper()] = actor_name
 
         if actor_name and content.startswith(actor_name):
             content = content[len(actor_name):].strip()
@@ -1855,12 +1932,16 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
     header_zone = processed_strings[:first_timecode_idx] if first_timecode_idx > 0 else []
     body_zone = processed_strings[first_timecode_idx:] if first_timecode_idx > 0 else processed_strings
     
+    # Phân vai ghi ở phần "VAI:" của file CHỈ áp dụng cho chính file này — KHÔNG ghi vào bảng phân vai chung
+    # (bản cũ ghi thẳng vào kho chung -> file cũ "Preston: THỊNH" có thể đè KHÁNH của cả team ở lần lưu sau).
+    script_cast = dict(st.session_state['custom_cast_mapping'])
+    st.session_state['_script_cast'] = script_cast
     for h_line in header_zone:
         if ":" in h_line and not h_line.lower().startswith("srt conversion"):
             parts = h_line.split(":", 1)
             spk_k = parts[0].strip().upper(); act_v = parts[1].strip().upper()
             if is_valid_speaker_name(spk_k) and is_valid_actor_name_strict(act_v):
-                st.session_state['custom_cast_mapping'][spk_k] = act_v
+                script_cast[spk_k] = act_v
 
     document = Document()
     for section in document.sections:
@@ -1882,7 +1963,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         for _, _, speaker_name, _ in spk_tags:
             if speaker_name not in unique_speakers:
                 unique_speakers.append(speaker_name)
-                act = st.session_state['custom_cast_mapping'].get(speaker_name.upper(), "").strip().upper()
+                act = script_cast.get(speaker_name.upper(), "").strip().upper()
                 if act and is_valid_actor_name_strict(act):
                     if act not in assigned_actors: assigned_actors.append(act)
                 else:
@@ -1913,7 +1994,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
                     if spk_hl:
                         apply_speaker_styling_to_run(r_spk_name, (spk_color[0], spk_color[1], spk_color[2]) if spk_color else None, (spk_hl[0], spk_hl[1], spk_hl[2]))
                     
-                actor = st.session_state['custom_cast_mapping'].get(spk.upper(), "").strip().upper()
+                actor = script_cast.get(spk.upper(), "").strip().upper()
                 if actor and not is_all and is_valid_actor_name_strict(actor):
                     r_actor = p_spk.add_run(actor)
                     r_actor.font.name = 'Times New Roman'; r_actor.font.size = Pt(font_size_pt); r_actor.font.bold = True
@@ -2035,8 +2116,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     
     try:
         integrity_report = check_resync_integrity(body_zone, srt_dialogues)
-    except Exception:
-        integrity_report = {"tc_in_cnt": 0, "tc_out_cnt": 0, "line_in_cnt": 0, "line_out_cnt": 0, "diff_issues": []}
+    except Exception as e:  # KHÔNG được báo "không sai lệch" khi thực ra chưa kiểm tra được
+        integrity_report = {"tc_in_cnt": 0, "tc_out_cnt": 0, "line_in_cnt": 0, "line_out_cnt": 0, "diff_issues": [],
+                            "check_error": str(e)[:200]}
     
     stats = {
         "total_speakers": len(unique_speakers),
