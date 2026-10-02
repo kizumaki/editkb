@@ -24,6 +24,7 @@ from tab8_cleaner import render_tab8
 from tab9_tools import render_tab9
 from tab10_learn import render_tab10
 from tab11_overview import render_tab11
+from tab12_whisper import render_tab12
 from auth import require_login, render_user_box, render_accounts_page, has_perm, is_admin
 from ui_effects import inject_effects, render_mascot
 
@@ -430,6 +431,7 @@ st.markdown(f"""
 PAGE_DEFS = [
     ("Kịch bản", "goc", lambda: render_tab1(enable_colors, enable_phonetic, enable_cast), "Xử lý kịch bản gốc", ":material/description:", "kich-ban-goc"),
     ("Kịch bản", "resync", lambda: render_tab2(enable_colors, enable_phonetic, enable_cast), "Re-Sync bản đã biên tập", ":material/sync:", "re-sync"),
+    ("Kịch bản", "goc", render_tab12, "Tạo phụ đề tiếng Anh (Whisper)", ":material/hearing:", "whisper"),
     ("Kiểm tra chất lượng", "doi_chieu", lambda: render_tab6(enable_colors, enable_phonetic, enable_cast), "Đối chiếu 2 file tiếng Anh", ":material/compare_arrows:", "doi-chieu"),
     ("Kiểm tra chất lượng", "soat_xung_ho", render_tab7, "Soát xưng hô & thuật ngữ", ":material/fact_check:", "soat-xung-ho"),
     ("Quản lý", "luong", render_tab11, "Tổng quan công việc", ":material/dashboard:", "tong-quan"),

@@ -1,0 +1,147 @@
+"""Lõi công cụ "Tạo phụ đề tiếng Anh bằng Whisper" (chạy trên Google Colab; cũng chạy được trên máy để thử).
+Notebook `Tao_phu_de_Whisper.ipynb` tải file này từ GitHub rồi gọi `run()`.
+
+- Nhận file TIẾNG hoặc VIDEO (bản sao người dùng tải lên phiên Colab). Video: tự tách tiếng rồi XOÁ BẢN SAO ngay — file gốc trên máy người dùng không bị đụng tới.
+- faster-whisper: thử card đồ hoạ (GPU) trước; lỗi/không có thì tự chuyển sang CPU (chậm hơn) và báo rõ.
+- Chia phụ đề theo chuẩn: tối đa 42 ký tự/dòng, 2 dòng/khung, 6 giây/khung; ngắt ở dấu câu hoặc chỗ ngừng nói.
+- Xong: tự tải file .srt về máy, xoá hết file tạm trong phiên.
+"""
+import os
+import re
+import shutil
+import subprocess
+import time
+
+AUDIO_EXT = (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma")
+MAX_LINE, MAX_LINES, MAX_DUR, MIN_DUR, PAUSE = 42, 2, 6.0, 0.8, 0.6
+
+
+def fmt_ts(t):
+    t = max(0.0, t); ms = int(round(t * 1000))
+    h, ms = divmod(ms, 3600000); m, ms = divmod(ms, 60000); s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def wrap_lines(text, width=MAX_LINE):
+    """Chia 1 khung thành tối đa 2 dòng cân đối."""
+    if len(text) <= width: return [text]
+    words = text.split(); best = None
+    for i in range(1, len(words)):
+        a, b = " ".join(words[:i]), " ".join(words[i:])
+        if len(a) <= width and len(b) <= width:
+            score = abs(len(a) - len(b)) - (8 if a.endswith((",", ".", "?", "!")) else 0)
+            if best is None or score < best[0]: best = (score, a, b)
+    return [best[1], best[2]] if best else [text[:width], text[width:]]
+
+
+def build_cues(words):
+    """words: [(start, end, text)] theo thứ tự. Trả về [(start, end, text)] khung phụ đề."""
+    cues, cur = [], []
+    def flush():
+        if cur:
+            txt = re.sub(r"\s+", " ", " ".join(w[2].strip() for w in cur)).strip()
+            if txt: cues.append([cur[0][0], cur[-1][1], txt])
+        cur.clear()
+    for w in words:
+        if not w[2].strip(): continue
+        if cur:
+            gap = w[0] - cur[-1][1]
+            new_len = len(" ".join(x[2].strip() for x in cur + [w]))
+            too_long = new_len > MAX_LINE * MAX_LINES or (w[1] - cur[0][0]) > MAX_DUR
+            sentence_end = cur[-1][2].strip().endswith((".", "?", "!")) and new_len > 20
+            if too_long or gap >= PAUSE or sentence_end:
+                flush()
+        cur.append(w)
+        if w[2].strip().endswith((".", "?", "!")) and len(" ".join(x[2].strip() for x in cur)) >= MAX_LINE * MAX_LINES * 0.75:
+            flush()
+    flush()
+    for i, c in enumerate(cues):  # khung quá ngắn -> kéo dài (không chồng khung sau)
+        if c[1] - c[0] < MIN_DUR:
+            nxt = cues[i + 1][0] if i + 1 < len(cues) else c[0] + MIN_DUR
+            c[1] = min(c[0] + MIN_DUR, max(c[1], nxt - 0.05))
+    return [tuple(c) for c in cues]
+
+
+def to_srt(cues):
+    out = []
+    for i, (s, e, t) in enumerate(cues, 1):
+        out.append(f"{i}\n{fmt_ts(s)} --> {fmt_ts(e)}\n" + "\n".join(wrap_lines(t)) + "\n")
+    return "\n".join(out)
+
+
+def extract_audio(path):
+    """Video/tiếng bất kỳ -> wav 16kHz 1 kênh. Video gốc bị XOÁ ngay sau khi tách."""
+    out = os.path.splitext(path)[0] + "_tieng.wav"
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vn", "-ac", "1", "-ar", "16000", out],
+                       capture_output=True, text=True)
+    if r.returncode != 0: raise RuntimeError("Không tách được tiếng: " + (r.stderr or "")[-300:])
+    if not path.lower().endswith(AUDIO_EXT): os.remove(path)  # xoá video ngay
+    return out
+
+
+def load_model(name="large-v3", log=print):
+    from faster_whisper import WhisperModel
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            m = WhisperModel(name, device="cuda", compute_type="float16")
+            log("⚡ Đang dùng CARD ĐỒ HOẠ (nhanh).")
+            return m, "gpu"
+    except Exception as e:
+        log(f"⚠️ Không dùng được card đồ hoạ ({str(e)[:120]}) — chuyển sang chạy thường (chậm hơn).")
+    log("🐢 Không có card đồ hoạ — chạy bằng bộ xử lý thường, sẽ CHẬM. Gợi ý: Thời gian chạy → Đổi loại thời gian chạy → GPU T4.")
+    return WhisperModel(name, device="cpu", compute_type="int8"), "cpu"
+
+
+def read_wav(wav):
+    """Đọc wav 16kHz 1 kênh -> mảng số (không cần thư viện đọc âm thanh riêng, tránh lỗi phiên bản)."""
+    import wave
+    import numpy as np
+    with wave.open(wav, "rb") as f:
+        data = f.readframes(f.getnframes())
+    return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def transcribe_file(model, wav, language="en", log=print):
+    t0 = time.time()
+    segs, info = model.transcribe(read_wav(wav), language=None if language == "auto" else language, beam_size=5,
+                                  vad_filter=True, vad_parameters={"min_silence_duration_ms": 400},
+                                  word_timestamps=True, condition_on_previous_text=False)
+    words, last = [], 0
+    for seg in segs:
+        for w in (seg.words or []):
+            words.append((w.start, w.end, w.word))
+        if info.duration and seg.end - last > 30:
+            last = seg.end; log(f"   … {int(seg.end // 60)}:{int(seg.end % 60):02d} / {int(info.duration // 60)}:{int(info.duration % 60):02d}")
+    log(f"   ✔ xong trong {int(time.time() - t0)} giây")
+    return build_cues(words)
+
+
+def run(paths, model_name="large-v3", language="en", log=print):
+    """Chạy cho danh sách file đã tải vào phiên. Trả về danh sách file .srt đã tạo."""
+    model, dev = load_model(model_name, log)
+    made = []
+    for p in paths:
+        name = os.path.basename(p); log(f"\n🎬 {name}")
+        wav = None
+        try:
+            wav = extract_audio(p); log("   ✔ đã tách tiếng" + ("" if p.lower().endswith(AUDIO_EXT) else " và xoá bản sao video trên Colab (video gốc trên máy bạn vẫn còn)"))
+            cues = transcribe_file(model, wav, language, log)
+            srt = os.path.splitext(p)[0] + "_EN_whisper.srt"
+            with open(srt, "w", encoding="utf-8") as f: f.write(to_srt(cues))
+            made.append(srt); log(f"   ✔ {len(cues)} khung phụ đề → {os.path.basename(srt)}")
+        except Exception as e:
+            log(f"   ❌ Lỗi: {e}")
+        finally:  # dù thành công hay lỗi: xoá video/tiếng gốc và file tiếng tạm (bảo mật)
+            for f in (p, wav):
+                if f and os.path.exists(f) and not f.lower().endswith(".srt"):
+                    try: os.remove(f)
+                    except OSError: pass
+    return made
+
+
+def cleanup(folder):
+    """Xoá sạch thư mục làm việc trong phiên Colab (ra khỏi thư mục trước, vì không xoá được thư mục đang đứng)."""
+    try: os.chdir(os.path.dirname(os.path.abspath(folder)))
+    except OSError: pass
+    shutil.rmtree(folder, ignore_errors=True)
