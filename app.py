@@ -29,7 +29,7 @@ from ui_effects import inject_effects
 # 1. CẤU HÌNH TRANG CHỦ STREAMLIT
 # ==========================================
 st.set_page_config(
-    page_title="ScriptPro Enterprise - Subtitle & Script Editor",
+    page_title="ScriptPro | MaiHan team",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -76,37 +76,39 @@ if 'color_input_key' not in st.session_state: st.session_state['color_input_key'
 if 'textarea_clean_output' not in st.session_state: st.session_state['textarea_clean_output'] = ""
 
 # Giữ giá trị các ô nhập quan trọng khi chuyển trang (Streamlit mặc định xoá ô của trang không mở)
-for _k in ("resync_project_week", "dual_default_spk", "dual_hide_default_spk", "textarea_clean_output", "tab1_mode", "tab2_mode"):
+for _k in ("resync_project_week", "resync_project_id", "pay_project", "pay_from", "pay_to", "trk_project", "dual_default_spk", "dual_hide_default_spk", "textarea_clean_output", "tab1_mode", "tab2_mode"):
     if _k in st.session_state: st.session_state[_k] = st.session_state[_k]
 
 # ==========================================
 # 3. UNIFIED SIDEBAR (CONTROL PANEL)
 # ==========================================
 render_user_box()
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Bảng điều khiển")
 
-# Trạng thái kho dữ liệu
+# Trạng thái kho dữ liệu: 1 dòng nhỏ khi ổn, khung đỏ đầy đủ khi lỗi
 if st.session_state.get("_db_load_error"):
     st.sidebar.error("⚠️ Không tải được dữ liệu từ Google Sheets. Hãy tải lại trang (F5). Nếu vẫn lỗi, báo người quản lý.\n\n"
                      f"Chi tiết: {st.session_state['_db_load_error'][:300]}")
 elif sheets_enabled():
-    st.sidebar.success("☁️ Dữ liệu đang lưu trên Google Sheets")
+    st.sidebar.markdown("<div class='mh-status ok'><span class='mh-dot'></span>Đã kết nối Google Sheets</div>", unsafe_allow_html=True)
 else:
-    st.sidebar.info("💻 Chạy trên máy: dữ liệu lưu thành file trong thư mục app")
+    st.sidebar.markdown("<div class='mh-status local'><span class='mh-dot'></span>Chạy trên máy (lưu file)</div>",
+                        unsafe_allow_html=True)
 
 if st.session_state.get("_db_save_error"):
     st.error(st.session_state.pop("_db_save_error"))
 
-ui_theme_choice = st.sidebar.radio(
-    "Kiểu dải băng đầu trang:",
-    options=["Xanh Mai Han (mặc định)", "Tối, tương phản cao"],
-    index=0,
-    help="Chỉ đổi màu dải băng đầu trang. Không ảnh hưởng đến file xuất ra."
-)
+def _sidebar_heading(text):
+    st.sidebar.markdown(f"<div class='mh-side-h'>{text}</div>", unsafe_allow_html=True)
+
+_sidebar_heading("Giao diện")
+_banner = st.sidebar.segmented_control(
+    "Dải băng đầu trang", options=["Xanh Mai Han", "Tối"], default="Xanh Mai Han", key="ui_banner",
+    help="Chỉ đổi màu dải băng đầu trang. Không ảnh hưởng đến file xuất ra.")
+ui_theme_choice = "Tối" if _banner == "Tối" else "Xanh"
 st.sidebar.toggle("✨ Hiệu ứng chuyển động", value=True, key="ui_motion",
                   help="Tắt nếu muốn giao diện đứng yên hoàn toàn (máy yếu hoặc thấy rối mắt).")
 
+_sidebar_heading("Phiên làm việc")
 if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
                      help="Xoá các file đã tải lên (ở mọi trang) và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'stats',
@@ -125,18 +127,16 @@ if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
 
 enable_colors = enable_phonetic = enable_cast = True
 if any(has_perm(p) for p in ("goc", "resync", "doi_chieu")):
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("#### Khi xuất kịch bản")
+    _sidebar_heading("Khi xuất kịch bản")
     enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
     enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
     enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, help="Hiển thị thông tin diễn viên lồng tiếng ở đầu trang và lần xuất hiện đầu tiên của nhân vật")
 
 if has_perm("kho_tu"):
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("#### Kho từ dùng chung")
+    _sidebar_heading("Kho từ dùng chung")
 
     # KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (THÊM NÚT CHỌN TẤT CẢ & BỎ CHỌN SIÊU TỐC)
-    with st.sidebar.expander("📦 Quét nhiều file tìm tên & từ mới", expanded=False):
+    with st.sidebar.expander("📦 Quét file tìm tên & từ mới", expanded=False):
         st.caption("Nạp hàng loạt file (.srt, .docx, .xlsx, .txt) để bóc tách Tên Vai & Từ Tiếng Anh cùng lúc.")
     
         if st.button("🗑️ Dọn dẹp danh sách file", key="btn_clear_bulk_scan", use_container_width=True):
@@ -296,7 +296,7 @@ if has_perm("kho_tu"):
                 st.session_state['spk_input_key'] += 1
                 st.success(f"✅ Đã lưu {len(new_spks)} người nói!"); time.sleep(1); st.rerun()
 
-    with st.sidebar.expander("🚫 Cụm từ KHÔNG phải tên nhân vật", expanded=False):
+    with st.sidebar.expander("🚫 Cụm từ không phải tên", expanded=False):
         st.caption("VD: \"Round 1:\", \"Update:\"... có dấu hai chấm nhưng không phải người nói.")
         manual_input = st.text_area("Nhập thủ công:", height=80, key=f"ns_manual_{st.session_state['ns_input_key']}")
         upload_non_speaker = st.file_uploader("Tải file (.txt, .docx, .xlsx)", type=['txt', 'docx', 'xlsx'], key=f"ns_uploader_{st.session_state['ns_input_key']}")
@@ -316,7 +316,7 @@ if has_perm("kho_tu"):
                 st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
 
 if has_perm("sao_luu"):
-    st.sidebar.markdown("---")
+    _sidebar_heading("Dữ liệu")
     with st.sidebar.expander("💾 Sao lưu dữ liệu", expanded=False):
         st.caption("Tải về 1 file Excel chứa bản MỚI NHẤT của toàn bộ dữ liệu (phiên âm, phân vai, màu, xưng hô, lương...). "
                    "Nên tải định kỳ, ví dụ cuối mỗi tuần, và cất ở nơi an toàn.")

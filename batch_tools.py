@@ -5,14 +5,14 @@ import zipfile
 import pandas as pd
 from utils import (
     kept_file_uploader, process_docx, clean_file_name_for_output,
-    record_video_in_tracker, save_json_db, TRACKER_DB_FILE
+    record_video_in_tracker, save_json_db, TRACKER_DB_FILE, project_picker
 )
 
 def render_batch_processing(is_resync, enable_colors, enable_phonetic, enable_cast):
     """Xử lý nhiều kịch bản .docx một lượt, gom kết quả vào 1 file .zip."""
     mode = "resync" if is_resync else "goc"
     tag = "_final" if is_resync else "_edit"
-    font_size = 14 if is_resync else 12
+    font_size = 14  # kịch bản gốc & Re-Sync cùng định dạng
     result_key = f"batch_result_{mode}"
 
     with st.container(border=True):
@@ -22,8 +22,9 @@ def render_batch_processing(is_resync, enable_colors, enable_phonetic, enable_ca
         files = kept_file_uploader("Kéo thả các file .docx vào đây", type=["docx"],
                                    accept_multiple_files=True, key=f"batch_{mode}_uploader")
         if is_resync:
-            if "resync_project_week" not in st.session_state: st.session_state["resync_project_week"] = "Tuần 1"
-            st.text_input("📌 Gán Tuần Dự Án cho TẤT CẢ các video trong lượt này:", key="resync_project_week")
+            col_pj1, col_pj2 = st.columns(2)
+            with col_pj1: project_picker("📁 TẤT CẢ video trong lượt này thuộc dự án:", key="resync_project_id")
+            with col_pj2: st.text_input("📌 Ghi chú tuần/đợt (không bắt buộc):", key="resync_project_week")
         else:
             st.caption("💡 Chế độ này không có bước soát tên nhân vật/phiên âm cho từng file. "
                        "Nếu kịch bản có nhân vật hoặc từ tiếng Anh mới, nên xử lý riêng file đó ở chế độ một file trước.")
@@ -52,7 +53,8 @@ def render_batch_processing(is_resync, enable_colors, enable_phonetic, enable_ca
                         for n in az.namelist():
                             zf.writestr(f"{folder}/Tach_vai/{n}", az.read(n))
                     if is_resync:
-                        record_video_in_tracker(stats, name_no_ext, st.session_state.get("resync_project_week"))
+                        record_video_in_tracker(stats, name_no_ext, st.session_state.get("resync_project_week"),
+                                                st.session_state.get("resync_project_id"))
                     warns = stats.get("qc_warnings", [])
                     integ = stats.get("integrity_report", {}).get("diff_issues", [])
                     summary.append({
@@ -82,7 +84,9 @@ def render_batch_processing(is_resync, enable_colors, enable_phonetic, enable_ca
             st.warning("Có file bị lỗi, xem cột **Ghi chú** bên dưới. Các file còn lại vẫn có trong file .zip.")
         st.dataframe(pd.DataFrame(res["summary"]), hide_index=True, use_container_width=True)
         if is_resync and res["ok"]:
-            st.caption(f"📋 Đã ghi {res['ok']} video vào bảng lương (tuần: **{st.session_state.get('resync_project_week', 'Tuần 1')}**).")
+            _pname = next((p.get("name") for p in st.session_state.get("projects", [])
+                           if p.get("project_id") == st.session_state.get("resync_project_id")), "")
+            st.caption(f"📋 Đã ghi {res['ok']} video vào bảng lương (dự án: **{_pname}**).")
         st.download_button("📦 Tải toàn bộ kết quả (.zip)", data=res["zip"],
                            file_name=f"KetQua_{'ReSync' if is_resync else 'KichBanGoc'}_{res['total']}_file.zip",
                            mime="application/zip", type="primary", use_container_width=True, key=f"dl_batch_{mode}")

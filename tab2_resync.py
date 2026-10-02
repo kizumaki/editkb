@@ -5,7 +5,7 @@ import pandas as pd
 from utils import (
     kept_file_uploader,
     process_docx, clean_file_name_for_output, generate_actor_docx, 
-    save_json_db, TRACKER_DB_FILE, record_video_in_tracker
+    save_json_db, TRACKER_DB_FILE, record_video_in_tracker, project_picker
 )
 from batch_tools import render_batch_processing
 
@@ -28,8 +28,10 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                 type=['docx'], 
                 key="resync_uploader"
             )
-            if "resync_project_week" not in st.session_state: st.session_state["resync_project_week"] = "Tuần 1"
-            project_week_input = st.text_input("📌 Gán Tuần Dự Án cho video này:", key="resync_project_week", help="VD: Tuần 1, Tuần 2, Tuần 1 - Đợt Phim A...")
+            col_pj1, col_pj2 = st.columns(2)
+            with col_pj1: project_id_input = project_picker("📁 Video này thuộc dự án:", key="resync_project_id")
+            with col_pj2: project_week_input = st.text_input("📌 Ghi chú tuần/đợt (không bắt buộc):", key="resync_project_week",
+                                                             help="Chỉ để ghi chú, VD: Tuần 1. Lương được tính theo dự án và ngày ghi nhận video.")
             
         if resync_file is not None:
             r_filename = resync_file.name
@@ -52,7 +54,7 @@ def render_tab2(enable_colors, enable_phonetic, enable_cast):
                     st.session_state['resync_stats'] = r_stats
                     st.session_state['_celebrate_tab2'] = True  # chỉ chúc mừng 1 lần ngay sau khi xử lý xong
                     
-                    record_video_in_tracker(r_stats, r_name_no_ext, project_week_input)
+                    record_video_in_tracker(r_stats, r_name_no_ext, project_week_input, project_id_input)
                     save_json_db(TRACKER_DB_FILE, st.session_state['dubbing_tracker'])
                     
                 except Exception as e: st.error(f"Lỗi xảy ra khi Re-Sync: {e}")

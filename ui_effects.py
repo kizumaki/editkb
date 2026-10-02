@@ -16,6 +16,44 @@ html {{ scroll-behavior: smooth; }}
 [data-testid="stFileUploaderDropzone"] {{ border: 1.5px dashed rgba({BRAND}, 0.35); border-radius: 12px; }}
 [data-testid="stFileUploaderDropzone"]:hover {{ border-color: rgba({BRAND}, 0.9); background: rgba({BRAND}, 0.06); }}
 [data-testid="stExpander"] details {{ border-radius: 12px; }}
+
+/* ---------- Thanh bên: gọn, hiện đại ---------- */
+section[data-testid="stSidebar"] {{
+    background-image: linear-gradient(180deg, rgba({BRAND}, 0.09) 0%, rgba({BRAND}, 0.02) 35%, transparent 70%); }}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{ gap: 0.55rem; }}
+/* Thẻ người dùng */
+.mh-user {{ display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; margin-bottom: 0.5rem !important;
+            background: rgba({BRAND}, 0.08); border: 1px solid rgba({BRAND}, 0.18); }}
+.mh-avatar {{ width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+              background: linear-gradient(135deg, #183E80, #2A63BA); color: #fff; font-weight: 700; font-size: 0.95rem;
+              box-shadow: 0 6px 14px -6px rgba({BRAND}, 0.8); }}
+.mh-user-text {{ min-width: 0; }}
+section[data-testid="stSidebar"] .stMarkdownContainer:has(.mh-user),
+section[data-testid="stSidebar"] .stMarkdownContainer:has(.mh-side-h) {{ margin-bottom: 0 !important; }}
+section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.mh-user) {{ padding-bottom: 0.15rem; }}
+.mh-user-name {{ font-weight: 700; font-size: 1rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.mh-user-role {{ display: inline-block; margin-top: 4px; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+                 background: rgba({BRAND}, 0.16); }}
+/* Nút ở thanh bên: thấp, chữ nhỏ, không xuống dòng */
+section[data-testid="stSidebar"] .stButton > button,
+section[data-testid="stSidebar"] .stDownloadButton > button,
+section[data-testid="stSidebar"] [data-testid="stPopover"] button {{
+    min-height: 36px; padding: 4px 10px; border-radius: 10px; }}
+section[data-testid="stSidebar"] .stButton > button p,
+section[data-testid="stSidebar"] .stDownloadButton > button p,
+section[data-testid="stSidebar"] [data-testid="stPopover"] button p {{ font-size: 0.86rem; white-space: nowrap; }}
+/* Trạng thái dữ liệu: 1 dòng nhỏ có chấm màu */
+.mh-status {{ display: flex; align-items: center; gap: 8px; font-size: 0.78rem; opacity: 0.8; padding: 0 4px; }}
+.mh-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #22C55E; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2); }}
+.mh-status.local .mh-dot {{ background: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); }}
+/* Tiêu đề nhóm: chữ nhỏ + đường mảnh kéo dài */
+.mh-side-h {{ display: flex; align-items: center; gap: 10px; margin: 0.9rem 0 0.1rem 2px; line-height: 1.4;
+              font-size: 0.76rem; font-weight: 700; letter-spacing: 0.02em; opacity: 0.6; }}
+.mh-side-h::after {{ content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.3; }}
+/* Ô mở rộng ở thanh bên */
+section[data-testid="stSidebar"] [data-testid="stExpander"] details {{
+    border-color: rgba({BRAND}, 0.18); background: rgba({BRAND}, 0.03); }}
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary p {{ font-size: 0.88rem; }}
 """
 
 # Phần chuyển động: tắt được

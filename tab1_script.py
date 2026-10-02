@@ -198,7 +198,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
             st.markdown("---")
             if st.button("✨ Bắt đầu định dạng tự động", use_container_width=True, type="primary"):
                 try:
-                    modified_docx, ass_f, srt_f, act_zip, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=12)
+                    modified_docx, ass_f, srt_f, act_zip, stats = process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_phonetic, enable_cast, is_resync=False, font_size_pt=14)
                     
                     st.session_state['processed_docx'] = modified_docx
                     st.session_state['processed_ass'] = ass_f
@@ -257,7 +257,7 @@ def render_tab1(enable_colors, enable_phonetic, enable_cast):
                     with col_act1:
                         selected_actor = st.selectbox("Chọn Diễn viên lồng tiếng để tải file riêng:", options=list(act_map.keys()))
                         if selected_actor:
-                            act_buf = generate_actor_docx(st.session_state['stats']['video_title'], selected_actor, act_map[selected_actor], font_size_pt=12)
+                            act_buf = generate_actor_docx(st.session_state['stats']['video_title'], selected_actor, act_map[selected_actor], font_size_pt=14)
                             st.download_button(
                                 label=f"⬇️ Tải file của {selected_actor} (.docx)",
                                 data=act_buf,

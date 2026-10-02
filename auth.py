@@ -1,6 +1,7 @@
 import streamlit as st
 import hashlib
 import hmac
+import html
 import re
 import secrets
 import time
@@ -175,17 +176,19 @@ def _validate_username(username):
 def render_user_box():
     u = current_user()
     role_name = ROLES.get(u["role"], ("?",))[0]
-    st.sidebar.markdown(f"👤 **{u['display_name']}**  \n<span style='font-size:0.85rem;opacity:0.75'>{role_name}</span>",
-                        unsafe_allow_html=True)
+    name = str(u["display_name"])
+    initials = "".join(w[0] for w in name.split()[-2:]).upper() or "?"
+    st.sidebar.markdown(
+        f"<div class='mh-user'><div class='mh-avatar'>{html.escape(initials)}</div>"
+        f"<div class='mh-user-text'><div class='mh-user-name'>{html.escape(name)}</div>"
+        f"<div class='mh-user-role'>{html.escape(role_name)}</div></div></div>", unsafe_allow_html=True)
     c1, c2 = st.sidebar.columns(2)
-    if c2.button("Đăng xuất", use_container_width=True, key="btn_logout"):
+    if c2.button("Đăng xuất", icon=":material/logout:", use_container_width=True, key="btn_logout"):
         log_event("Đăng xuất")
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
-    if c1.button("Đổi mật khẩu", use_container_width=True, key="btn_show_pw"):
-        st.session_state["_show_pw_form"] = not st.session_state.get("_show_pw_form", False)
-    if st.session_state.get("_show_pw_form"):
-        with st.sidebar.form("change_pw"):
+    with c1.popover("Mật khẩu", icon=":material/key:", use_container_width=True, help="Đổi mật khẩu"):
+        with st.form("change_pw"):
             old = st.text_input("Mật khẩu hiện tại", type="password")
             pw = st.text_input("Mật khẩu mới (ít nhất 8 ký tự)", type="password")
             pw2 = st.text_input("Nhập lại mật khẩu mới", type="password")
@@ -198,7 +201,6 @@ def render_user_box():
                 _set_password(acc, pw)
                 if save_json_db(ACCOUNTS_DB_FILE, _accounts()):
                     log_event("Đổi mật khẩu")
-                    st.session_state["_show_pw_form"] = False
                     st.success("Đã đổi mật khẩu.")
 
 # ==========================================

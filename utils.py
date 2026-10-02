@@ -212,6 +212,8 @@ DEFAULT_PRONOUN_REL = {
 DEFAULT_PAYROLL_RATES = {"mode": "minute", "unit_rate": 30000}
 
 ACCOUNTS_DB_FILE = "accounts.json"
+PROJECTS_DB_FILE = "du_an.json"
+PAYROLL_LOCKS_DB_FILE = "chot_luong.json"
 AUDIT_LOG_TAB = "nhat_ky"
 AUDIT_LOG_FILE = "nhat_ky.json"
 
@@ -227,6 +229,10 @@ DB_REGISTRY = {
                       "json_fields": {"actor_breakdown", "custom_actor_rates"}, "num_fields": {"total_lines", "video_duration_min"}},
     ACCOUNTS_DB_FILE: {"state_key": "accounts", "kind": "records", "default": list, "record_key": "username",
                        "json_fields": {"pages"}, "num_fields": set()},
+    PROJECTS_DB_FILE: {"state_key": "projects", "kind": "records", "default": list, "record_key": "project_id",
+                       "json_fields": {"actor_rates"}, "num_fields": {"unit_rate"}},
+    PAYROLL_LOCKS_DB_FILE: {"state_key": "payroll_locks", "kind": "records", "default": list, "record_key": "lock_id",
+                            "json_fields": {"rows"}, "num_fields": {"total"}},
 }
 
 def log_event(action, detail=""):
@@ -469,6 +475,50 @@ def save_json_db(filepath, data_container):
     _set_base(filepath, merged)
     log_event("Lưu dữ liệu", tab)
     return True
+
+def reload_json_db(filepath):
+    """Đọc lại bản MỚI NHẤT của 1 kho (bỏ bản đang nhớ trong phiên) — dùng trước thao tác quan trọng như chốt sổ.
+    Trả về True nếu đọc được."""
+    cfg = DB_REGISTRY[filepath]
+    try:
+        if sheets_enabled():
+            try: data = _rows_to_data(cfg, _get_spreadsheet().worksheet(_tab_name(filepath)).get_values(
+                     value_render_option=gspread.utils.ValueRenderOption.unformatted))
+            except gspread.WorksheetNotFound: data = cfg["default"]()
+        else:
+            data = _local_read(filepath, cfg)
+            if data is None: data = cfg["default"]()
+        data = _with_defaults(cfg, data)
+    except Exception as e:
+        st.error(f"❌ Không đọc được dữ liệu mới nhất ({_tab_name(filepath)}). Hãy thử lại sau ít phút. Chi tiết: {e}")
+        return False
+    cur = st.session_state.get(cfg["state_key"])
+    if isinstance(cur, list) and isinstance(data, list):
+        cur.clear(); cur.extend(data); data = cur
+    st.session_state[cfg["state_key"]] = data
+    _set_base(filepath, data)
+    return True
+
+def ensure_payroll_ready():
+    """Lần đầu dùng bản lương theo dự án: tạo "Dự án mặc định" và gán các video cũ vào đó (lưu luôn lên kho)."""
+    from payroll_core import migrate
+    p_changed, t_changed = migrate(st.session_state["projects"], st.session_state["dubbing_tracker"],
+                                   st.session_state.get("payroll_rates", {}), time.strftime("%d/%m/%Y"))
+    if p_changed: save_json_db(PROJECTS_DB_FILE, st.session_state["projects"])
+    if t_changed: save_json_db(TRACKER_DB_FILE, st.session_state["dubbing_tracker"])
+    if p_changed or t_changed:
+        log_event("Chuyển dữ liệu lương sang kiểu theo dự án", f"{len(st.session_state['dubbing_tracker'])} video")
+
+def project_picker(label, key):
+    """Ô chọn dự án (chỉ dự án đang dùng) cho trang Re-Sync. Trả về mã dự án."""
+    ensure_payroll_ready()
+    projects = st.session_state["projects"]
+    shown = [p for p in projects if str(p.get("active", "1")) != "0"] or projects
+    ids = [str(p["project_id"]) for p in shown]
+    names = {str(p["project_id"]): p.get("name", p["project_id"]) for p in shown}
+    if st.session_state.get(key) not in ids: st.session_state.pop(key, None)
+    return st.selectbox(label, ids, format_func=lambda i: names.get(i, i), key=key,
+                        help="Tạo hoặc đổi dự án ở trang Quản lý → Theo dõi & báo cáo lương → Dự án & đơn giá.")
 
 # ==========================================
 # CÁC HÀM XỬ LÝ KỊCH BẢN & PHỤ ĐỀ
@@ -1633,28 +1683,39 @@ def format_and_split_dialogue(document, text, enable_colors, enable_phonetic, en
     pure_dialogue_text = " ".join(pure_dialogue_list)
     return "\\N".join(ass_line_parts), pure_dialogue_text
 
-def record_video_in_tracker(r_stats, fallback_title, project_week):
-    """Ghi (hoặc cập nhật) 1 video vào bảng theo dõi lương trong phiên. Gọi save_json_db sau đó để lưu."""
+def record_video_in_tracker(r_stats, fallback_title, project_week, project_id=None):
+    """Ghi (hoặc cập nhật) 1 video vào bảng theo dõi lương trong phiên. Gọi save_json_db sau đó để lưu.
+    Video đã có: giữ ngày ghi nhận đầu tiên, đơn giá riêng, người phụ trách; video đã chốt lương thì giữ nguyên dự án."""
+    from payroll_core import DEFAULT_PROJECT_ID, STAGES, locked_pairs, video_is_locked
+    ensure_payroll_ready()
     video_title = r_stats.get("video_title", fallback_title)
     actors_list = r_stats.get("actors_list", [])
-    curr_def_rate = st.session_state['payroll_rates'].get("unit_rate", 30000)
     entry_data = {
         "video_title": video_title,
         "actors": ", ".join(actors_list) if actors_list else "CHƯA CÓ THÔNG TIN",
         "actor_breakdown": r_stats.get("actor_stats_breakdown", {}),
         "total_lines": r_stats.get("total_lines", 0),
         "video_duration_min": r_stats.get("video_duration_min", 1),
-        "date": time.strftime("%d/%m/%Y"),
-        "project_week": (project_week or "").strip() or "Tuần 1",
-        "custom_actor_rates": {a.upper(): curr_def_rate for a in actors_list},
     }
+    week = (project_week or "").strip()
+    if week: entry_data["project_week"] = week
     tracker_list = st.session_state['dubbing_tracker']
     existing_entry = next((item for item in tracker_list if str(item.get('video_title', '')).upper() == video_title.upper()), None)
     if existing_entry:
-        # Giữ đơn giá riêng đã chỉnh trước đó; diễn viên mới thì lấy đơn giá mặc định
-        entry_data["custom_actor_rates"] = {**entry_data["custom_actor_rates"], **existing_entry.get("custom_actor_rates", {})}
+        if project_id and project_id != existing_entry.get("project_id"):
+            if video_is_locked(existing_entry, locked_pairs(st.session_state.get("payroll_locks", []))):
+                r_stats.setdefault("qc_warnings", []).append(
+                    "⚠️ Video này đã chốt lương nên vẫn giữ ở dự án cũ. Muốn chuyển dự án, nhờ Quản trị mở khoá đợt chốt trước.")
+            else:
+                entry_data["project_id"] = project_id
+        stage = existing_entry.get("stage", "")
+        if stage not in STAGES or STAGES.index(stage) < STAGES.index("Thu âm"): entry_data["stage"] = "Thu âm"
+        if not str(existing_entry.get("date", "")).strip(): entry_data["date"] = time.strftime("%d/%m/%Y")
         existing_entry.update(entry_data)
     else:
+        entry_data.update({"project_id": project_id or DEFAULT_PROJECT_ID, "date": time.strftime("%d/%m/%Y"),
+                           "stage": "Thu âm", "assignee": "", "custom_actor_rates": {},
+                           "project_week": week})
         tracker_list.append(entry_data)
     return video_title
 
@@ -1902,7 +1963,7 @@ def process_docx(uploaded_file, file_name_without_ext, enable_colors, enable_pho
         paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
         for run in paragraph.runs:
             run.font.name = 'Times New Roman'
-            if run.font.size is None or is_resync: run.font.size = Pt(font_size_pt)
+            run.font.size = Pt(font_size_pt)  # kịch bản gốc & Re-Sync cùng 1 định dạng (người dùng yêu cầu)
         
     docx_file = io.BytesIO(); document.save(docx_file); docx_file.seek(0)
     
