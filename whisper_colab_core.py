@@ -29,8 +29,8 @@ STYLE_HINT = "Hello, everyone! Welcome back to the channel. Today, we're trying 
 # Nhóm Preston/Brianna/Keeley: rút từ 84 kịch bản team đã biên tập (tên xuất hiện ở >= 3 kịch bản). Kênh khác: tra cứu công khai
 # 2026-10-02 (Wikipedia/fandom: thành viên Dude Perfect, nhóm MrBeast của Karl, Ethan Schulteis = The Amagi kênh giải thích anime,
 # bạn bè IShowSpeed; Ethan theo trang kênh người dùng gửi) + bản chính thức McDonald's (Manny, Remy của Nick). Team bổ sung thì sửa ở đây.
-_NHOM_PRESTON = ("Preston, TBNRfrags, Brianna, Bri, Keeley, Chase, Stephen, Scott, Larry, Yomi, Caleb, Riley, Courtney, Josh, Alan, "
-                 "Vince, Johnny, Joe, Kat, Ben, ZHC")
+_NHOM_PRESTON = ("Preston, TBNRfrags, Brianna, Bri, Keeley, Chase, Stephen, Steven, Scott, Larry, Yomi, Caleb, Riley, Courtney, Josh, Alan, "
+                 "Vince, Johnny, Danny, Joe, Kat, Ben, ZHC")  # Danny: thiếu thì Whisper nghe thành "Johnny" (video Footprints)
 KENH = {
     "Không rõ / kênh khác": "",
     "Preston (prestonyt / PrestonPlayz)": _NHOM_PRESTON + ", Minecraft, Creeper, Enderman, Villager",
@@ -40,7 +40,7 @@ KENH = {
     "Dude Perfect": "Dude Perfect, Tyler, Cory, Coby, Garrett, Cody, Panda, Sparky",
     "IShowSpeed": "IShowSpeed, Speed, Kai Cenat, KSI, Jamal, Ronaldo, Messi",
     "Karl (Karl Jacobs)": "Karl, MrBeast, Jimmy, Chandler, Chris, Nolan, Tareq, Sapnap, GeorgeNotFound, Minecraft",
-    # @EthanSchulteis = kênh "Ethan" thử thách/sinh tồn (KHÔNG phải The Amagi trùng tên — tra web nhầm, người dùng sửa 2026-10-02).
+    # Kênh EthanSchulteis = kênh "Ethan" thử thách/sinh tồn (KHÔNG phải The Amagi trùng tên — tra web nhầm, người dùng sửa 2026-10-02).
     # Chỉ có tên chắc chắn từ trang kênh (video "Ryan Trahan Mystery Country Challenge"); chờ team bổ sung.
     "Ethan (EthanSchulteis)": "Ethan, Ryan Trahan, Ryan",
 }
