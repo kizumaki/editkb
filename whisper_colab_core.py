@@ -93,7 +93,7 @@ def preload_cuda_libs(log=print):
     except OSError:
         pass
     if not glob.glob(os.path.join(CUDA_DIR, "nvidia", "*", "lib")):
-        log("⏳ Máy Colab thiếu thư viện cho card đồ hoạ — đang tải thêm (1–2 phút)...")
+        log("⏳ Máy Colab thiếu thư viện cho card đồ hoạ — đang tải thêm (khoảng 5 phút, chỉ lần đầu mỗi phiên)...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--target", CUDA_DIR,
                         "nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"], check=False)
     files = [f for d in glob.glob(os.path.join(CUDA_DIR, "nvidia", "*", "lib"))
