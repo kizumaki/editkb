@@ -79,18 +79,67 @@ def extract_audio(path):
     return out
 
 
+CUDA_DIR = "/content/mh_cuda12"  # thư viện CUDA 12 tải riêng (không đụng thư viện có sẵn của Colab)
+CUDA_LIBS = ("libcublasLt.so.12", "libcublas.so.12", "libcudnn*.so.9")
+
+
+def preload_cuda_libs(log=print):
+    """faster-whisper (ctranslate2) cần thư viện CUDA 12 + cuDNN 9. Colab bản mới có thể không còn sẵn
+    (lỗi "libcublas.so.12 is not found") -> tải gói pip nvidia-*-cu12 vào thư mục riêng rồi nạp trước."""
+    import ctypes, glob, sys
+    try:
+        ctypes.CDLL("libcublas.so.12"); ctypes.CDLL("libcudnn_ops.so.9")
+        return True  # máy đã có sẵn
+    except OSError:
+        pass
+    if not glob.glob(os.path.join(CUDA_DIR, "nvidia", "*", "lib")):
+        log("⏳ Máy Colab thiếu thư viện cho card đồ hoạ — đang tải thêm (1–2 phút)...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--target", CUDA_DIR,
+                        "nvidia-cublas-cu12", "nvidia-cudnn-cu12==9.*"], check=False)
+    files = [f for d in glob.glob(os.path.join(CUDA_DIR, "nvidia", "*", "lib"))
+             for pat in CUDA_LIBS for f in glob.glob(os.path.join(d, pat))]
+    pending = sorted(set(files))
+    for _ in range(4):  # nạp nhiều lượt: thư viện phụ thuộc nhau, thứ tự không chắc
+        left = []
+        for f in pending:
+            try: ctypes.CDLL(f, mode=ctypes.RTLD_GLOBAL)
+            except OSError: left.append(f)
+        if not left or len(left) == len(pending): break
+        pending = left
+    try:
+        ctypes.CDLL("libcublas.so.12"); return True
+    except OSError:
+        return False
+
+
+def gpu_works(model):
+    """Chạy thử 1 giây trên card đồ hoạ. Lỗi thư viện CUDA chỉ lộ ra lúc nhận dạng thật, không lộ lúc nạp mô hình."""
+    import numpy as np
+    segs, _ = model.transcribe(np.zeros(16000, dtype=np.float32), language="en", beam_size=1)
+    list(segs)
+    return True
+
+
 def load_model(name="large-v3", log=print):
     from faster_whisper import WhisperModel
     try:
         import ctranslate2
         if ctranslate2.get_cuda_device_count() > 0:
+            preload_cuda_libs(log)
             m = WhisperModel(name, device="cuda", compute_type="float16")
+            gpu_works(m)
             log("⚡ Đang dùng CARD ĐỒ HOẠ (nhanh).")
             return m, "gpu"
     except Exception as e:
-        log(f"⚠️ Không dùng được card đồ hoạ ({str(e)[:120]}) — chuyển sang chạy thường (chậm hơn).")
-    log("🐢 Không có card đồ hoạ — chạy bằng bộ xử lý thường, sẽ CHẬM. Gợi ý: Thời gian chạy → Đổi loại thời gian chạy → GPU T4.")
+        log(f"⚠️ Không dùng được card đồ hoạ ({str(e)[:120]}) — chuyển sang bộ xử lý thường.")
+    log("🐢 Đang chạy bằng bộ xử lý thường, sẽ CHẬM (video 10 phút có thể mất 30–60 phút). "
+        "Nếu chưa bật card: Thời gian chạy → Thay đổi loại thời gian chạy → T4 GPU rồi chạy lại.")
     return WhisperModel(name, device="cpu", compute_type="int8"), "cpu"
+
+
+def is_cuda_error(e):
+    s = str(e).lower()
+    return any(k in s for k in ("cuda", "cublas", "cudnn", "libcu"))
 
 
 def read_wav(wav):
@@ -126,7 +175,14 @@ def run(paths, model_name="large-v3", language="en", log=print):
         wav = None
         try:
             wav = extract_audio(p); log("   ✔ đã tách tiếng" + ("" if p.lower().endswith(AUDIO_EXT) else " và xoá bản sao video trên Colab (video gốc trên máy bạn vẫn còn)"))
-            cues = transcribe_file(model, wav, language, log)
+            try:
+                cues = transcribe_file(model, wav, language, log)
+            except Exception as e:
+                if dev != "gpu" or not is_cuda_error(e): raise
+                log(f"   ⚠️ Card đồ hoạ lỗi ({str(e)[:120]}) — chuyển sang bộ xử lý thường và làm lại (CHẬM hơn).")
+                from faster_whisper import WhisperModel
+                model, dev = WhisperModel(model_name, device="cpu", compute_type="int8"), "cpu"
+                cues = transcribe_file(model, wav, language, log)
             srt = os.path.splitext(p)[0] + "_EN_whisper.srt"
             with open(srt, "w", encoding="utf-8") as f: f.write(to_srt(cues))
             made.append(srt); log(f"   ✔ {len(cues)} khung phụ đề → {os.path.basename(srt)}")
