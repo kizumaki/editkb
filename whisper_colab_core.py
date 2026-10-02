@@ -25,6 +25,37 @@ def fmt_ts(t):
 STYLE_HINT = "Hello, everyone! Welcome back to the channel. Today, we're trying something new, and I love it."  # giữ dấu câu + chữ hoa
 
 
+# Tên quen theo kênh -> gợi ý cho Whisper (chọn ở ô KENH trong notebook). Chỉ tên người/nhân vật công khai — KHÔNG có nội dung kịch bản.
+# Nhóm Preston/Brianna/Keeley: rút từ 84 kịch bản team đã biên tập (tên xuất hiện ở >= 3 kịch bản). Các kênh khác: chỉ tên chủ kênh
+# (+ tên chắc chắn), chờ team bổ sung.
+_NHOM_PRESTON = ("Preston, Brianna, Bri, Keeley, Chase, Stephen, Scott, Larry, Yomi, Caleb, Riley, Courtney, Josh, Alan, "
+                 "Vince, Johnny, Joe, Kat, Ben, ZHC")
+KENH = {
+    "Không rõ / kênh khác": "",
+    "Preston (PrestonPlayz)": _NHOM_PRESTON + ", Minecraft, Creeper, Enderman, Villager",
+    "Brianna (BriannaPlayz / BriannaYT)": _NHOM_PRESTON,
+    "Keeley (ItsKeeleyElise)": _NHOM_PRESTON,
+    "Nick DiGiovanni": "Nick DiGiovanni, Nick, Manny, Remy",
+    "Dude Perfect": "Dude Perfect, Tyler, Cory, Coby, Garrett, Cody",
+    "IShowSpeed": "IShowSpeed, Speed",
+    "Karl": "Karl",
+    "Ethan Schulteis": "Ethan Schulteis, Ethan",
+}
+
+_NAME_JUNK = {"mp4", "mov", "mkv", "wav", "mp3", "m4a", "final", "edit", "raw", "copy", "en", "eng", "vi", "vn", "sub", "subs",
+              "hd", "fhd", "uhd", "4k", "tieng", "audio", "video"}
+
+
+def title_from_filename(path):
+    """Tên file -> gợi ý cho Whisper (tự động, không ai phải gõ): "I_Tried_McDonald's_From_Every_Country_1080p.mp4"
+    -> "I Tried McDonald's From Every Country". Bỏ mã số, độ phân giải, chữ rác thường gặp trong tên file."""
+    name = os.path.splitext(os.path.basename(path))[0]
+    name = re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", name)  # [mã], (bản 2)
+    words = [w for w in re.split(r"[\s_.]+", name) if w]
+    keep = [w for w in words if not re.fullmatch(r"\d+|\d+p|v\d+|\d+fps", w, re.I) and w.lower() not in _NAME_JUNK]
+    return " ".join(keep)[:150]
+
+
 def split_two(text, width=MAX_LINE):
     """Chia thành 2 dòng cân đối, CHỈ ngắt ở dấu cách. Không chia được -> None."""
     words = text.split(); best = None
@@ -202,16 +233,19 @@ def run(paths, model_name="large-v3", language="en", log=print, keywords=""):
     for p in paths:
         name = os.path.basename(p); log(f"\n🎬 {name}")
         wav = None
+        title = title_from_filename(p)  # tên video thường chứa đúng tên riêng khó nghe (VD "McDonald's")
+        kw = ", ".join(x for x in (title, keywords.strip()) if x)
+        if kw: log(f"   💡 Gợi ý cho Whisper (tên file + kênh + từ khoá): {kw}")
         try:
             wav = extract_audio(p); log("   ✔ đã tách tiếng" + ("" if p.lower().endswith(AUDIO_EXT) else " và xoá bản sao video trên Colab (video gốc trên máy bạn vẫn còn)"))
             try:
-                cues = transcribe_file(model, wav, language, log, keywords)
+                cues = transcribe_file(model, wav, language, log, kw)
             except Exception as e:
                 if dev != "gpu" or not is_cuda_error(e): raise
                 log(f"   ⚠️ Card đồ hoạ lỗi ({str(e)[:120]}) — chuyển sang bộ xử lý thường và làm lại (CHẬM hơn).")
                 from faster_whisper import WhisperModel
                 model, dev = WhisperModel(model_name, device="cpu", compute_type="int8"), "cpu"
-                cues = transcribe_file(model, wav, language, log, keywords)
+                cues = transcribe_file(model, wav, language, log, kw)
             srt = os.path.splitext(p)[0] + "_EN_whisper.srt"
             with open(srt, "w", encoding="utf-8") as f: f.write(to_srt(cues))
             made.append(srt); log(f"   ✔ {len(cues)} khung phụ đề → {os.path.basename(srt)}")
