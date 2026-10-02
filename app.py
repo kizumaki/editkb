@@ -25,7 +25,7 @@ from tab9_tools import render_tab9
 from tab10_learn import render_tab10
 from tab11_overview import render_tab11
 from auth import require_login, render_user_box, render_accounts_page, has_perm, is_admin
-from ui_effects import inject_effects
+from ui_effects import inject_effects, render_mascot
 
 # ==========================================
 # 1. CẤU HÌNH TRANG CHỦ STREAMLIT
@@ -391,6 +391,7 @@ else:
 # ==========================================
 # 5. HERO BANNER
 # ==========================================
+render_mascot(st.session_state.get("ui_motion", True))  # bé chibi lồng tiếng chạy nhảy phía trên dải băng
 _vn_hour = datetime.now(timezone(timedelta(hours=7))).hour
 _greeting = ("Chào buổi sáng" if 4 <= _vn_hour < 11 else "Chào buổi trưa" if _vn_hour < 13
              else "Chào buổi chiều" if _vn_hour < 18 else "Chào buổi tối")

@@ -137,6 +137,81 @@ _NAV_MOTION_CSS = """
 a[data-testid="stTopNavDropdownLink"]:hover { transform: translateX(3px); }
 """
 
+# ---------- Linh vật: bé chibi lồng tiếng (tự vẽ, không dùng hình của ai) ----------
+# Đi qua lại trong khoảng trống giữa thanh menu và dải băng, thỉnh thoảng nhảy / vẫy micro, chớp mắt;
+# rê chuột vào thì nhảy cẫng lên. Chỉ hiện khi bật "Hiệu ứng chuyển động"; ẩn trên màn hình nhỏ.
+_MASCOT_SVG = """
+<svg viewBox="0 0 100 124" width="74" height="92" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <radialGradient id="mhSkin" cx="42%" cy="38%" r="65%"><stop offset="0" stop-color="#FFEBDD"/><stop offset="1" stop-color="#F4BE9C"/></radialGradient>
+    <linearGradient id="mhShirt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B78D6"/><stop offset="1" stop-color="#183E80"/></linearGradient>
+    <radialGradient id="mhHair" cx="40%" cy="25%" r="80%"><stop offset="0" stop-color="#5A3B2E"/><stop offset="1" stop-color="#2C1A14"/></radialGradient>
+    <radialGradient id="mhCup" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#6FA0EC"/><stop offset="1" stop-color="#1F4C9A"/></radialGradient>
+  </defs>
+  <g class="mh-leg mh-leg-l"><rect x="38" y="96" width="9" height="20" rx="4.5" fill="#22325A"/><ellipse cx="42" cy="117" rx="7" ry="4" fill="#14203D"/></g>
+  <g class="mh-leg mh-leg-r"><rect x="53" y="96" width="9" height="20" rx="4.5" fill="#22325A"/><ellipse cx="58" cy="117" rx="7" ry="4" fill="#14203D"/></g>
+  <path d="M30 100 Q30 76 50 76 Q70 76 70 100 Z" fill="url(#mhShirt)"/>
+  <path d="M50 96 C44 91 42 87.5 45 85.5 C47 84 49 85 50 86.6 C51 85 53 84 55 85.5 C58 87.5 56 91 50 96 Z" fill="#FF8FA3"/>
+  <g class="mh-arm"><ellipse cx="70" cy="84" rx="5" ry="8" fill="url(#mhShirt)" transform="rotate(-35 70 84)"/>
+    <rect x="72" y="66" width="6" height="16" rx="3" fill="#3A3F4B"/><circle cx="75" cy="64" r="6" fill="#565C6B"/>
+    <circle cx="73.5" cy="62.5" r="2" fill="#9AA1B2"/></g>
+  <ellipse cx="31" cy="86" rx="5" ry="8" fill="url(#mhShirt)" transform="rotate(25 31 86)"/>
+  <circle cx="50" cy="46" r="31" fill="url(#mhSkin)"/>
+  <path d="M19 44 Q18 14 50 13 Q82 14 81 44 Q74 30 62 28 Q60 36 50 33 Q42 36 37 29 Q26 32 19 44 Z" fill="url(#mhHair)"/>
+  <path d="M17 46 Q14 10 50 9 Q86 10 83 46" fill="none" stroke="#2A63BA" stroke-width="5.5" stroke-linecap="round"/>
+  <ellipse cx="18" cy="50" rx="7" ry="10" fill="url(#mhCup)"/><ellipse cx="82" cy="50" rx="7" ry="10" fill="url(#mhCup)"/>
+  <g class="mh-eyes">
+    <ellipse cx="38" cy="51" rx="5" ry="6.5" fill="#262838"/><ellipse cx="62" cy="51" rx="5" ry="6.5" fill="#262838"/>
+    <circle cx="36.5" cy="48.5" r="2" fill="#fff"/><circle cx="60.5" cy="48.5" r="2" fill="#fff"/>
+  </g>
+  <ellipse cx="30" cy="61" rx="5" ry="3" fill="#FF8FA3" opacity=".55"/><ellipse cx="70" cy="61" rx="5" ry="3" fill="#FF8FA3" opacity=".55"/>
+  <path d="M45 63 Q50 68 55 63" fill="none" stroke="#7A3B2E" stroke-width="2.2" stroke-linecap="round"/>
+</svg>
+"""
+
+_MASCOT_CSS = """
+.mh-lane { position: relative; height: 0; pointer-events: none; }
+.mh-lane-inner { position: absolute; left: 45%; right: 8%; bottom: 6px; height: 100px; }
+.mh-walker { position: absolute; bottom: 0; left: 0; width: 74px; animation: mhWalk 26s linear infinite; pointer-events: auto; }
+.mh-flip { animation: mhFlip 26s steps(1) infinite; transform-origin: center; }
+.mh-hop { animation: mhAutoHop 7.3s ease-in-out infinite; }
+.mh-walker:hover .mh-hop { animation: mhHop 0.6s cubic-bezier(.3,1.6,.5,1) 1; }
+.mh-bob { animation: mhBob 0.45s ease-in-out infinite alternate; }
+.mh-shadow { position: absolute; left: 15px; bottom: -2px; width: 44px; height: 7px; border-radius: 50%;
+             background: rgba(15,23,42,.18); animation: mhShadow 7.3s ease-in-out infinite; }
+.mh-leg-l { animation: mhLeg 0.45s ease-in-out infinite alternate; transform-origin: 42px 96px; }
+.mh-leg-r { animation: mhLeg 0.45s ease-in-out infinite alternate-reverse; transform-origin: 58px 96px; }
+.mh-arm { animation: mhWave 26s ease-in-out infinite; transform-origin: 66px 84px; }
+.mh-eyes { animation: mhBlink 4.2s infinite; transform-origin: 50px 51px; }
+.mh-bubble { position: absolute; bottom: 94px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+             background: #fff; color: #183E80; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px;
+             box-shadow: 0 4px 12px -4px rgba(24,62,128,.45); opacity: 0; animation: mhBubble 26s ease-in-out infinite; }
+@keyframes mhWalk { 0% { left: 0; } 44% { left: calc(100% - 74px); } 52% { left: calc(100% - 74px); }
+                    96% { left: 0; } 100% { left: 0; } }
+@keyframes mhFlip { 0% { transform: scaleX(1); } 48% { transform: scaleX(-1); } 100% { transform: scaleX(1); } }
+@keyframes mhBob { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+@keyframes mhLeg { from { transform: rotate(14deg); } to { transform: rotate(-14deg); } }
+@keyframes mhAutoHop { 0%, 82%, 100% { transform: translateY(0); } 88% { transform: translateY(-14px); } 93% { transform: translateY(0); }
+                       96% { transform: translateY(-5px); } }
+@keyframes mhHop { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-16px) scale(1.06) rotate(-6deg); }
+                   100% { transform: translateY(0) scale(1); } }
+@keyframes mhShadow { 0%, 82%, 100% { transform: scaleX(1); opacity: 1; } 88% { transform: scaleX(.6); opacity: .5; } }
+@keyframes mhWave { 0%, 44%, 52%, 96%, 100% { transform: rotate(0); } 46%, 50% { transform: rotate(-22deg); } 48% { transform: rotate(8deg); }
+                    97%, 99% { transform: rotate(-22deg); } 98% { transform: rotate(8deg); } }
+@keyframes mhBlink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes mhBubble { 0%, 44%, 53%, 100% { opacity: 0; } 46%, 51% { opacity: 1; } }
+@media (max-width: 900px) { .mh-lane { display: none; } }
+"""
+
+def render_mascot(enabled):
+    """Gọi ngay TRƯỚC dải băng đầu trang. Không chiếm chỗ (cao 0), nhân vật nổi lên khoảng trống phía trên."""
+    if not enabled: return
+    st.markdown(f"<style>{_MASCOT_CSS}</style><div class='mh-lane'><div class='mh-lane-inner'><div class='mh-walker'>"
+                f"<div class='mh-bubble'>Lồng tiếng thôi! 🎙️</div><div class='mh-shadow'></div>"
+                f"<div class='mh-hop'><div class='mh-flip'><div class='mh-bob'>{_MASCOT_SVG}</div></div></div>"
+                f"</div></div></div>", unsafe_allow_html=True)
+
+
 def inject_effects(enabled, spinner_logo_b64, dark=False):
     nav_vars = (":root { --mh-nav-bg: rgba(14, 17, 23, 0.72); --mh-nav-accent: #8DB4F0; }" if dark
                 else ":root { --mh-nav-bg: rgba(255, 255, 255, 0.74); --mh-nav-accent: #2A63BA; }")
