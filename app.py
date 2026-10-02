@@ -97,18 +97,18 @@ else:
 if st.session_state.get("_db_save_error"):
     st.error(st.session_state.pop("_db_save_error"))
 
-def _sidebar_heading(text):
-    st.sidebar.markdown(f"<div class='mh-side-h'>{text}</div>", unsafe_allow_html=True)
+def _sidebar_gap():
+    st.sidebar.markdown("<div class='mh-side-gap'></div>", unsafe_allow_html=True)  # khoảng trống nhỏ giữa các nhóm
 
-_sidebar_heading("Giao diện")
+_sidebar_gap()
 _banner = st.sidebar.segmented_control(
-    "Dải băng đầu trang", options=["Xanh Mai Han", "Tối"], default="Xanh Mai Han", key="ui_banner",
-    help="Chỉ đổi màu dải băng đầu trang. Không ảnh hưởng đến file xuất ra.")
-ui_theme_choice = "Tối" if _banner == "Tối" else "Xanh"
+    "Dải băng đầu trang", options=["Dải băng xanh", "Dải băng tối"], default="Dải băng xanh", key="ui_banner",
+    label_visibility="collapsed")
+ui_theme_choice = "Tối" if _banner == "Dải băng tối" else "Xanh"
 st.sidebar.toggle("✨ Hiệu ứng chuyển động", value=True, key="ui_motion",
                   help="Tắt nếu muốn giao diện đứng yên hoàn toàn (máy yếu hoặc thấy rối mắt).")
 
-_sidebar_heading("Phiên làm việc")
+_sidebar_gap()
 if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
                      help="Xoá các file đã tải lên (ở mọi trang) và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'stats',
@@ -127,13 +127,13 @@ if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
 
 enable_colors = enable_phonetic = enable_cast = True
 if any(has_perm(p) for p in ("goc", "resync", "doi_chieu")):
-    _sidebar_heading("Khi xuất kịch bản")
+    _sidebar_gap()
     enable_colors = st.sidebar.toggle("🌈 Tô màu nhân vật", value=True)
     enable_phonetic = st.sidebar.toggle("🗣️ Phiên âm giọng Nam", value=True, help="Tự động chèn phiên âm giọng Nam trước từ Tiếng Anh (ngoặc đơn + tô màu vàng)")
     enable_cast = st.sidebar.toggle("🎭 Phân vai lồng tiếng", value=True, help="Hiển thị thông tin diễn viên lồng tiếng ở đầu trang và lần xuất hiện đầu tiên của nhân vật")
 
 if has_perm("kho_tu"):
-    _sidebar_heading("Kho từ dùng chung")
+    _sidebar_gap()
 
     # KHỐI QUÉT KHO SRT/SCRIPT TỔNG HỢP (THÊM NÚT CHỌN TẤT CẢ & BỎ CHỌN SIÊU TỐC)
     with st.sidebar.expander("📦 Quét file tìm tên & từ mới", expanded=False):
@@ -316,7 +316,7 @@ if has_perm("kho_tu"):
                 st.success(f"✅ Đã lưu {len(new_phrases)} từ nhiễu!"); time.sleep(1); st.rerun()
 
 if has_perm("sao_luu"):
-    _sidebar_heading("Dữ liệu")
+    _sidebar_gap()
     with st.sidebar.expander("💾 Sao lưu dữ liệu", expanded=False):
         st.caption("Tải về 1 file Excel chứa bản MỚI NHẤT của toàn bộ dữ liệu (phiên âm, phân vai, màu, xưng hô, lương...). "
                    "Nên tải định kỳ, ví dụ cuối mỗi tuần, và cất ở nơi an toàn.")

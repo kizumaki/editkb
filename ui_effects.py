@@ -29,7 +29,7 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{ gap: 0.55rem
               box-shadow: 0 6px 14px -6px rgba({BRAND}, 0.8); }}
 .mh-user-text {{ min-width: 0; }}
 section[data-testid="stSidebar"] .stMarkdownContainer:has(.mh-user),
-section[data-testid="stSidebar"] .stMarkdownContainer:has(.mh-side-h) {{ margin-bottom: 0 !important; }}
+section[data-testid="stSidebar"] .stMarkdownContainer:has(.mh-side-gap) {{ margin-bottom: 0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.mh-user) {{ padding-bottom: 0.15rem; }}
 .mh-user-name {{ font-weight: 700; font-size: 1rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 .mh-user-role {{ display: inline-block; margin-top: 4px; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
@@ -46,10 +46,8 @@ section[data-testid="stSidebar"] [data-testid="stPopover"] button p {{ font-size
 .mh-status {{ display: flex; align-items: center; gap: 8px; font-size: 0.78rem; opacity: 0.8; padding: 0 4px; }}
 .mh-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #22C55E; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2); }}
 .mh-status.local .mh-dot {{ background: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); }}
-/* Tiêu đề nhóm: chữ nhỏ + đường mảnh kéo dài */
-.mh-side-h {{ display: flex; align-items: center; gap: 10px; margin: 0.9rem 0 0.1rem 2px; line-height: 1.4;
-              font-size: 0.76rem; font-weight: 700; letter-spacing: 0.02em; opacity: 0.6; }}
-.mh-side-h::after {{ content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.3; }}
+/* Khoảng trống nhỏ giữa các nhóm (không chữ, không vạch kẻ) */
+.mh-side-gap {{ height: 0.35rem; }}
 /* Ô mở rộng ở thanh bên */
 section[data-testid="stSidebar"] [data-testid="stExpander"] details {{
     border-color: rgba({BRAND}, 0.18); background: rgba({BRAND}, 0.03); }}
