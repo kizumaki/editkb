@@ -29,7 +29,7 @@ STYLE_HINT = "Hello, everyone! Welcome back to the channel. Today, we're trying 
 # Nhóm Preston/Brianna/Keeley: rút từ 84 kịch bản team đã biên tập (tên xuất hiện ở >= 3 kịch bản). Kênh khác: tra cứu công khai
 # 2026-10-02 (Wikipedia/fandom: thành viên Dude Perfect, nhóm MrBeast của Karl, Ethan Schulteis = The Amagi kênh giải thích anime,
 # bạn bè IShowSpeed; Ethan theo trang kênh người dùng gửi) + bản chính thức McDonald's (Manny, Remy của Nick). Team bổ sung thì sửa ở đây.
-_NHOM_PRESTON = ("Preston, Brianna, Bri, Keeley, Chase, Stephen, Scott, Larry, Yomi, Caleb, Riley, Courtney, Josh, Alan, "
+_NHOM_PRESTON = ("Preston, TBNRfrags, Brianna, Bri, Keeley, Chase, Stephen, Scott, Larry, Yomi, Caleb, Riley, Courtney, Josh, Alan, "
                  "Vince, Johnny, Joe, Kat, Ben, ZHC")
 KENH = {
     "Không rõ / kênh khác": "",
