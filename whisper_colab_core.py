@@ -26,20 +26,23 @@ STYLE_HINT = "Hello, everyone! Welcome back to the channel. Today, we're trying 
 
 
 # Tên quen theo kênh -> gợi ý cho Whisper (chọn ở ô KENH trong notebook). Chỉ tên người/nhân vật công khai — KHÔNG có nội dung kịch bản.
-# Nhóm Preston/Brianna/Keeley: rút từ 84 kịch bản team đã biên tập (tên xuất hiện ở >= 3 kịch bản). Các kênh khác: chỉ tên chủ kênh
-# (+ tên chắc chắn), chờ team bổ sung.
+# Nhóm Preston/Brianna/Keeley: rút từ 84 kịch bản team đã biên tập (tên xuất hiện ở >= 3 kịch bản). Kênh khác: tra cứu công khai
+# 2026-10-02 (Wikipedia/fandom: thành viên Dude Perfect, nhóm MrBeast của Karl, Ethan Schulteis = The Amagi kênh giải thích anime,
+# bạn bè IShowSpeed; Ethan theo trang kênh người dùng gửi) + bản chính thức McDonald's (Manny, Remy của Nick). Team bổ sung thì sửa ở đây.
 _NHOM_PRESTON = ("Preston, Brianna, Bri, Keeley, Chase, Stephen, Scott, Larry, Yomi, Caleb, Riley, Courtney, Josh, Alan, "
                  "Vince, Johnny, Joe, Kat, Ben, ZHC")
 KENH = {
     "Không rõ / kênh khác": "",
-    "Preston (PrestonPlayz)": _NHOM_PRESTON + ", Minecraft, Creeper, Enderman, Villager",
+    "Preston (prestonyt / PrestonPlayz)": _NHOM_PRESTON + ", Minecraft, Creeper, Enderman, Villager",
     "Brianna (BriannaPlayz / BriannaYT)": _NHOM_PRESTON,
     "Keeley (ItsKeeleyElise)": _NHOM_PRESTON,
     "Nick DiGiovanni": "Nick DiGiovanni, Nick, Manny, Remy",
-    "Dude Perfect": "Dude Perfect, Tyler, Cory, Coby, Garrett, Cody",
-    "IShowSpeed": "IShowSpeed, Speed",
-    "Karl": "Karl",
-    "Ethan Schulteis": "Ethan Schulteis, Ethan",
+    "Dude Perfect": "Dude Perfect, Tyler, Cory, Coby, Garrett, Cody, Panda, Sparky",
+    "IShowSpeed": "IShowSpeed, Speed, Kai Cenat, KSI, Jamal, Ronaldo, Messi",
+    "Karl (Karl Jacobs)": "Karl, MrBeast, Jimmy, Chandler, Chris, Nolan, Tareq, Sapnap, GeorgeNotFound, Minecraft",
+    # @EthanSchulteis = kênh "Ethan" thử thách/sinh tồn (KHÔNG phải The Amagi trùng tên — tra web nhầm, người dùng sửa 2026-10-02).
+    # Chỉ có tên chắc chắn từ trang kênh (video "Ryan Trahan Mystery Country Challenge"); chờ team bổ sung.
+    "Ethan (EthanSchulteis)": "Ethan, Ryan Trahan, Ryan",
 }
 
 _NAME_JUNK = {"mp4", "mov", "mkv", "wav", "mp3", "m4a", "final", "edit", "raw", "copy", "en", "eng", "vi", "vn", "sub", "subs",
