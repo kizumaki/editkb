@@ -74,9 +74,12 @@ def norm_eng_key(s):
     return re.sub(r"\s+", " ", s).strip().upper()
 
 def pho_missing(eng, pho):
-    """Chưa có phiên âm thật (trống, hoặc chỉ chép lại chữ tiếng Anh) -> không chèn vào kịch bản."""
-    p = strip_marks(str(pho or "")).lower().replace("-", "").replace(" ", "")
-    return not p or p == strip_marks(str(eng or "")).lower().replace("-", "").replace(" ", "").replace("'", "")
+    """Chưa có phiên âm thật (trống, hoặc chỉ chép lại NGUYÊN chữ tiếng Anh: PIZZA -> "Pizza") -> không chèn vào kịch bản.
+    KHÔNG bỏ dấu tiếng Việt / gạch nối khi so: "A-ni-mê (Anime)", "Ca-mê-ra (Camera)" là phiên âm thật
+    (bản cũ bỏ dấu + gạch nối nên coi chúng là "chưa có" -> ẩn khỏi bảng kho và không chèn vào kịch bản)."""
+    def core(s): return norm_eng_key(s).replace("'", "").replace(" ", "")
+    p = core(pho)
+    return not p or p == core(eng)
 
 def near_keys(eng, keys):
     """Từ gần giống đã có trong kho: khác nhau chỉ ở số nhiều / 's / dấu cách / gạch nối."""
