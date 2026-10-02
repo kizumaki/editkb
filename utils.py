@@ -372,8 +372,10 @@ def _data_to_rows(cfg, data):
     return [headers] + [[enc(item.get(h, "")) for h in headers] for item in data]
 
 def _with_defaults(cfg, data):
-    if cfg.get("merge_defaults"):
-        return {**cfg["default"](), **data}
+    # Từ mẫu có sẵn trong code CHỈ dùng khi kho còn trống (lần đầu). Bản cũ chèn lại mỗi lần đọc
+    # -> người dùng xoá từ mẫu (VD GOOGLE) thì lần sau nó lại hiện lại.
+    if cfg.get("merge_defaults") and not data:
+        return cfg["default"]()
     return data
 
 def _local_read(filepath, cfg):
@@ -453,11 +455,15 @@ def save_json_db(filepath, data_container):
     if filepath == PHONETIC_DB_FILE and isinstance(data_container, dict):
         from learn_core import normalize_pho, norm_eng_key  # quy chuẩn cho MỌI đường lưu (lỗi gõ, dấu nháy, dấu cách)
         for k in list(data_container):
-            v = normalize_pho(data_container[k]) or data_container[k]
+            raw = data_container[k]
+            v = normalize_pho(raw) or raw
             nk = norm_eng_key(k)
-            if nk != k:
-                data_container.pop(k)
-                if nk in data_container: continue  # khoá chuẩn đã có thì giữ bản đó
+            if nk == k:
+                data_container[k] = v; continue
+            data_container.pop(k)
+            # Khoá chuẩn đã có (VD "MCDONALD'S" cạnh "MCDONALD’S"): nếu bản khoá lệch VỪA ĐƯỢC SỬA thì nó thắng,
+            # không thì giữ bản khoá chuẩn. (Bản trước luôn giữ khoá chuẩn -> chữ người dùng vừa sửa bị mất.)
+            if nk in data_container and raw == base.get(k): continue
             if nk: data_container[nk] = v
     if filepath == PRONOUN_REL_DB_FILE and isinstance(data_container, dict):
         from learn_core import norm_pair_key, norm_term  # tên viết hoa, từ xưng hô viết thường, bỏ dấu cách thừa
