@@ -434,6 +434,11 @@ def save_json_db(filepath, data_container):
     kind = cfg["kind"]
     tab = _tab_name(filepath)
     base = st.session_state.get("_db_base", {}).get(filepath, cfg["default"]())
+    if filepath == PHONETIC_DB_FILE and isinstance(data_container, dict):
+        from learn_core import normalize_pho  # quy chuẩn phiên âm cho MỌI đường lưu (sửa lỗi gõ, dấu cách quanh gạch nối)
+        for k in list(data_container):
+            v = normalize_pho(data_container[k])
+            if v: data_container[k] = v
     try:
         if sheets_enabled():
             sh = _get_spreadsheet()
@@ -1440,6 +1445,22 @@ def add_text_run_with_html(paragraph, text, highlight=None):
             if is_underline: run.font.underline = True
             if highlight: run.font.highlight_color = highlight
 
+_PHO_DB_CACHE = {}
+
+def _normalized_pho_db(db):
+    """Bản đã quy chuẩn của kho phiên âm (nhớ tạm theo nội dung để không tính lại mỗi câu)."""
+    from learn_core import normalize_pho
+    sig = (id(db), len(db), hash(tuple(sorted(db.items()))) if len(db) < 20000 else 0)
+    if _PHO_DB_CACHE.get("sig") != sig:
+        _PHO_DB_CACHE.update(sig=sig, db={k: normalize_pho(v) or v for k, v in db.items()})
+    return _PHO_DB_CACHE["db"]
+
+def _standardize_phonetics(text, phonetic_db):
+    """Thống nhất 'phiên âm (English)': lật cặp viết ngược, sửa phiên âm theo kho, sửa lỗi gõ."""
+    from learn_core import flip_reversed_pairs, standardize_pairs
+    try: return standardize_pairs(flip_reversed_pairs(text, phonetic_db), phonetic_db)
+    except Exception: return text  # lỗi bất ngờ: giữ nguyên câu, không làm hỏng kịch bản
+
 def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phonetic):
     current_text = re.sub(r'\t+', ' ', current_text).strip()
     if not current_text: return
@@ -1448,6 +1469,8 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
     if not enable_phonetic:
         add_text_run_with_html(paragraph, current_text)
         return
+    phonetic_db = _normalized_pho_db(phonetic_db)
+    current_text = _standardize_phonetics(current_text, phonetic_db)
 
     paren_eng_regex = re.compile(r'\(([A-Za-z0-9\s\'\-\.]{1,40})\)')
     existing_pairs = []
@@ -1518,6 +1541,8 @@ def apply_html_and_phonetic_to_paragraph(paragraph, current_text, enable_phoneti
         else:
             pho = item["pho_text"]
             eng = item["eng_text"]
+            from learn_core import _sentence_start, _cap_first
+            if _sentence_start(current_text[:item["start"]]): pho = _cap_first(pho)  # đầu câu: viết hoa
             add_text_run_with_html(paragraph, f"{pho} ({eng})", highlight=WD_COLOR_INDEX.YELLOW)
         last_idx = item["end"]
         
@@ -1534,6 +1559,8 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
     
     phonetic_db = st.session_state.get('custom_phonetics', {})
     if enable_phonetic:
+        phonetic_db = _normalized_pho_db(phonetic_db)
+        ass_text = _standardize_phonetics(ass_text, phonetic_db)
         sorted_eng_keys = sorted(phonetic_db.keys(), key=len, reverse=True)
         if sorted_eng_keys:
             pattern_str = r"\b(" + "|".join([re.escape(k) for k in sorted_eng_keys]) + r")\b"
@@ -1558,6 +1585,8 @@ def format_ass_and_srt_text(text, speaker_name, actor_name, spk_color, enable_co
                 start, end = match.span()
                 out += ass_text[last_end:start]
                 pho = phonetic_db.get(orig.upper(), orig)
+                from learn_core import _sentence_start, _cap_first
+                if _sentence_start(re.sub(r"\{[^}]*\}", "", ass_text[:start])): pho = _cap_first(pho)  # đầu câu: viết hoa
                 out += f"{{\\c&H00FFFF&}}{{\\b1}}{pho} ({orig}){{\\b0}}{{\\c&HFFFFFF&}}"
                 last_end = end
             out += ass_text[last_end:]

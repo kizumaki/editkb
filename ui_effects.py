@@ -102,8 +102,45 @@ _MOTION_CSS = f"""
 }}
 """
 
-def inject_effects(enabled, spinner_logo_b64):
-    css = _BASE_CSS
+# ---------- Thanh menu trên cùng: kính mờ + mục dạng viên bo tròn, nhóm đang mở nền xanh ----------
+_NAV_CSS = f"""
+header[data-testid="stHeader"] {{
+    background: var(--mh-nav-bg) !important; backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid rgba({BRAND}, 0.14); box-shadow: 0 8px 28px -22px rgba({BRAND}, 0.9); }}
+[data-testid="stTopNavSection"] {{
+    padding: 6px 14px !important; border-radius: 999px; gap: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease; }}
+[data-testid="stTopNavSection"] p {{ font-weight: 600; font-size: 0.92rem; letter-spacing: 0.01em; }}
+[data-testid="stTopNavSection"]:hover {{ background: rgba({BRAND}, 0.10); color: var(--mh-nav-accent); }}
+[aria-expanded="true"] > [data-testid="stTopNavSection"] {{ background: rgba({BRAND}, 0.14); color: var(--mh-nav-accent); }}
+/* Nhóm chứa trang đang mở: viên nền xanh đậm, chữ trắng */
+[data-testid="stToolbar"] div[style*="order"]:has(a[aria-current="page"]) [data-testid="stTopNavSection"] {{
+    background: linear-gradient(135deg, #183E80, #2A63BA); color: #fff !important;
+    box-shadow: 0 6px 16px -8px rgba({BRAND}, 0.9); }}
+[data-testid="stToolbar"] div[style*="order"]:has(a[aria-current="page"]) [data-testid="stTopNavSection"] p,
+[data-testid="stToolbar"] div[style*="order"]:has(a[aria-current="page"]) [data-testid="stTopNavSection"] svg {{ color: #fff !important; }}
+/* Danh sách thả xuống */
+[data-baseweb="popover"]:has([data-testid="stTopNavPopover"]) > div {{
+    border-radius: 14px !important; overflow: hidden; border: 1px solid rgba({BRAND}, 0.14);
+    box-shadow: 0 22px 44px -18px rgba(15, 23, 42, 0.45) !important; }}
+[data-testid="stTopNavPopover"] {{ padding: 6px !important; }}
+a[data-testid="stTopNavDropdownLink"] {{ border-radius: 10px; padding: 8px 12px !important; margin: 1px 0;
+    transition: background-color 0.15s ease, transform 0.15s ease; }}
+a[data-testid="stTopNavDropdownLink"]:hover {{ background: rgba({BRAND}, 0.09) !important; }}
+a[data-testid="stTopNavDropdownLink"][aria-current="page"] {{ background: rgba({BRAND}, 0.13) !important;
+    box-shadow: inset 3px 0 0 #2A63BA; }}
+a[data-testid="stTopNavDropdownLink"][aria-current="page"] p {{ font-weight: 700; color: var(--mh-nav-accent); }}
+"""
+_NAV_MOTION_CSS = """
+@keyframes mhDrop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+[data-baseweb="popover"] [data-testid="stTopNavPopover"] { animation: mhDrop 0.18s cubic-bezier(.2,.7,.2,1) both; transform-origin: top left; }
+a[data-testid="stTopNavDropdownLink"]:hover { transform: translateX(3px); }
+"""
+
+def inject_effects(enabled, spinner_logo_b64, dark=False):
+    nav_vars = (":root { --mh-nav-bg: rgba(14, 17, 23, 0.72); --mh-nav-accent: #8DB4F0; }" if dark
+                else ":root { --mh-nav-bg: rgba(255, 255, 255, 0.74); --mh-nav-accent: #2A63BA; }")
+    css = _BASE_CSS + nav_vars + _NAV_CSS + (_NAV_MOTION_CSS if enabled else "")
     if enabled:
         css += f":root {{ --mh-logo: url('data:image/png;base64,{spinner_logo_b64}'); }}\n" + _MOTION_CSS
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)

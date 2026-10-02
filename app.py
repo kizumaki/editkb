@@ -22,6 +22,7 @@ from tab6_dual_align import render_tab6
 from tab7_consistency import render_tab7
 from tab8_cleaner import render_tab8
 from tab9_tools import render_tab9
+from tab10_learn import render_tab10
 from auth import require_login, render_user_box, render_accounts_page, has_perm, is_admin
 from ui_effects import inject_effects
 
@@ -58,7 +59,7 @@ st.logo(_logo_for_bg, size="large")
 # ==========================================
 # Tải toàn bộ kho dữ liệu (Google Sheets khi chạy online, file JSON khi chạy trên máy) — 1 lần mỗi phiên
 init_databases()
-inject_effects(st.session_state.get("ui_motion", True), _logo_base64(_logo_for_bg))  # áp cả cho màn hình đăng nhập
+inject_effects(st.session_state.get("ui_motion", True), _logo_base64(_logo_for_bg), _is_dark_theme())  # áp cả cho màn hình đăng nhập
 require_login(_logo_for_bg)
 
 # ==========================================
@@ -109,7 +110,7 @@ st.sidebar.toggle("✨ Hiệu ứng chuyển động", value=True, key="ui_motio
                   help="Tắt nếu muốn giao diện đứng yên hoàn toàn (máy yếu hoặc thấy rối mắt).")
 
 _sidebar_gap()
-if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True,
+if st.sidebar.button("🔄 Bắt đầu phiên mới", use_container_width=True, type="primary", key="btn_new_session",
                      help="Xoá các file đã tải lên (ở mọi trang) và kết quả vừa xử lý để làm việc khác. Dữ liệu đã lưu (phiên âm, phân vai, lương...) KHÔNG bị xoá."):
     for key in ['processed_docx', 'processed_ass', 'processed_srt', 'actor_zip', 'stats',
                 'r_processed_docx', 'r_processed_ass', 'r_processed_srt', 'r_actor_zip', 'resync_stats',
@@ -437,6 +438,7 @@ PAGE_DEFS = [
     ("Quản lý", "luong", render_tab3, "Theo dõi & báo cáo lương", ":material/payments:", "luong"),
     ("Quản lý", "phan_vai", render_tab4, "Phân vai & màu nhân vật", ":material/theater_comedy:", "phan-vai"),
     ("Quản lý", "phien_am", render_tab5, "Kho phiên âm giọng Nam", ":material/record_voice_over:", "phien-am"),
+    ("Quản lý", "kho_tu", render_tab10, "Học từ kịch bản cũ", ":material/school:", "hoc-kich-ban"),
     ("Công cụ", "don_phu_de", render_tab8, "Dọn dẹp phụ đề", ":material/cleaning_services:", "don-phu-de"),
     ("Công cụ", "chuyen_doi", render_tab9, "Chuyển đổi định dạng", ":material/swap_horiz:", "chuyen-doi"),
 ]
