@@ -1821,12 +1821,14 @@ def record_video_in_tracker(r_stats, fallback_title, project_week, project_id=No
             else:
                 entry_data["project_id"] = project_id
         stage = existing_entry.get("stage", "")
-        if stage not in STAGES or STAGES.index(stage) < STAGES.index("Thu âm"): entry_data["stage"] = "Thu âm"
+        if stage not in STAGES or STAGES.index(stage) < STAGES.index("Thu âm"):
+            entry_data["stage"] = "Thu âm"; entry_data["stage_updated"] = time.strftime("%d/%m/%Y")
         if not str(existing_entry.get("date", "")).strip(): entry_data["date"] = time.strftime("%d/%m/%Y")
         existing_entry.update(entry_data)
     else:
         entry_data.update({"project_id": project_id or DEFAULT_PROJECT_ID, "date": time.strftime("%d/%m/%Y"),
-                           "stage": "Thu âm", "assignee": "", "custom_actor_rates": {},
+                           "stage": "Thu âm", "stage_updated": time.strftime("%d/%m/%Y"), "deadline": "",
+                           "assignee": "", "custom_actor_rates": {},
                            "project_week": week})
         tracker_list.append(entry_data)
     return video_title

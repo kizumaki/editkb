@@ -102,10 +102,11 @@ def _render_progress(tracker, projects, locks):
             a1, a2 = st.columns(2)
             new_title = a1.text_input("Tên video")
             new_pid = a2.selectbox("Dự án", [str(p["project_id"]) for p in active], format_func=lambda i: pc.project_name(pmap, i))
-            a3, a4, a5 = st.columns(3)
+            a3, a4, a5, a6 = st.columns(4)
             new_stage = a3.selectbox("Giai đoạn", pc.STAGES)
             new_assignee = a4.text_input("Người phụ trách")
             new_date = a5.date_input("Ngày ghi nhận", value=_now_vn().date(), format="DD/MM/YYYY")
+            new_deadline = a6.date_input("Hạn giao", value=None, format="DD/MM/YYYY", help="Để trống nếu chưa biết")
             if st.form_submit_button("➕ Thêm video", type="primary"):
                 t = new_title.strip()
                 if not t: st.error("Hãy gõ tên video.")
@@ -114,7 +115,9 @@ def _render_progress(tracker, projects, locks):
                 else:
                     tracker.append({"video_title": t, "project_id": new_pid, "stage": new_stage, "assignee": new_assignee.strip(),
                                     "date": pc.fmt_date(new_date), "actors": pc.NO_ACTOR, "actor_breakdown": {},
-                                    "total_lines": 0, "video_duration_min": 0, "custom_actor_rates": {}, "project_week": ""})
+                                    "total_lines": 0, "video_duration_min": 0, "custom_actor_rates": {}, "project_week": "",
+                                    "deadline": pc.fmt_date(new_deadline) if new_deadline else "",
+                                    "stage_updated": pc.fmt_date(_now_vn().date())})
                     if save_json_db(TRACKER_DB_FILE, tracker):
                         _flash("success", f"✅ Đã thêm video «{t}».")
                         _bump("trk_ver"); st.rerun()
@@ -135,6 +138,7 @@ def _render_progress(tracker, projects, locks):
             "Tiêu đề video": it.get("video_title", ""),
             "Dự án": pc.project_name(pmap, it.get("project_id")),
             "Ngày": pc.parse_date(it.get("date")),
+            "Hạn giao": pc.parse_date(it.get("deadline")),
             "Giai đoạn": it.get("stage") if it.get("stage") in pc.STAGES else None,
             "Người phụ trách": it.get("assignee", ""),
             "Diễn viên": it.get("actors", ""),
@@ -150,6 +154,7 @@ def _render_progress(tracker, projects, locks):
             "Tiêu đề video": st.column_config.TextColumn("Tiêu đề video", width="large"),
             "Dự án": st.column_config.SelectboxColumn("Dự án", options=[p.get("name", "") for p in projects], required=True),
             "Ngày": st.column_config.DateColumn("Ngày", format="DD/MM/YYYY", help="Ngày ghi nhận — dùng để chia đợt lương"),
+            "Hạn giao": st.column_config.DateColumn("Hạn giao", format="DD/MM/YYYY", help="Hạn giao — trang Tổng quan dùng để cảnh báo trễ hạn"),
             "Giai đoạn": st.column_config.SelectboxColumn("Giai đoạn", options=pc.STAGES),
             "Người phụ trách": st.column_config.TextColumn("Người phụ trách"),
             "Diễn viên": st.column_config.TextColumn("Diễn viên", help="Cách nhau bằng dấu phẩy"),
@@ -198,7 +203,11 @@ def _save_progress(tracker, projects, lp, edited):
         it["video_title"] = new_title
         it["project_id"] = new_pid
         it["date"] = pc.fmt_date(new_date) if new_date else ""
-        it["stage"] = clean_cell(row["Giai đoạn"])
+        new_stage = clean_cell(row["Giai đoạn"])
+        if new_stage != it.get("stage", ""): it["stage_updated"] = pc.fmt_date(_now_vn().date())  # để biết video "đứng yên" bao lâu
+        it["stage"] = new_stage
+        dl = _to_date(row["Hạn giao"])
+        it["deadline"] = pc.fmt_date(dl) if dl else ""
         it["assignee"] = clean_cell(row["Người phụ trách"])
         it["project_week"] = clean_cell(row["Ghi chú"])
         it["actors"] = ", ".join(new_actors) if new_actors else pc.NO_ACTOR

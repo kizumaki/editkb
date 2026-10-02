@@ -23,6 +23,7 @@ from tab7_consistency import render_tab7
 from tab8_cleaner import render_tab8
 from tab9_tools import render_tab9
 from tab10_learn import render_tab10
+from tab11_overview import render_tab11
 from auth import require_login, render_user_box, render_accounts_page, has_perm, is_admin
 from ui_effects import inject_effects
 
@@ -430,6 +431,7 @@ PAGE_DEFS = [
     ("Kịch bản", "resync", lambda: render_tab2(enable_colors, enable_phonetic, enable_cast), "Re-Sync bản đã biên tập", ":material/sync:", "re-sync"),
     ("Kiểm tra chất lượng", "doi_chieu", lambda: render_tab6(enable_colors, enable_phonetic, enable_cast), "Đối chiếu 2 file tiếng Anh", ":material/compare_arrows:", "doi-chieu"),
     ("Kiểm tra chất lượng", "soat_xung_ho", render_tab7, "Soát xưng hô & thuật ngữ", ":material/fact_check:", "soat-xung-ho"),
+    ("Quản lý", "luong", render_tab11, "Tổng quan công việc", ":material/dashboard:", "tong-quan"),
     ("Quản lý", "luong", render_tab3, "Theo dõi & báo cáo lương", ":material/payments:", "luong"),
     ("Quản lý", "phan_vai", render_tab4, "Phân vai & màu nhân vật", ":material/theater_comedy:", "phan-vai"),
     ("Quản lý", "phien_am", render_tab5, "Kho phiên âm giọng Nam", ":material/record_voice_over:", "phien-am"),
